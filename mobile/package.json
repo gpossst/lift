@@ -2,8 +2,10 @@
   "name": "mobile",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "packageManager": "bun@1.2.18",
   "trustedDependencies": [
-    "@shopify/react-native-skia"
+    "@shopify/react-native-skia",
+    "unrs-resolver"
   ],
   "dependencies": {
     "@clerk/expo": "^4.6.1",
@@ -61,7 +63,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "patch-package"
   },
   "private": true
 }

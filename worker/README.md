@@ -7,8 +7,8 @@ never returned to another account; friends can only see each other's latest PR.
 
 ## Deploy
 
-1. Configure the D1 binding in `wrangler.jsonc` and run `bun install` from the
-   repository root.
+1. Configure the D1 binding in `wrangler.jsonc` and run `bun install` in this
+   directory.
 2. In Clerk Dashboard, copy **API keys → JWT public key → PEM public key** and
    save it as a Worker secret:
 

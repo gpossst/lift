@@ -1,8 +1,8 @@
 # Lift
 
 Lift is a local-first Expo workout app backed by a Clerk-authenticated
-Cloudflare Worker and D1 database. The repository is a Bun workspace containing
-the complete system:
+Cloudflare Worker and D1 database. The repository contains the complete system
+as two independently deployable Bun packages:
 
 - `mobile/` — Expo app and EAS configuration
 - `worker/` — Cloudflare Worker, D1 migrations, and regression tests
@@ -10,25 +10,27 @@ the complete system:
 
 ## Setup
 
-Install the Bun version declared in `package.json`, then install the exact
-dependency graph from the committed lockfile:
+Install the Bun version declared in each package's `package.json`, then install
+each exact dependency graph from its committed lockfile:
 
 ```sh
-bun install --frozen-lockfile
+cd mobile && bun install --frozen-lockfile
+cd ../worker && bun install --frozen-lockfile
 ```
 
 Copy `mobile/.env.example` to `mobile/.env` and provide the local values. Start
-either service from the repository root:
+each service from its package directory:
 
 ```sh
-bun run mobile
-bun run worker
+cd mobile && bun run start
+cd worker && bun run dev
 ```
 
-Run all static checks and regression tests with:
+Run each package's static checks and regression tests with:
 
 ```sh
-bun run check
+cd mobile && bun run check
+cd worker && bun run check
 ```
 
 ## Deploy
@@ -41,11 +43,10 @@ bunx eas-cli build --profile production --platform all
 ```
 
 Configure the Worker secrets and D1 binding described in `worker/README.md`,
-then apply migrations and deploy from the repository root:
+then apply migrations and deploy:
 
 ```sh
 cd worker
 bunx wrangler d1 migrations apply lift --remote
-cd ..
-bun run deploy:worker
+bun run deploy
 ```

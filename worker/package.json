@@ -1,7 +1,12 @@
 {
   "name": "lift-sync-worker",
   "private": true,
+  "packageManager": "bun@1.2.18",
   "type": "module",
+  "trustedDependencies": [
+    "esbuild",
+    "workerd"
+  ],
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
