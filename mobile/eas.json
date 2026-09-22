@@ -1,0 +1,12 @@
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "bun": "1.2.18"
+    },
+    "production": {
+      "bun": "1.2.18"
+    }
+  }
+}

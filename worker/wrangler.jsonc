@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lift-sync",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-31",
+  "vars": {
+    "CLERK_ISSUER": "https://choice-ewe-4777.clerk.accounts.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "liftdb",
+      "database_id": "534e715a-a175-43b5-b743-f395c1336f5c",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

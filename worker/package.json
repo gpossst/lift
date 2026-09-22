@@ -1,0 +1,17 @@
+{
+  "name": "lift-sync-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "bun test/recommendations-regression.mjs && bun test/sync-regression.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun run test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260831.1",
+    "typescript": "~5.9.2",
+    "wrangler": "^4.136.3"
+  }
+}

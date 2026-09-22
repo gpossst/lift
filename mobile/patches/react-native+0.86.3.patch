@@ -1,0 +1,20 @@
+diff --git a/node_modules/react-native/scripts/cocoapods/spm.rb b/node_modules/react-native/scripts/cocoapods/spm.rb
+index d500bb9..e85bbfb 100644
+--- a/node_modules/react-native/scripts/cocoapods/spm.rb
++++ b/node_modules/react-native/scripts/cocoapods/spm.rb
+@@ -101,7 +101,14 @@ class SPMManager
+       next if ref
+ 
+       log(" Adding product dependency #{product_name} to #{target.name}")
+-      ref = project.new(ref_class)
++      # CocoaPods can supply a project UUID that is already occupied by the
++      # Pods project's root object. Creating the Swift package product with
++      # that UUID overwrites the root object and leaves Pods.xcodeproj
++      # unreadable to Xcode. Allocate a genuinely unused UUID instead.
++      uuid = project.generate_uuid
++      uuid = project.generate_uuid while project.uuids.include?(uuid)
++      ref = ref_class.new(project, uuid)
++      ref.initialize_defaults
+       ref.package = pkg
+       ref.product_name = product_name
+       target.package_product_dependencies << ref
