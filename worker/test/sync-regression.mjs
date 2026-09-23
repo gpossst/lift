@@ -5,8 +5,7 @@ import { join } from 'node:path';
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 
 const temp = mkdtempSync(join(tmpdir(), 'lift-sync-regression-'));
-execFileSync('tsc', ['--noEmit', 'false', '--outDir', join(temp, 'compiled')]);
-const { default: handler, __testDeleteAccount: deleteAccount, __testPullSyncChanges: pull, __testPushSyncChunk: push } = await import(`file://${join(temp, 'compiled', 'index.js')}`);
+const { default: handler, __testDeleteAccount: deleteAccount, __testPullSyncChanges: pull, __testPushSyncChunk: push } = await import('../src/index.ts');
 const mf = new Miniflare(convertV4MiniflareOptions({
   compatibilityDate: '2026-08-31',
   modules: true,
@@ -15,7 +14,11 @@ const mf = new Miniflare(convertV4MiniflareOptions({
 }));
 const DB = await mf.getD1Database('DB');
 for (const file of readdirSync('migrations').filter((name) => name.endsWith('.sql')).sort()) {
-  for (const statement of readFileSync(join('migrations', file), 'utf8').split(';').map((sql) => sql.trim()).filter(Boolean)) await DB.prepare(statement).run();
+  const source = readFileSync(join('migrations', file), 'utf8');
+  const triggers = source.match(/CREATE TRIGGER[\s\S]*?END;/gi) ?? [];
+  const ordinary = source.replace(/CREATE TRIGGER[\s\S]*?END;/gi, '');
+  for (const statement of ordinary.split(';').map((sql) => sql.trim()).filter(Boolean)) await DB.prepare(statement).run();
+  for (const trigger of triggers) await DB.prepare(trigger.replace(/;\s*$/, '')).run();
 }
 const deletionPage = await handler.fetch(new Request('https://test/delete-account'), { DB });
 if (deletionPage.status !== 200 || !(await deletionPage.text()).includes('Delete your Lift account')) throw new Error('Public deletion resource is unavailable.');
@@ -57,8 +60,8 @@ const children = await send('children', [
   { entity: 'rating', key: ratingKey, operation: 'upsert', baseRevision: 0, record: { workoutId: 'children', muscle: 'chest', exhaustion: 4, createdAt: 21 } },
 ]);
 if (children.response.status !== 200 || (await DB.prepare('SELECT COUNT(*) AS count FROM set_muscles WHERE user_id = ? AND workout_local_id = ?').bind('user', 'children').first()).count !== 8) throw new Error('Set/rating chunk did not apply atomically.');
-const feedbackKey = ['children', 'bench', 'accepted'].join('\u001f');
-const feedback = await send('feedback', [{ entity: 'feedback', key: feedbackKey, operation: 'upsert', baseRevision: 0, record: { workoutId: 'children', exerciseId: 'bench', action: 'accepted', createdAt: 22 } }]);
+const feedbackKey = ['children', 'bench', 'impression'].join('\u001f');
+const feedback = await send('feedback', [{ entity: 'feedback', key: feedbackKey, operation: 'upsert', baseRevision: 0, record: { workoutId: 'children', exerciseId: 'bench', action: 'impression', rank: 1, createdAt: 22 } }]);
 if (feedback.response.status !== 200 || !(await DB.prepare('SELECT 1 AS present FROM recommendation_feedback WHERE user_id = ? AND workout_local_id = ?').bind('user', 'children').first())) throw new Error('Feedback mutation did not apply.');
 
 // A server revision, not the device clock, decides a later edit.
@@ -95,7 +98,7 @@ do {
 if (!sawDelete) throw new Error('Deletion tombstone was missing from paginated changes.');
 
 // Account deletion cascades every child table and is safe to retry after a
-// lost response or a later Clerk deletion failure.
+// lost response or a later identity deletion failure.
 let deletion = await deleteAccount(env, 'user');
 if (deletion.status !== 200 || await DB.prepare("SELECT 1 FROM users WHERE id = 'user'").first() || await DB.prepare("SELECT 1 FROM sync_changes WHERE user_id = 'user'").first()) throw new Error('Account deletion did not cascade.');
 deletion = await deleteAccount(env, 'user');

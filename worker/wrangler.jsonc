@@ -3,8 +3,17 @@
   "name": "lift-sync",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-31",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    { "pattern": "api.lift.garrett.one", "custom_domain": true }
+  ],
   "vars": {
-    "CLERK_ISSUER": "https://choice-ewe-4777.clerk.accounts.dev"
+    "BETTER_AUTH_URL": "https://api.lift.garrett.one",
+    "TRUSTED_ORIGINS": "https://lift.garrett.one,mobile://"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
   },
   "d1_databases": [
     {

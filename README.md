@@ -1,11 +1,12 @@
 # Lift
 
-Lift is a local-first Expo workout app backed by a Clerk-authenticated
-Cloudflare Worker and D1 database. The repository contains the complete system
-as two independently deployable Bun packages:
+Lift is a local-first Expo workout app backed by a Better Auth Cloudflare
+Worker, Resend transactional email, and a D1 database. The repository contains the complete system
+as three independently deployable Bun packages:
 
 - `mobile/` — Expo app and EAS configuration
 - `worker/` — Cloudflare Worker, D1 migrations, and regression tests
+- `website/` — TanStack Start site for `lift.garrett.one`
 - `docs/` — shared product and engineering documentation
 
 ## Setup
@@ -16,6 +17,7 @@ each exact dependency graph from its committed lockfile:
 ```sh
 cd mobile && bun install --frozen-lockfile
 cd ../worker && bun install --frozen-lockfile
+cd ../website && bun install --frozen-lockfile
 ```
 
 Copy `mobile/.env.example` to `mobile/.env` and provide the local values. Start
@@ -31,6 +33,7 @@ Run each package's static checks and regression tests with:
 ```sh
 cd mobile && bun run check
 cd worker && bun run check
+cd website && bun run check
 ```
 
 ## Deploy
@@ -47,6 +50,6 @@ then apply migrations and deploy:
 
 ```sh
 cd worker
-bunx wrangler d1 migrations apply lift --remote
+bunx wrangler d1 migrations apply liftdb --remote
 bun run deploy
 ```

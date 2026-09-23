@@ -3,13 +3,13 @@ import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from './schema';
 import { exerciseCatalog, type Exercise, workoutSplitForExercise } from './exercise-catalog';
 import { buildDemoWorkoutSets, demoWorkoutIdPrefix, isDemoDataEnabled } from './demo-data';
-import { getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type RecommendationContext, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
+import { getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 export type { RecommendationContext, RecommendationFeedback, RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 const sqlite = SQLite.openDatabaseSync('lift.db');
 sqlite.execSync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-const DATABASE_SCHEMA_VERSION = 13;
+const DATABASE_SCHEMA_VERSION = 14;
 const workoutTimeoutSeconds = 2 * 60 * 60;
 
 function migrateDatabase() {
@@ -106,6 +106,7 @@ function migrateDatabase() {
         exercise_id TEXT NOT NULL,
         action TEXT NOT NULL,
         related_exercise_id TEXT,
+        rank INTEGER,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL DEFAULT 0
       );
@@ -149,6 +150,9 @@ function migrateDatabase() {
   sqlite.execSync('DELETE FROM workout_sets WHERE id NOT IN (SELECT MAX(id) FROM workout_sets GROUP BY workout_id, exercise_id, set_number);');
   sqlite.execSync('CREATE UNIQUE INDEX IF NOT EXISTS workout_sets_sync_identity ON workout_sets(workout_id, exercise_id, set_number);');
   const feedbackColumns = sqlite.getAllSync<{ name: string }>('PRAGMA table_info(recommendation_feedback)');
+  if (!feedbackColumns.some((column) => column.name === 'rank')) {
+    sqlite.execSync('ALTER TABLE recommendation_feedback ADD COLUMN rank INTEGER;');
+  }
   if (!feedbackColumns.some((column) => column.name === 'updated_at')) {
     sqlite.execSync('ALTER TABLE recommendation_feedback ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0; UPDATE recommendation_feedback SET updated_at = created_at;');
   }
@@ -235,15 +239,18 @@ export function getFeaturedExercises(): Exercise[] {
 }
 
 export function getRecommendedWorkoutSplit(now = new Date()): WorkoutSplit {
-  return recommendWorkoutSplit(getWorkoutVisits().map((visit) => {
+  const muscleRatings: MuscleExhaustionRating[] = [];
+  const history = getWorkoutVisits().map((visit) => {
     const ratings = getWorkoutMuscleRatings(visit.workout.id);
+    const completedAt = visit.workout.endedAt ?? visit.workout.createdAt;
+    muscleRatings.push(...ratings.map((rating) => ({ workoutId: visit.workout.id, split: visit.workout.split, muscle: rating.id, exhaustion: rating.exhaustion, completedAt })));
     return {
       split: visit.workout.split,
-      completedAt: visit.workout.endedAt ?? visit.workout.createdAt,
+      completedAt,
       sets: visit.sets,
-      exhaustion: ratings.length ? ratings.reduce((total, rating) => total + rating.exhaustion, 0) / ratings.length : undefined,
     };
-  }), now);
+  });
+  return recommendWorkoutSplit(history, now, muscleRatings);
 }
 
 export function createWorkout(split: WorkoutSplit): Workout {
@@ -328,7 +335,7 @@ export function getWorkoutVisits(): WorkoutVisitSummary[] {
       COUNT(workout_sets.id) AS sets, COUNT(DISTINCT workout_sets.exercise_id) AS exercises,
       COALESCE(SUM(workout_sets.weight * workout_sets.reps), 0) AS volume, COALESCE(SUM(workout_sets.reps), 0) AS reps
      FROM workouts INNER JOIN workout_sets ON workout_sets.workout_id = workouts.id
-     GROUP BY workouts.id ORDER BY COALESCE(workouts.ended_at, workouts.created_at) DESC`,
+     GROUP BY workouts.id ORDER BY COALESCE(workouts.ended_at, workouts.created_at) DESC, workouts.id ASC`,
   );
   return visits.map((visit) => ({ ...visit, workout: { id: visit.id, split: visit.split, createdAt: new Date(visit.createdAt * 1000), endedAt: visit.endedAt ? new Date(visit.endedAt * 1000) : null } }));
 }
@@ -380,7 +387,7 @@ export function getWorkoutProgress(workoutId: string): WorkoutProgressPoint[] {
      INNER JOIN workout_sets ON workout_sets.workout_id = workouts.id
      WHERE workouts.split = ?
      GROUP BY workouts.id
-     ORDER BY completedAt DESC
+     ORDER BY completedAt DESC, workoutId ASC
      LIMIT 6`, [current.workout.split],
   ).reverse().map((point) => ({ ...point, completedAt: new Date(point.completedAt * 1000) }));
 }
@@ -436,31 +443,33 @@ export function getExerciseRecommendations(workoutId: string, split: WorkoutSpli
   const sets = sqlite.getAllSync<{ exerciseId: string; workoutId: string; weight: number; reps: number; completedAt: number }>(
     `SELECT workout_sets.exercise_id AS exerciseId, workout_sets.workout_id AS workoutId, weight, reps, completed_at AS completedAt
      FROM workout_sets LEFT JOIN workouts ON workouts.id = workout_sets.workout_id
-     WHERE workout_sets.workout_id = ? OR workouts.ended_at IS NOT NULL OR workouts.id IS NULL`,
+     WHERE workout_sets.workout_id = ? OR workouts.ended_at IS NOT NULL OR workouts.id IS NULL
+     ORDER BY workout_sets.completed_at ASC, workout_sets.workout_id ASC, workout_sets.set_number ASC`,
     [workoutId],
   ).map((set) => ({ ...set, completedAt: new Date(set.completedAt * 1000) }));
   const muscleRatings = sqlite.getAllSync<{ workoutId: string; split: WorkoutSplit; muscle: string; exhaustion: number; completedAt: number }>(
     `SELECT workout_muscle_ratings.workout_id AS workoutId, workouts.split AS split, muscle, exhaustion,
       COALESCE(workouts.ended_at, workouts.created_at) AS completedAt
      FROM workout_muscle_ratings
-     INNER JOIN workouts ON workouts.id = workout_muscle_ratings.workout_id`,
+     INNER JOIN workouts ON workouts.id = workout_muscle_ratings.workout_id
+     ORDER BY completedAt ASC, workoutId ASC, muscle ASC`,
   ).map((rating) => ({ ...rating, completedAt: new Date(rating.completedAt * 1000) }));
-  const feedback = sqlite.getAllSync<{ workoutId: string; exerciseId: string; action: RecommendationFeedbackAction; relatedExerciseId?: string; createdAt: number }>(
-    `SELECT workout_id AS workoutId, exercise_id AS exerciseId, action,
-      related_exercise_id AS relatedExerciseId, created_at AS createdAt FROM recommendation_feedback`,
+  const feedback = sqlite.getAllSync<{ workoutId: string; exerciseId: string; action: RecommendationFeedbackAction; rank?: number; createdAt: number }>(
+    `SELECT workout_id AS workoutId, exercise_id AS exerciseId, action, rank, created_at AS createdAt FROM recommendation_feedback
+     ORDER BY created_at ASC, workout_id ASC, exercise_id ASC, action ASC`,
   ).map((item) => ({ ...item, createdAt: new Date(item.createdAt * 1000) }));
   return rankExerciseRecommendations(getExercises(), sets, muscleRatings, workoutId, split, limit, undefined, context, feedback);
 }
 
 export function recordRecommendationFeedback(
-  workoutId: string, exerciseId: string, action: RecommendationFeedbackAction, relatedExerciseId?: string,
+  workoutId: string, exerciseId: string, action: RecommendationFeedbackAction, rank?: number,
 ): void {
   const createdAt = Math.floor(Date.now() / 1000);
   syncedWrite(
     () => sqlite.runSync(
-      `INSERT OR IGNORE INTO recommendation_feedback (workout_id, exercise_id, action, related_exercise_id, created_at, updated_at)
+      `INSERT OR IGNORE INTO recommendation_feedback (workout_id, exercise_id, action, rank, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [workoutId, exerciseId, action, relatedExerciseId ?? null, createdAt, createdAt],
+      [workoutId, exerciseId, action, rank ?? null, createdAt, createdAt],
     ),
     (write) => { if (write.changes) markCloudSyncDirty('feedback', [workoutId, exerciseId, action].join('\u001F')); },
   );
@@ -478,7 +487,7 @@ export function getNextSetNumberForWorkout(exerciseId: string, workoutId: string
 export function getWorkoutHistory(exerciseId: string) {
   return sqlite
     .getAllSync<StoredWorkoutSet>(
-      'SELECT workout_id AS workoutId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE exercise_id = ? ORDER BY completed_at ASC',
+      'SELECT workout_id AS workoutId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE exercise_id = ? ORDER BY completed_at ASC, workout_id ASC, set_number ASC',
       [exerciseId],
     )
     .map((set) => ({ ...set, completedAt: new Date(set.completedAt * 1000) }));
@@ -495,13 +504,13 @@ export function getRecentExerciseExhaustion(exerciseId: string, excludingWorkout
      FROM workout_muscle_ratings INNER JOIN workouts ON workouts.id = workout_muscle_ratings.workout_id
      WHERE workout_muscle_ratings.workout_id != ? AND muscle IN (${muscles.map(() => '?').join(',')})
        AND COALESCE(workouts.ended_at, workouts.created_at) >= ?
-     ORDER BY completedAt DESC`,
+     ORDER BY completedAt DESC, workoutId ASC, muscle ASC`,
     [excludingWorkoutId, ...muscles, Math.floor((now.getTime() - 14 * 86_400_000) / 1000)],
   );
   if (!rows.length) return undefined;
   const latest = rows[0]!.workoutId;
-  const ratings = rows.filter((row) => row.workoutId === latest).map((row) => row.exhaustion);
-  return ratings.reduce((sum, value) => sum + value, 0) / ratings.length;
+  const ratings = rows.filter((row) => row.workoutId === latest).map((row) => getEffectiveExhaustion(row.exhaustion, new Date(row.completedAt * 1000), now));
+  return Math.max(...ratings);
 }
 
 export function getWorkoutStats(): WorkoutStats {
@@ -517,7 +526,7 @@ export function getWorkoutActivity(days = 28): WorkoutActivity[] {
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (days - 1));
   const rows = sqlite.getAllSync<{ completedAt: number; workoutId: string; weight: number; reps: number }>(
-    'SELECT completed_at AS completedAt, workout_id AS workoutId, weight, reps FROM workout_sets WHERE completed_at >= ? ORDER BY completed_at ASC',
+    'SELECT completed_at AS completedAt, workout_id AS workoutId, weight, reps FROM workout_sets WHERE completed_at >= ? ORDER BY completed_at ASC, workout_id ASC, set_number ASC',
     [Math.floor(start.getTime() / 1000)],
   );
   const byDate = new Map<string, WorkoutActivity>();
@@ -551,7 +560,7 @@ export function getWorkoutSplitTrends(weeks = 8): WorkoutSplitTrend[] {
     `SELECT exercise_catalog.area AS area, exercise_catalog.details_json AS detailsJson, workout_sets.completed_at AS completedAt,
       workout_sets.workout_id AS workoutId, workout_sets.weight AS weight, workout_sets.reps AS reps
      FROM workout_sets INNER JOIN exercise_catalog ON workout_sets.exercise_id = exercise_catalog.id
-     WHERE workout_sets.completed_at >= ? ORDER BY workout_sets.completed_at ASC`,
+     WHERE workout_sets.completed_at >= ? ORDER BY workout_sets.completed_at ASC, workout_sets.workout_id ASC, workout_sets.set_number ASC`,
     [Math.floor(start.getTime() / 1000)],
   );
   const trends = new Map<WorkoutSplitTrend['split'], WorkoutSplitTrend>();
@@ -617,7 +626,7 @@ function localSyncRecord(entity: CloudSyncEntity, key: string): Record<string, u
     return sqlite.getFirstSync<Record<string, unknown>>('SELECT workout_id AS workoutId, muscle, exhaustion, created_at AS createdAt FROM workout_muscle_ratings WHERE workout_id = ? AND muscle = ?', [workoutId, muscle]);
   }
   const [workoutId, exerciseId, action] = key.split(cloudKeySeparator);
-  return sqlite.getFirstSync<Record<string, unknown>>('SELECT workout_id AS workoutId, exercise_id AS exerciseId, action, related_exercise_id AS relatedExerciseId, created_at AS createdAt FROM recommendation_feedback WHERE workout_id = ? AND exercise_id = ? AND action = ?', [workoutId, exerciseId, action]);
+  return sqlite.getFirstSync<Record<string, unknown>>('SELECT workout_id AS workoutId, exercise_id AS exerciseId, action, rank, created_at AS createdAt FROM recommendation_feedback WHERE workout_id = ? AND exercise_id = ? AND action = ?', [workoutId, exerciseId, action]);
 }
 
 function enqueueCloudSync(entity: CloudSyncEntity, key: string, operation: 'upsert' | 'delete') {
@@ -670,18 +679,22 @@ function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: stri
   enqueueCloudSync(entity, key, 'delete');
 }
 
-/** Bind this device cache to the active Clerk account. On a real account switch,
+/** Bind this device cache to the active account. On a real account switch,
  * old cached rows are discarded; the acknowledged account copy remains remote. */
 export function prepareCloudSyncForUser(userId: string) {
-  const activeUserId = syncState('active_clerk_user_id');
+  const activeUserId = syncState('active_user_id') ?? syncState('active_clerk_user_id');
   if (!activeUserId) {
-    setSyncState('active_clerk_user_id', userId);
+    setSyncState('active_user_id', userId);
     if (sqlite.getFirstSync<{ count: number }>('SELECT COUNT(*) AS count FROM workouts WHERE id NOT LIKE ?', [`${demoWorkoutIdPrefix}%`])?.count) setSyncState('cloud_sync_needs_seed', '1');
     return;
   }
-  if (activeUserId === userId) return;
+  if (activeUserId === userId) {
+    sqlite.runSync("DELETE FROM sync_state WHERE key = 'active_clerk_user_id'");
+    return;
+  }
   sqlite.execSync(`DELETE FROM recommendation_feedback; DELETE FROM workout_muscle_ratings; DELETE FROM workout_sets; DELETE FROM workouts WHERE id NOT LIKE '${demoWorkoutIdPrefix}%'; DELETE FROM sync_tombstones; DELETE FROM sync_outbox; DELETE FROM sync_versions; DELETE FROM sync_state WHERE key LIKE 'cloud_sync_%';`);
-  setSyncState('active_clerk_user_id', userId);
+  setSyncState('active_user_id', userId);
+  sqlite.runSync("DELETE FROM sync_state WHERE key = 'active_clerk_user_id'");
 }
 
 /** Remove account-owned rows and sync metadata without touching the exercise catalog. */
@@ -711,8 +724,8 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
             ON CONFLICT(workout_id, exercise_id, set_number) DO UPDATE SET weight = excluded.weight, reps = excluded.reps, completed_at = excluded.completed_at`, [String(record.exerciseId), String(record.workoutId), Number(record.setNumber), Number(record.weight), Number(record.reps), Number(record.completedAt)]);
           if (change.entity === 'rating' && sqlite.getFirstSync('SELECT 1 FROM workouts WHERE id = ?', [String(record.workoutId)])) sqlite.runSync(`INSERT INTO workout_muscle_ratings (workout_id, muscle, exhaustion, created_at) VALUES (?, ?, ?, ?)
             ON CONFLICT(workout_id, muscle) DO UPDATE SET exhaustion = excluded.exhaustion, created_at = excluded.created_at`, [String(record.workoutId), String(record.muscle), Number(record.exhaustion), Number(record.createdAt)]);
-          if (change.entity === 'feedback') sqlite.runSync(`INSERT INTO recommendation_feedback (workout_id, exercise_id, action, related_exercise_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0)
-            ON CONFLICT(workout_id, exercise_id, action) DO UPDATE SET related_exercise_id = excluded.related_exercise_id, created_at = excluded.created_at`, [String(record.workoutId), String(record.exerciseId), String(record.action), record.relatedExerciseId == null ? null : String(record.relatedExerciseId), Number(record.createdAt)]);
+          if (change.entity === 'feedback') sqlite.runSync(`INSERT INTO recommendation_feedback (workout_id, exercise_id, action, rank, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0)
+            ON CONFLICT(workout_id, exercise_id, action) DO UPDATE SET rank = excluded.rank, created_at = excluded.created_at`, [String(record.workoutId), String(record.exerciseId), String(record.action), record.rank == null ? null : Number(record.rank), Number(record.createdAt)]);
         }
       }
       sqlite.runSync(`INSERT INTO sync_versions (entity, entity_key, revision) VALUES (?, ?, ?)

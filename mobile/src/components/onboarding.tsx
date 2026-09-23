@@ -12,8 +12,7 @@ import { savePendingOnboarding, type Onboarding } from '@/lib/onboarding';
 type Props = { onSignIn: () => void; onSignUp: () => void };
 type Step = 'welcome' | 'name' | 'goals' | 'body' | 'experience' | 'favorites' | 'routine';
 type Styles = ReturnType<typeof createStyles>;
-const baseSteps: Step[] = ['welcome', 'name', 'goals', 'body', 'experience', 'routine'];
-const experiencedSteps: Step[] = ['welcome', 'name', 'goals', 'body', 'experience', 'favorites', 'routine'];
+const steps: Step[] = ['welcome', 'name', 'goals', 'body', 'experience', 'favorites', 'routine'];
 const goals = ['Build muscle', 'Get stronger', 'Lose fat', 'Feel healthier'];
 const springify = <T,>(e: T) => (e as { springify: () => T }).springify();
 // flex.json's only visible paint is a #5194FF fill (the Blue accent); strokes are
@@ -72,7 +71,6 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
   // whenever the welcome step (re)mounts.
   useEffect(() => { if (step === 'welcome') flexRef.current?.play(0, 75); }, [step]);
   useEffect(() => { scrollRef.current?.scrollTo({ y: 0, animated: false }); }, [step]);
-  const steps = experience === 'experienced' ? experiencedSteps : baseSteps;
   const index = steps.indexOf(step);
   const goTo = (next: number) => { setForward(next > index); setStep(steps[next]!); };
   const next = () => goTo(index + 1);
@@ -82,7 +80,7 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
   const finish = async () => {
     if (!experience || !location || !days || saving) return;
     setSaving(true);
-    await savePendingOnboarding({ displayName: displayName.trim().replace(/\s+/g, ' '), goals: selectedGoals, weightLb: Number(weight), heightInches: totalHeight, experience, favoriteExerciseIds: experience === 'experienced' ? favoriteExerciseIds : [], trainingLocation: location, trainingDays: days });
+    await savePendingOnboarding({ displayName: displayName.trim().replace(/\s+/g, ' '), goals: selectedGoals, weightLb: Number(weight), heightInches: totalHeight, experience, favoriteExerciseIds, trainingLocation: location, trainingDays: days });
     onSignUp();
   };
   // Timing curve, not a spring: springs overshoot x=0 and bounce back, which
@@ -134,7 +132,7 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
               </Pressable>
             </Animated.View>;
           })}</View>
-          <Button label="Continue" disabled={!favoriteExerciseIds.length} onPress={next} styles={styles} />
+          <Button label={favoriteExerciseIds.length ? 'Continue' : 'Skip for now'} onPress={next} styles={styles} />
         </Question>}
         {step === 'routine' && <Question title="Let’s shape your routine." subtitle="Where do you plan to train, and how often?" styles={styles}>
           <Animated.Text entering={FadeInUp.delay(100).duration(350)} style={styles.sectionLabel}>LOCATION</Animated.Text>

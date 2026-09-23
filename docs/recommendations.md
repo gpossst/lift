@@ -17,15 +17,20 @@ selection.
 
 The planner learns from workout history without requiring a routine builder:
 
-- Logged sets and completed visits build exercise continuity.
-- Accepting a recommendation or choosing an exercise manually adds a smaller
-  preference signal.
-- Replacing, removing, or skipping a recommendation lowers its future rank.
+- Completed sessions build recency-weighted exercise continuity; extra sets in
+  the same session affect volume and muscle dose, not preference.
+- Progression and recent manual selections add preference evidence. Saved
+  favorites are a prior that fades as session evidence accumulates.
+- Recent replacements or removals are strong negative evidence. A skip
+  only counts after the recommendation remains displayed for 10 seconds.
 - Exercises that repeatedly appear in the same completed workout receive a
   co-training bonus when one of their usual partners is already in the session.
 
 Explicit feedback events are stored locally in SQLite on native platforms and
 local storage on the web, then travel with the authenticated workout snapshot.
+Impressions include their rank and timestamp. Session and feedback evidence use
+a 30-day half-life, and only recent sessions or feedback events affect a
+movement's preference score.
 Completed workouts and co-training are derived from the existing synced set
 history. Feedback from one signed-in account is cleared from the device cache
 on account switch.
@@ -54,8 +59,8 @@ The profile API can save individual preferences with a partial update:
 {
   "recommendationPreferences": {
     "goals": ["Get stronger"],
-    "availableEquipment": ["barbell", "dumbbell"],
-    "gymId": "a-stable-gym-identifier",
+    "favoriteExerciseIds": ["Barbell_Bench_Press_-_Medium_Grip"],
+    "sessionMinutes": 45,
     "optInSimilarUsers": false
   }
 }
@@ -70,9 +75,9 @@ Send this to `PATCH /v1/profile` using the existing authenticated mobile
 | `goals` | Existing onboarding vocabulary: Build muscle, Get stronger, Lose fat, Feel healthier |
 | `experience` | new, some, experienced |
 | `trainingDays`, `sessionMinutes` | Optional schedule context |
-| `availableEquipment` | Reserved for future location-derived availability; currently ignored |
+| `availableEquipment` | Reserved for a future equipment feature; currently ignored |
 | `trainingLocation` | gym, home, both; a setting, not GPS coordinates |
-| `gymId` | An explicitly selected gym; no location permission or automatic tracking |
+| `gymId` | Optional cohort metadata; the local planner does not use it |
 | `weightLb`, `heightInches` | Optional body measurements for cohort matching |
 | `optInSimilarUsers` | Defaults to false; controls participation in peer comparisons |
 
@@ -82,9 +87,12 @@ require completing onboarding or supplying body measurements.
 
 ## Personalization wiring
 
-The workout recommendation screen fetches saved goals, experience, schedule,
-equipment, and gym preferences when cloud access is available, translating
-nullable values to omitted local context and preserving the local fallback.
+The workout recommendation screen fetches saved goals, experience, favorites,
+and schedule when cloud access is available, translating nullable values to
+omitted local context and preserving the local fallback. Equipment familiarity
+is inferred from equipment used in the user's own completed workouts during the
+last 90 days. Familiar equipment receives a small bonus; unseen equipment stays
+eligible. The local planner does not use location or gym data.
 Peer hints are not yet wired into the screen; pass them only with the user's
 opt-in, and do not translate peer set counts directly into individual targets.
 
@@ -97,6 +105,8 @@ The exercise browser already limits ranking to its visible candidates, so hidden
 equipment or search results cannot consume the diversity bonuses. Unranked
 exercises remain available in the library.
 
-Before releasing the updated Worker, apply all pending migrations through
-`worker/migrations/0007_recommendation_feedback.sql` using the normal migration
-process. This change does not apply remote migrations or publish the Worker.
+Before releasing the updated Worker, apply all pending migrations in
+`worker/migrations/` using the normal migration process. This includes
+`0008_favorite_exercises.sql`, which adds the saved exercise preferences used by
+the exercise browser. This change does not apply remote migrations or publish
+the Worker.

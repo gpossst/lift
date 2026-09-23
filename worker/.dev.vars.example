@@ -1,0 +1,7 @@
+BETTER_AUTH_URL=https://api.lift.garrett.one
+BETTER_AUTH_SECRET=replace-with-openssl-rand-base64-32
+BETTER_AUTH_SECRETS=1:replace-with-a-separate-32-byte-secret
+TRUSTED_ORIGINS=https://lift.garrett.one,mobile://
+RESEND_API_KEY=re_replace_me
+RESEND_FROM_EMAIL=Lift <auth@lift.garrett.one>
+SUPPORT_EMAIL=support@lift.garrett.one

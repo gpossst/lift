@@ -1,7 +1,5 @@
-import { ClerkProvider, useAuth, useSession } from '@clerk/expo';
-import { tokenCache } from '@clerk/expo/token-cache';
 import * as SplashScreen from 'expo-splash-screen';
-import { Tabs } from 'expo-router';
+import { router, Tabs, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import LottieView from 'lottie-react-native';
 import { useCallback, useEffect, useState } from 'react';
@@ -9,26 +7,19 @@ import { ActivityIndicator, AppState, LogBox, StyleSheet, View } from 'react-nat
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppearanceProvider, useAppearance } from '@/components/appearance-provider';
-import { AccountTaskFlow, AuthFlow } from '@/components/auth-flow';
+import { AuthFlow, PasswordResetFlow } from '@/components/auth-flow';
 import { BottomNavigation } from '@/components/bottom-navigation';
 import { OnboardingFlow } from '@/components/onboarding';
 import { prepareCloudSyncForUser } from '@/db';
 import { setCloudSyncUser, syncWorkoutData } from '@/lib/cloud-sync';
 import { clearPendingOnboarding, submitOnboarding, takePendingOnboarding } from '@/lib/onboarding';
+import { authClient } from '@/lib/auth-client';
 
 SplashScreen.preventAutoHideAsync();
 
 // Third-party noise: react-native-graph still calls the deprecated SkPath
 // API and trips Reanimated's inline-style heuristic internally.
 LogBox.ignoreLogs(['[react-native-skia]', "shared value's .value inside reanimated inline style"]);
-
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-if (!publishableKey) {
-  throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Add your Clerk publishable key to .env.');
-}
-
-const clerkPublishableKey = publishableKey;
 
 export default function RootLayout() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
@@ -37,8 +28,7 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
-      <SafeAreaProvider>
+    <SafeAreaProvider>
       <AppearanceProvider>
         <View style={styles.root} onLayout={hideNativeSplash}>
           <CloudSyncLifecycle />
@@ -46,8 +36,7 @@ export default function RootLayout() {
           {isSplashVisible && <AnimatedSplash onFinish={() => setIsSplashVisible(false)} />}
         </View>
       </AppearanceProvider>
-      </SafeAreaProvider>
-    </ClerkProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -55,13 +44,14 @@ export default function RootLayout() {
  * subscriptions are removed with the signed-in app tree, so a signed-out user
  * never sends an old account's cache. */
 function CloudSyncLifecycle() {
-  const { getToken, isLoaded, isSignedIn, userId } = useAuth({ treatPendingAsSignedOut: false });
+  const { data: session, isPending } = authClient.useSession();
+  const userId = session?.user.id;
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !userId) {
+    if (isPending || !userId) {
       setCloudSyncUser(null);
       return;
     }
-    setCloudSyncUser(userId, getToken);
+    setCloudSyncUser(userId);
     prepareCloudSyncForUser(userId);
     const synchronize = () => { void syncWorkoutData().catch(() => undefined); };
     synchronize();
@@ -72,23 +62,25 @@ function CloudSyncLifecycle() {
       subscription.remove();
       setCloudSyncUser(null);
     };
-  }, [getToken, isLoaded, isSignedIn, userId]);
+  }, [isPending, userId]);
   return null;
 }
 
 function AppNavigator() {
   const { mode } = useAppearance();
-  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
-  const { session } = useSession();
+  const pathname = usePathname();
+  const { data: session, isPending } = authClient.useSession();
+  const isLoaded = !isPending;
+  const isSignedIn = Boolean(session?.user);
   const [authMode, setAuthMode] = useState<'onboarding' | 'signIn' | 'signUp'>('onboarding');
-  const task = session?.currentTask?.key;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       {!isLoaded ? <LoadingScreen />
-        : task === 'setup-mfa' || task === 'reset-password' ? <AccountTaskFlow task={task} />
-          : isSignedIn ? <><OnboardingSync /><AppStack /></>
+        : pathname === '/reset-password' ? <PasswordResetFlow />
+        : pathname === '/auth/verified' ? <VerifiedEmailScreen />
+        : isSignedIn ? <><OnboardingSync /><AppStack /></>
             : authMode === 'onboarding' ? <OnboardingFlow onSignIn={() => setAuthMode('signIn')} onSignUp={() => setAuthMode('signUp')} />
               : <AuthFlow key={authMode} mode={authMode} onBack={() => setAuthMode('onboarding')} onModeChange={setAuthMode} />}
     </GestureHandlerRootView>
@@ -109,7 +101,14 @@ function AppStack() {
     <Tabs.Screen name="history-detail" options={{ href: null }} />
     <Tabs.Screen name="stats" options={{ href: null }} />
     <Tabs.Screen name="explore" options={{ href: null }} />
+    <Tabs.Screen name="reset-password" options={{ href: null }} />
+    <Tabs.Screen name="auth/verified" options={{ href: null }} />
   </Tabs>;
+}
+
+function VerifiedEmailScreen() {
+  useEffect(() => { router.replace('/'); }, []);
+  return <LoadingScreen />;
 }
 
 function LoadingScreen() {
@@ -132,8 +131,7 @@ function AnimatedSplash({ onFinish }: { onFinish: () => void }) {
 }
 
 function OnboardingSync() {
-  const { getToken } = useAuth();
-  useEffect(() => { void takePendingOnboarding().then(async (onboarding) => { if (onboarding) { await submitOnboarding(getToken, onboarding); await clearPendingOnboarding(); } }).catch(() => undefined); }, [getToken]);
+  useEffect(() => { void takePendingOnboarding().then(async (onboarding) => { if (onboarding) { await submitOnboarding(onboarding); await clearPendingOnboarding(); } }).catch(() => undefined); }, []);
   return null;
 }
 

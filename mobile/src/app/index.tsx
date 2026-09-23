@@ -1,5 +1,4 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useAuth } from '@clerk/expo';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,7 +25,6 @@ type VolumePoint = { volume: number; date: Date };
 
 export default function HomeScreen() {
 	const { colors } = useAppearance();
-	const { getToken } = useAuth();
 	const [expiredWorkoutCount] = useState(() => closeExpiredWorkouts());
 	const [now] = useState(() => Date.now());
 	const activeWorkout = getActiveWorkout();
@@ -37,10 +35,10 @@ export default function HomeScreen() {
 	const [friendRecords, setFriendRecords] = useState<FriendPersonalRecord[]>([]);
 	const [friendCount, setFriendCount] = useState<number | null>(null);
 	useFocusEffect(useCallback(() => {
-		void Promise.all([getFriendPersonalRecords(getToken), getFriends(getToken)])
+    void Promise.all([getFriendPersonalRecords(), getFriends()])
 			.then(([records, friends]) => { setFriendRecords(records); setFriendCount(friends.count); })
 			.catch(() => undefined);
-	}, [getToken]));
+  }, []));
 	useFocusEffect(useCallback(() => {
 		const workout = getActiveWorkout();
 		if (!workout) return;
@@ -66,7 +64,7 @@ export default function HomeScreen() {
 
 	return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
 		<View style={styles.header}><Text style={[styles.title, { color: colors.text }]}>Home</Text></View>
-		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} scrollEnabled={friendCount !== 0}>
 			<View style={styles.section}>
 				{activeTrend ? <>
 					<View style={styles.trendSummary}><View style={styles.trendRow}><Text style={[styles.trendValue, { color: colors.text }]}>{formatVolume(displayedPoint?.volume ?? 0)} <Text style={styles.unit}>LB</Text></Text>{trendChange && <Text style={[styles.trendChange, { color: colors.mutedText }]}>{trendChange}</Text>}</View><Text style={[styles.trendContext, { color: colors.mutedText }]}>{trendContext}</Text></View>

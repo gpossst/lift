@@ -1,8 +1,8 @@
-import { useAuth } from '@clerk/expo';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { Check, ChevronDown, Search, X } from 'react-native-feather';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, FlatList, LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { endWorkout, getExerciseRecommendations, getExercises, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type RecommendationContext, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
@@ -14,12 +14,12 @@ import { useAppearance } from '@/components/appearance-provider';
 const exercises = getExercises();
 type Sort = 'ranked' | 'az' | 'area' | 'equipment';
 const staticFilter = '__static__';
+const meaningfulExposureMs = 10_000;
 
 const sortLabels: Record<Sort, string> = { ranked: 'For you', az: 'Name', area: 'Muscle group', equipment: 'Equipment' };
 
 export default function ExerciseLibraryScreen() {
 	const { colors, showWorkoutRecommendations } = useAppearance();
-  const { getToken } = useAuth();
   const { split, workoutId } = useLocalSearchParams<{ split?: string; workoutId?: string }>();
   const [visit, setVisit] = useState<WorkoutVisitSummary | null>(() => workoutId ? getWorkoutVisitSummary(workoutId) : null);
   const [workoutExercises, setWorkoutExercises] = useState<WorkoutVisitExercise[]>(() => workoutId ? getWorkoutVisitExercises(workoutId) : []);
@@ -29,10 +29,14 @@ export default function ExerciseLibraryScreen() {
   const [sort, setSort] = useState<Sort>('ranked');
   const [showSorts, setShowSorts] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [screenFocused, setScreenFocused] = useState(false);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [replacements, setReplacements] = useState<{ workoutId?: string; ids: string[] }>({ workoutId, ids: [] });
   const [fallbackWorkoutId] = useState(() => `workout-${Date.now()}`);
   const [recommendationContext, setRecommendationContext] = useState<RecommendationContext>({});
-  const shownRecommendations = useRef<{ workoutId?: string; ids: Set<string> }>({ workoutId, ids: new Set() });
+  const recommendationExposure = useRef<{
+    workoutId?: string; impressions: Map<string, number>; timers: Map<string, { rank: number; timeout: ReturnType<typeof setTimeout> }>;
+  }>({ workoutId, impressions: new Map(), timers: new Map() });
   const replacedExerciseIds = useMemo(() => replacements.workoutId === workoutId ? replacements.ids : [], [replacements, workoutId]);
   const workoutExerciseIds = useMemo(() => workoutExercises.map((exercise) => exercise.id), [workoutExercises]);
   const splitExercises = useMemo(() => exercises.filter((exercise) => matchesSplit(exercise, split)), [split]);
@@ -95,12 +99,19 @@ export default function ExerciseLibraryScreen() {
   }, [workoutId]);
 
   useFocusEffect(useCallback(() => {
+    setScreenFocused(true);
     refreshVisit();
+    return () => setScreenFocused(false);
   }, [refreshVisit]));
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => setAppActive(state === 'active'));
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     let active = true;
-    void getProfile(getToken).then(({ recommendationPreferences: preferences }) => {
+    void getProfile().then(({ recommendationPreferences: preferences }) => {
       if (!active || !preferences) return;
       setRecommendationContext({
         goals: preferences.goals ?? undefined,
@@ -108,20 +119,45 @@ export default function ExerciseLibraryScreen() {
         favoriteExerciseIds: preferences.favoriteExerciseIds ?? undefined,
         trainingDays: preferences.trainingDays ?? undefined,
         sessionMinutes: preferences.sessionMinutes ?? undefined,
-        availableEquipment: preferences.availableEquipment ?? undefined,
-        gymId: preferences.gymId ?? undefined,
       });
     }).catch(() => { /* Recommendations keep their local defaults offline. */ });
     return () => { active = false; };
-  }, [getToken]);
+  }, []);
 
   useEffect(() => {
-    if (shownRecommendations.current.workoutId !== workoutId) shownRecommendations.current = { workoutId, ids: new Set() };
-    recommendations.forEach(({ exercise }) => shownRecommendations.current.ids.add(exercise.id));
-  }, [recommendations, workoutId]);
+    const exposure = recommendationExposure.current;
+    if (exposure.workoutId !== workoutId) {
+      exposure.timers.forEach(({ timeout }) => clearTimeout(timeout));
+      recommendationExposure.current = { workoutId, impressions: new Map(), timers: new Map() };
+    }
+    const current = recommendationExposure.current;
+    if (!screenFocused || !appActive || catalogOpen) {
+      current.timers.forEach(({ timeout }) => clearTimeout(timeout));
+      current.timers.clear();
+      return;
+    }
+    const visibleIds = new Set(recommendations.map(({ exercise }) => exercise.id));
+    current.timers.forEach(({ timeout }, exerciseId) => {
+      if (!visibleIds.has(exerciseId)) { clearTimeout(timeout); current.timers.delete(exerciseId); }
+    });
+    recommendations.forEach(({ exercise }, index) => {
+      const rank = index + 1;
+      const pending = current.timers.get(exercise.id);
+      if (current.impressions.has(exercise.id) || pending?.rank === rank) return;
+      if (pending) clearTimeout(pending.timeout);
+      const timeout = setTimeout(() => {
+        current.timers.delete(exercise.id);
+        current.impressions.set(exercise.id, rank);
+        if (workoutId) recordRecommendationFeedback(workoutId, exercise.id, 'impression', rank);
+      }, meaningfulExposureMs);
+      current.timers.set(exercise.id, { rank, timeout });
+    });
+  }, [appActive, catalogOpen, recommendations, screenFocused, workoutId]);
 
-  const openExercise = (exercise: Exercise, source: 'accepted' | 'manual', recommendation?: ExerciseRecommendation) => {
-    if (workoutId) recordRecommendationFeedback(workoutId, exercise.id, source);
+  useEffect(() => () => recommendationExposure.current.timers.forEach(({ timeout }) => clearTimeout(timeout)), []);
+
+  const openExercise = (exercise: Exercise, source: 'recommended' | 'manual', recommendation?: ExerciseRecommendation) => {
+    if (workoutId && source === 'manual') recordRecommendationFeedback(workoutId, exercise.id, 'manual');
     setCatalogOpen(false);
     router.push({ pathname: '/workout', params: {
       ...exercise,
@@ -140,9 +176,12 @@ export default function ExerciseLibraryScreen() {
 
   const finishVisit = () => {
     if (!workoutId || !endWorkout(workoutId)) return;
-    workoutExerciseIds.forEach((exerciseId) => recordRecommendationFeedback(workoutId, exerciseId, 'completed'));
-    [...shownRecommendations.current.ids].filter((exerciseId) => !workoutExerciseIds.includes(exerciseId))
-      .forEach((exerciseId) => recordRecommendationFeedback(workoutId, exerciseId, 'skipped'));
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const completed = new Set(workoutExerciseIds);
+    const replaced = new Set(replacedExerciseIds);
+    recommendationExposure.current.impressions.forEach((rank, exerciseId) => {
+      if (!completed.has(exerciseId) && !replaced.has(exerciseId)) recordRecommendationFeedback(workoutId, exerciseId, 'skipped', rank);
+    });
     void syncWorkoutData().catch(() => { /* Local completion is never blocked; the next completion retries the full snapshot. */ });
     router.replace({ pathname: '/summary', params: { workoutId } });
   };
@@ -152,7 +191,7 @@ export default function ExerciseLibraryScreen() {
       <Text style={[styles.heroTitle, { color: colors.text }]}>Active workout</Text>
       {recommendations.length > 0 && <Text style={[styles.recommendationHeading, { color: colors.text }]}>Your next exercise</Text>}
       <View style={styles.recommendationList}>
-        {recommendations.map((recommendation, index) => <RecommendationCard key={recommendation.exercise.id} recommendation={recommendation} featured={index === 0} onOpen={() => openExercise(recommendation.exercise, 'accepted', recommendation)} onReplace={() => replaceRecommendation(recommendation.exercise.id)} />)}
+        {recommendations.map((recommendation, index) => <RecommendationCard key={recommendation.exercise.id} recommendation={recommendation} featured={index === 0} onOpen={() => openExercise(recommendation.exercise, 'recommended', recommendation)} onReplace={() => replaceRecommendation(recommendation.exercise.id)} />)}
       </View>
       <Pressable onPress={() => setCatalogOpen(true)} style={({ pressed }) => [styles.browseButton, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Browse all"><View><Text style={[styles.browseTitle, { color: colors.text }]}>Browse all</Text><Text style={[styles.browseCopy, { color: colors.mutedText }]}>Search, filter, or choose something else</Text></View><Search width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable>
       <View style={styles.completedSection}>

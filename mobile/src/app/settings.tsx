@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Activity, ChevronRight, Sliders, User } from 'react-native-feather';
+import { Activity, ChevronRight, Info, Sliders, User } from 'react-native-feather';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,6 +8,7 @@ const groups = [
   { title: 'Profile', description: 'Manage your account.', path: '/settings/profile', Icon: User },
   { title: 'Appearance', description: 'Set your background and primary color.', path: '/settings/appearance', Icon: Sliders },
   { title: 'Workouts', description: 'Choose how workout suggestions appear.', path: '/settings/workouts', Icon: Activity },
+  { title: 'Legal & Support', description: 'Privacy, terms, support, and data deletion.', path: '/settings/legal', Icon: Info },
 ] as const;
 
 export default function SettingsScreen() {

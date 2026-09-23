@@ -38,6 +38,8 @@ equal(getRecommendedWorkoutSplit([
   { split: 'push', completedAt: now, sets: 8 },
   { split: 'pull', completedAt: new Date(now.getTime() - 86_400_000), sets: 8 },
 ], now), 'legs');
+const crossSplitFatigue = [{ workoutId: 'legs', split: 'legs' as const, muscle: 'shoulders', exhaustion: 4, completedAt: now }];
+equal(getRecommendedWorkoutSplit([], now, crossSplitFatigue), 'pull');
 
 const freshLegs = getExerciseRecommendations([squat, deadlift, stretch], [], [], 'today', 'legs', 3, now);
 deepEqual(freshLegs.map((item) => item.exercise.id).sort(), ['deadlift', 'squat']);
@@ -56,32 +58,64 @@ equal(getExerciseRecommendations([fly, shoulderPress, bench], yesterdayBench, []
 
 const excludedCannotCover = getExerciseRecommendations([bench, shoulderPress, pushdown], [set('bench', 'today')], [], 'today', 'push', 2, now, { excludedExerciseIds: ['shoulder'] });
 equal(excludedCannotCover[0]?.exercise.id, 'pushdown');
-deepEqual(getExerciseRecommendations([pushdown, bodyPushdown], [], [], 'today', 'push', 2, now, { availableEquipment: [] }).map((item) => item.exercise.id).sort(), ['body-pushdown', 'pushdown']);
+deepEqual(getExerciseRecommendations([pushdown, bodyPushdown], [], [], 'today', 'push', 2, now).map((item) => item.exercise.id).sort(), ['body-pushdown', 'pushdown']);
 
 const progressingBench = Array.from({ length: 6 }, (_, index) => set('bench', `old-${index}`, 10 - index, 100 + index * 10));
 const continuity = getExerciseRecommendations([bench, fly], progressingBench, [], 'today', 'push', 1, now);
 equal(continuity[0]?.exercise.id, 'bench');
+equal(
+  getExerciseRecommendations([bench], [...progressingBench].reverse(), [], 'today', 'push', 1, now)[0]!.score,
+  getExerciseRecommendations([bench], progressingBench, [], 'today', 'push', 1, now)[0]!.score,
+);
 
 const baselineFly = getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now)[0]!.score;
 const completedFly = getExerciseRecommendations([fly], [set('fly', 'one', 8), set('fly', 'two', 9), set('fly', 'three', 10)], [], 'today', 'push', 1, now)[0]!.score;
 assert(completedFly > baselineFly, 'repeatedly completed exercises should gain continuity');
 const oneVisitFly = getExerciseRecommendations([fly], Array.from({ length: 6 }, () => set('fly', 'one', 8)), [], 'today', 'push', 1, now)[0]!.score;
 assert(oneVisitFly <= completedFly, 'many sets in one visit should not look like more completed workouts');
-const acceptedFly = getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'accepted', 2), feedback('fly', 'accepted', 4)])[0]!.score;
-assert(acceptedFly > baselineFly, 'repeatedly accepted recommendations should gain continuity');
+equal(oneVisitFly, getExerciseRecommendations([fly], [set('fly', 'one', 8)], [], 'today', 'push', 1, now)[0]!.score);
+assert(
+  getExerciseRecommendations([fly], [set('fly', 'recent', 8)], [], 'today', 'push', 1, now)[0]!.score
+    > getExerciseRecommendations([fly], [set('fly', 'old', 80)], [], 'today', 'push', 1, now)[0]!.score,
+  'recent sessions should provide more preference evidence than old sessions',
+);
+const legacyFeedbackFly = getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'accepted', 2), feedback('fly', 'completed', 4)])[0]!.score;
+equal(legacyFeedbackFly, baselineFly);
 
 const cableFly = { ...fly, id: 'cable-fly', name: 'Cable Fly' };
-const rejectionHistory = [feedback('fly', 'removed', 2), feedback('fly', 'removed', 4), feedback('cable-fly', 'skipped', 2)];
+const dumbbellFly = { ...fly, id: 'dumbbell-fly', name: 'Dumbbell Fly', equipment: 'dumbbell' };
+const cablePushdown = { ...pushdown, id: 'cable-pushdown', equipment: 'cable' };
+const familiarEquipment = getExerciseRecommendations(
+  [{ ...cableFly, equipment: 'cable' }, dumbbellFly, cablePushdown],
+  [set('cable-pushdown', 'equipment-history', 30)], [], 'today', 'push', 1, now,
+  { excludedExerciseIds: ['cable-pushdown'] },
+);
+equal(familiarEquipment[0]!.exercise.id, 'cable-fly');
+const rejectionHistory = [feedback('fly', 'removed', 2), feedback('fly', 'removed', 4), feedback('cable-fly', 'impression', 2), feedback('cable-fly', 'skipped', 2)];
 const rejected = getExerciseRecommendations([fly, cableFly], [], [], 'today', 'push', 2, now, {}, rejectionHistory);
 assert(rejected.find((item) => item.exercise.id === 'fly')!.score < rejected.find((item) => item.exercise.id === 'cable-fly')!.score, 'removals should penalize more than skips');
 assert(rejected.every((item) => item.score < getExerciseRecommendations([fly, cableFly], [], [], 'today', 'push', 2, now).find((baseline) => baseline.exercise.id === item.exercise.id)!.score), 'removed and skipped exercises should lose rank');
+equal(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'skipped', 2)])[0]!.score, baselineFly);
 const featuredFly = { ...fly, id: 'featured-fly', isFeatured: 1 };
 equal(getExerciseRecommendations([featuredFly, fly], [], [], 'today', 'push', 1, now, {}, [feedback('featured-fly', 'removed', 2)])[0]!.exercise.id, 'fly');
 equal(getExerciseRecommendations([featuredFly, fly], [], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] })[0]!.exercise.id, 'fly');
 equal(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] })[0]!.reason, 'One of your favorites');
+equal(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] })[0]!.score - baselineFly, 10);
+assert(getExerciseRecommendations([fly], [set('fly', 'favorite-1', 8), set('fly', 'favorite-2', 9), set('fly', 'favorite-3', 10)], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] })[0]!.score > baselineFly + 10, 'regular completion should strengthen a favorite beyond its prior');
+const rejectedFavorite = [feedback('fly', 'replaced', 2), feedback('fly', 'removed', 4), feedback('fly', 'replaced', 6)];
+equal(
+  getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] }, rejectedFavorite)[0]!.score,
+  getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, rejectedFavorite)[0]!.score,
+);
+equal(getExerciseRecommendations([fly, shoulderPress], [], [{ workoutId: 'recent', split: 'push', muscle: 'chest', exhaustion: 5, completedAt: now }], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] })[0]!.exercise.id, 'shoulder');
 
 const manualFly = getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'manual', 2)])[0]!.score;
 assert(manualFly > baselineFly, 'manually added exercises should gain rank');
+const threeManual = Array.from({ length: 3 }, (_, index) => feedback('fly', 'manual', index + 1, `manual-${index}`));
+const sixManual = Array.from({ length: 6 }, (_, index) => feedback('fly', 'manual', index + 1, `manual-${index}`));
+equal(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, threeManual)[0]!.score, getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, sixManual)[0]!.score);
+assert(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'manual', 2)])[0]!.score > getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'manual', 62)])[0]!.score, 'recent feedback should outweigh old feedback');
+assert(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'removed', 2)])[0]!.score < getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'removed', 62)])[0]!.score, 'recent removals should outweigh old removals');
 const trainedTogether = getExerciseRecommendations(
   [bench, fly, cableFly],
   [set('bench', 'today'), set('bench', 'paired', 8), set('fly', 'paired', 8), set('cable-fly', 'solo', 8)],
@@ -97,6 +131,16 @@ deepEqual(noContext, getExerciseRecommendations([bench, shoulderPress], [], oldR
 deepEqual(noContext, getExerciseRecommendations([bench, shoulderPress], [set('shoulder', 'future', -1)], [], 'today', 'push', 2, now));
 const crossSplitRating = [{ workoutId: 'legs-yesterday', split: 'legs' as const, muscle: 'shoulders', exhaustion: 5, completedAt: new Date(now.getTime() - 86_400_000) }];
 assert(getExerciseRecommendations([shoulderPress], [], crossSplitRating, 'today', 'push', 1, now)[0]!.score < getExerciseRecommendations([shoulderPress], [], [], 'today', 'push', 1, now)[0]!.score, 'overlapping muscle fatigue should cross split labels');
+const severeChest = [{ workoutId: 'pull-today', split: 'pull' as const, muscle: 'chest', exhaustion: 4, completedAt: now }];
+equal(getExerciseRecommendations([fly], [], severeChest, 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] }).length, 0);
+const severeLowerBack = [{ workoutId: 'pull-today', split: 'pull' as const, muscle: 'lower back', exhaustion: 4, completedAt: now }];
+equal(getExerciseRecommendations([deadlift], [], severeLowerBack, 'today', 'legs', 1, now).length, 0);
+const moderateLowerBack = [{ ...severeLowerBack[0]!, exhaustion: 3 }];
+equal(getExerciseRecommendations([deadlift], [], moderateLowerBack, 'today', 'legs', 1, now)[0]!.sets, 2);
+const moderateShoulders = [{ workoutId: 'legs-yesterday', split: 'legs' as const, muscle: 'shoulders', exhaustion: 4, completedAt: new Date(now.getTime() - 86_400_000) }];
+const recoveredShoulders = [{ ...moderateShoulders[0]!, completedAt: new Date(now.getTime() - 7 * 86_400_000) }];
+equal(getExerciseRecommendations([shoulderPress], [], moderateShoulders, 'today', 'push', 1, now)[0]!.sets, 2);
+deepEqual(getExerciseRecommendations([shoulderPress], [], recoveredShoulders, 'today', 'push', 1, now), getExerciseRecommendations([shoulderPress], [], [], 'today', 'push', 1, now));
 
 const coreWithoutHistory = getExerciseRecommendations([plank], [], [], 'today', 'push', 1, now)[0]!;
 const coreWithPullHistory = getExerciseRecommendations([plank], [set('plank', 'pull-last-week', 2, 0, 30)], [], 'today', 'push', 1, now)[0]!;
@@ -131,11 +175,22 @@ deepEqual(getProgressiveOverloadRecommendation([
 ], defaultPrescription), {
   weight: 100, reps: 8, sets: 3, action: 'retain', reason: 'Keep the current prescription while performance is stable',
 });
+deepEqual(getProgressiveOverloadRecommendation(session('steady', 1, 100, [8, 8, 8]), defaultPrescription, { exhaustion: 2.5 }), {
+  weight: 90, reps: 6, sets: 2, action: 'reduce', reason: 'Reduce load and volume while the muscles involved recover',
+});
 deepEqual(getProgressiveOverloadRecommendation([
   ...session('decline-1', 3, 100, [10, 10, 10]), ...session('decline-2', 2, 100, [9, 9, 9]), ...session('decline-3', 1, 100, [8, 8, 8]),
 ], defaultPrescription, { exhaustion: 4 }), {
   weight: 85, reps: 6, sets: 2, action: 'deload', reason: 'Take a lighter session after sustained decline and high exhaustion',
 });
+deepEqual(
+  getProgressiveOverloadRecommendation([
+    ...session('decline-3', 1, 100, [8, 8, 8]), ...session('decline-1', 3, 100, [10, 10, 10]), ...session('decline-2', 2, 100, [9, 9, 9]),
+  ], defaultPrescription, { exhaustion: 4 }),
+  getProgressiveOverloadRecommendation([
+    ...session('decline-1', 3, 100, [10, 10, 10]), ...session('decline-2', 2, 100, [9, 9, 9]), ...session('decline-3', 1, 100, [8, 8, 8]),
+  ], defaultPrescription, { exhaustion: 4 }),
+);
 deepEqual(getProgressiveOverloadRecommendation(session('top', 1, 100, [6, 6, 6]), { sets: 3, reps: { min: 4, max: 6 } }), {
   weight: 105, reps: 4, sets: 3, action: 'increase', reason: 'Increase the load after reaching the top of the rep range',
 });

@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "bun test/recommendations-regression.mjs && bun test/sync-regression.mjs",
+    "test": "bun test/auth-regression.mjs && bun test/recommendations-regression.mjs && bun test/sync-regression.mjs",
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run test"
   },
@@ -18,5 +18,9 @@
     "@cloudflare/workers-types": "^5.20260831.1",
     "typescript": "~5.9.2",
     "wrangler": "^4.136.3"
+  },
+  "dependencies": {
+    "@better-auth/expo": "^1.7.5",
+    "better-auth": "^1.7.5"
   }
 }

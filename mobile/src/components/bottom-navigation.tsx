@@ -2,6 +2,7 @@ import type { BottomTabBarProps } from 'expo-router/build/react-navigation/botto
 import { Clock, Home, Plus, Settings, Users } from 'react-native-feather';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useAppearance } from '@/components/appearance-provider';
 
@@ -32,6 +33,15 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={[styles.shell, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 10) }]}>
+      <Svg width="100%" height={32} style={styles.gradient} pointerEvents="none">
+        <Defs>
+          <LinearGradient id="navbar-padding-gradient" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={colors.background} stopOpacity="0" />
+            <Stop offset="1" stopColor={colors.background} stopOpacity="1" />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#navbar-padding-gradient)" />
+      </Svg>
       <View style={styles.tabRow} accessibilityRole="tablist">
         {tabs.slice(0, 2).map((tab) => <TabButton key={tab.route} tab={tab} active={activeRoute === tab.route} onPress={() => selectTab(tab.route)} />)}
         <Pressable
@@ -63,7 +73,8 @@ function TabButton({ tab, active, onPress }: { tab: Tab; active: boolean; onPres
 }
 
 const styles = StyleSheet.create({
-  shell: { paddingHorizontal: 14 },
+  shell: { paddingHorizontal: 14, position: 'relative' },
+  gradient: { position: 'absolute', top: -32, left: 0 },
   tabRow: { height: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tabButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   startButton: { width: 58, height: 58, marginHorizontal: 5, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 0 },

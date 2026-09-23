@@ -1,11 +1,7 @@
-export interface Env {
+import { createAuth, type AuthEnv } from './auth';
+
+export interface Env extends AuthEnv {
   DB: D1Database;
-  /** Clerk Dashboard → API keys → JWT public key (PEM). Keep this a Worker secret. */
-  CLERK_JWT_KEY: string;
-  /** Optional exact Clerk issuer, e.g. https://example.clerk.accounts.dev */
-  CLERK_ISSUER?: string;
-  /** Optional comma-separated allowed `azp` origins. */
-  CLERK_AUTHORIZED_PARTIES?: string;
   /** Address shown on the public support and privacy pages. */
   SUPPORT_EMAIL?: string;
 }
@@ -13,25 +9,24 @@ export interface Env {
 type SyncSet = { exerciseId: string; workoutId: string; setNumber: number; weight: number; reps: number; completedAt: number; muscles: string[]; updatedAt?: number };
 type SyncWorkout = { id: string; split: 'push' | 'pull' | 'legs'; createdAt: number; endedAt: number | null; updatedAt?: number };
 type SyncRating = { workoutId: string; muscle: string; exhaustion: number; createdAt: number; updatedAt?: number };
-type FeedbackAction = 'accepted' | 'completed' | 'replaced' | 'removed' | 'skipped' | 'manual';
-type SyncFeedback = { workoutId: string; exerciseId: string; action: FeedbackAction; relatedExerciseId?: string | null; createdAt: number; updatedAt?: number };
+type FeedbackAction = 'accepted' | 'completed' | 'impression' | 'replaced' | 'removed' | 'skipped' | 'manual';
+type SyncFeedback = { workoutId: string; exerciseId: string; action: FeedbackAction; relatedExerciseId?: string | null; rank?: number | null; createdAt: number; updatedAt?: number };
 type Tombstone = { entity: 'workout' | 'set' | 'rating'; key: string; deletedAt: number };
 type SyncPayload = { workouts: SyncWorkout[]; sets: SyncSet[]; muscleRatings: SyncRating[]; recommendationFeedback?: SyncFeedback[]; tombstones?: Tombstone[] };
 type SyncEntity = 'workout' | 'set' | 'rating' | 'feedback';
 type SyncMutation = { entity: SyncEntity; key: string; operation: 'upsert' | 'delete'; baseRevision: number; record?: Record<string, unknown> };
 type SyncChunk = { batchId: string; changes: SyncMutation[] };
-type ClerkClaims = { sub: string; exp: number; nbf?: number; iss?: string; azp?: string; username?: string; first_name?: string; last_name?: string; image_url?: string };
 type AuthenticatedUser = { id: string; displayName: string; imageUrl: string | null };
 type PreferenceGoal = 'Build muscle' | 'Get stronger' | 'Lose fat' | 'Feel healthier';
 type Experience = 'new' | 'some' | 'experienced';
 type TrainingLocation = 'gym' | 'home' | 'both';
 type RecommendationPreferences = { goals: PreferenceGoal[] | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string[] | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string[] | null; sessionMinutes: number | null; optInSimilarUsers: boolean };
-type UserProfile = { clerkUserId: string; displayName: string; imageUrl: string | null; recommendationPreferences: RecommendationPreferences };
+type UserProfile = { userId: string; displayName: string; imageUrl: string | null; recommendationPreferences: RecommendationPreferences };
 type ProfileRow = Omit<UserProfile, 'recommendationPreferences'> & { goals: string | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string | null; sessionMinutes: number | null; optInSimilarUsers: number };
 type Onboarding = { displayName?: string; goals: string[]; weightLb: number; heightInches: number; experience: 'new' | 'some' | 'experienced'; favoriteExerciseIds?: string[]; trainingLocation: 'gym' | 'home' | 'both'; trainingDays: number };
 
+const json = (data: unknown, status = 200) => Response.json(data, { status });
 const encoder = new TextEncoder();
-const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type' } });
 const now = () => Math.floor(Date.now() / 1000);
 const maxTimestamp = 4_102_444_800; // 2100-01-01; protects D1 from nonsense clocks.
 const splitKey = (key: string) => key.split('\u001f');
@@ -45,65 +40,22 @@ const page = (title: string, body: string) => new Response(`<!doctype html><html
 
 function publicPage(pathname: string, env: Env) {
   const email = supportEmail(env);
-  if (pathname === '/privacy') return page('Privacy policy', `<h1>Privacy policy</h1><p class="note">Effective September 22, 2026</p><h2>Data Lift handles</h2><p>Lift stores your Clerk account identifier and profile name; optional height, weight, goals, experience, training location, schedule, equipment, gym identifier, and favorite exercises; workout history including exercises, weights, repetitions, timestamps, muscle ratings, and recommendation feedback; and friend connections.</p><p>Weight and height are used only for your recommendations and, if you explicitly opt in, to match you into an anonymous comparison cohort. Cohorts require at least five matching people. Other people do not receive your height, weight, workout history, or cohort membership. Friends can see your display name, profile image, and latest personal record, but not your full workout history.</p><h2>Use and sharing</h2><p>We use this data to provide sync, progress, recommendations, friend features, security, and support. Clerk processes account identity and Cloudflare hosts synchronized app data. We do not sell personal data.</p><h2>Export and retention</h2><p>You can export your Lift data from Profile at any time. Active-account data is retained while your account exists. In-app deletion removes the live Clerk identity and synchronized app data immediately. A web request is processed after identity verification and within 30 days. Limited security records and encrypted backups may remain for up to 30 additional days unless law requires longer retention.</p><h2>Your choices</h2><p>Cohort participation is off by default and can be changed in Profile. You can delete your account in the app or <a href="/delete-account">request deletion on the web</a>. Contact <a href="mailto:${email}">${email}</a> for access, correction, privacy, or support requests.</p><h2>Fitness disclaimer</h2><p>Lift provides general fitness tracking and suggestions, not medical advice, diagnosis, or treatment. Consult a qualified health professional before beginning or changing an exercise program, especially if you have an injury, condition, or symptoms. Stop exercising and seek appropriate care if you feel pain, faintness, or other concerning symptoms.</p>`);
+  if (pathname === '/privacy') return page('Privacy policy', `<h1>Privacy policy</h1><p class="note">Effective September 23, 2026</p><h2>Data Lift handles</h2><p>Lift stores account and profile information, password hashes, verification and MFA records, workout history, recommendation preferences and feedback, and friend connections.</p><h2>Use and sharing</h2><p>We use this data to provide authentication, sync, progress, recommendations, friend features, security, and support. Cloudflare hosts account and synchronized app data, and Resend delivers transactional account email. We do not sell personal data.</p><h2>Export and retention</h2><p>You can export or delete your Lift data from Profile. In-app deletion removes the identity and synchronized app data. Limited security records and encrypted backups may remain for up to 30 additional days unless law requires longer retention.</p><h2>Your choices</h2><p>Similar-user comparisons are off by default. Contact <a href="mailto:${email}">${email}</a> for access, correction, privacy, or support requests.</p><h2>Fitness disclaimer</h2><p>Lift provides general fitness tracking and suggestions, not medical advice, diagnosis, or treatment.</p>`);
   if (pathname === '/terms') return page('Terms', `<h1>Terms of use</h1><p class="note">Effective September 22, 2026</p><p>Lift is a personal fitness tracking tool. You are responsible for your account, the accuracy of information you enter, and exercising within your abilities. Do not misuse the service, attempt unauthorized access, or use it to harm others.</p><h2>No medical advice</h2><p>Lift's tracking, comparisons, and recommendations are informational fitness features only. They are not medical advice, diagnosis, treatment, or a substitute for a qualified professional. Stop activity and seek care for pain or concerning symptoms.</p><h2>Your content and availability</h2><p>You keep ownership of data you enter and allow Lift to process it to operate the service. Features may change, and the service is provided without a guarantee that it will always be available or error-free. You can export or delete your data from Profile.</p><h2>Contact</h2><p>Questions: <a href="mailto:${email}">${email}</a>.</p>`);
   if (pathname === '/support') return page('Support', `<h1>Lift support</h1><p>For account, privacy, export, or technical help, email <a href="mailto:${email}">${email}</a>.</p><p>Include the email address on your Lift account, but never send your password or verification codes.</p><p>You can also <a href="/delete-account">request account deletion</a>.</p>`);
-  if (pathname === '/delete-account') return page('Delete account', `<h1>Delete your Lift account</h1><p>The fastest option is <strong>Lift → Settings → Profile → Delete account</strong>. It deletes your Clerk identity, synchronized profile, height, weight, workouts, recommendation feedback, friend connections, and cohort preferences, and clears the app's local account cache.</p><p>If you cannot access the app, submit this request. We will verify ownership using the account email and complete deletion within 30 days.</p><form id="request"><label for="email">Lift account email</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="254"><label><input name="confirm" type="checkbox" required style="width:auto"> I request permanent deletion of my Lift account and data.</label><button type="submit">Request deletion</button><p id="result" role="status"></p></form><script>document.querySelector('#request').addEventListener('submit',async(e)=>{e.preventDefault();const f=e.currentTarget,r=document.querySelector('#result');r.textContent='Submitting…';r.className='';try{const x=await fetch('/v1/deletion-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.email.value,confirm:f.confirm.checked})}),j=await x.json();if(!x.ok)throw Error(j.error||'Request failed.');r.textContent='Request received. Reference: '+j.requestId+'. Check your email for follow-up.';f.reset()}catch(x){r.textContent=x.message;r.className='error'}})</script><p>Need help? <a href="mailto:${email}">${email}</a>.</p>`);
+  if (pathname === '/delete-account') return page('Delete account', `<h1>Delete your Lift account</h1><p>The fastest option is <strong>Lift → Settings → Profile → Delete account</strong>. It deletes your identity, profile, workouts, recommendation data, friend connections, and local account cache.</p><p>If you cannot access the app, submit this request. We will verify ownership using the account email and complete deletion within 30 days.</p><form id="request"><label for="email">Lift account email</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="254"><label><input name="confirm" type="checkbox" required style="width:auto"> I request permanent deletion of my Lift account and data.</label><button type="submit">Request deletion</button><p id="result" role="status"></p></form><script>document.querySelector('#request').addEventListener('submit',async(e)=>{e.preventDefault();const f=e.currentTarget,r=document.querySelector('#result');r.textContent='Submitting…';try{const x=await fetch('/v1/deletion-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.email.value,confirm:f.confirm.checked})}),j=await x.json();if(!x.ok)throw Error(j.error||'Request failed.');r.textContent='Request received. Reference: '+j.requestId;f.reset()}catch(x){r.textContent=x.message;r.className='error'}})</script><p>Need help? <a href="mailto:${email}">${email}</a>.</p>`);
   return null;
-}
-
-function bearer(request: Request) {
-  const value = request.headers.get('Authorization');
-  return value?.startsWith('Bearer ') ? value.slice(7).trim() || null : null;
-}
-
-function base64UrlBytes(value: string) {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
-function decodeJson<T>(value: string): T | null {
-  try { return JSON.parse(new TextDecoder().decode(base64UrlBytes(value))) as T; }
-  catch { return null; }
-}
-
-function pemBytes(pem: string) {
-  const base64 = pem.replace(/-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----|\s/g, '');
-  return base64UrlBytes(base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''));
-}
-
-async function authenticate(request: Request, env: Env): Promise<AuthenticatedUser | null> {
-  const token = bearer(request);
-  if (!token || !env.CLERK_JWT_KEY) return null;
-  const [encodedHeader, encodedClaims, encodedSignature, extra] = token.split('.');
-  if (!encodedHeader || !encodedClaims || !encodedSignature || extra) return null;
-  const header = decodeJson<{ alg?: string; typ?: string }>(encodedHeader);
-  const claims = decodeJson<ClerkClaims>(encodedClaims);
-  if (header?.alg !== 'RS256' || header.typ !== 'JWT' || !claims || typeof claims.sub !== 'string' || !claims.sub.startsWith('user_') || !Number.isFinite(claims.exp)) return null;
-  const timestamp = now();
-  if (claims.exp <= timestamp || (typeof claims.nbf === 'number' && claims.nbf > timestamp + 5)) return null;
-  if (env.CLERK_ISSUER && claims.iss !== env.CLERK_ISSUER) return null;
-  const allowedParties = env.CLERK_AUTHORIZED_PARTIES?.split(',').map((part) => part.trim()).filter(Boolean);
-  if (allowedParties?.length && (!claims.azp || !allowedParties.includes(claims.azp))) return null;
-  try {
-    const publicKey = await crypto.subtle.importKey('spki', pemBytes(env.CLERK_JWT_KEY), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-    const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', publicKey, base64UrlBytes(encodedSignature), encoder.encode(`${encodedHeader}.${encodedClaims}`));
-    if (!valid) return null;
-  } catch { return null; }
-  const displayName = [claims.first_name, claims.last_name].filter((part): part is string => typeof part === 'string' && part.trim().length > 0).join(' ') || (typeof claims.username === 'string' && claims.username.trim() ? claims.username.trim() : 'Lifter');
-  return { id: claims.sub, displayName, imageUrl: typeof claims.image_url === 'string' ? claims.image_url : null };
 }
 
 async function ensureUser(env: Env, user: AuthenticatedUser) {
   const stamp = now();
-  // `id` is intentionally the Clerk subject, keeping foreign keys, friend
+  // `id` is intentionally the Better Auth user ID, keeping foreign keys, friend
   // relationships, and authorization anchored to one immutable identity.
   await env.DB.prepare(`
     INSERT INTO users (id, created_at) VALUES (?, ?) ON CONFLICT(id) DO NOTHING
   `).bind(user.id, stamp).run();
   await env.DB.prepare(`
-    INSERT INTO user_info (user_id, clerk_user_id, display_name, image_url, created_at, updated_at)
+    INSERT INTO user_info (user_id, auth_user_id, display_name, image_url, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO NOTHING
   `).bind(user.id, user.id, user.displayName, user.imageUrl, stamp, stamp).run();
 }
@@ -139,12 +91,14 @@ function validPayload(value: unknown): value is SyncPayload {
     const okay = !!rating && typeof rating === 'object' && workoutIds.has(rating.workoutId) && isString(rating.workoutId) && isString(rating.muscle, 80) && Number.isInteger(rating.exhaustion) && rating.exhaustion >= 1 && rating.exhaustion <= 5 && isTimestamp(rating.createdAt) && isVersion(rating.updatedAt, rating.createdAt) && !seenRatings.has(key);
     seenRatings.add(key); return okay;
   })) return false;
-  const feedbackActions = new Set<FeedbackAction>(['accepted', 'completed', 'replaced', 'removed', 'skipped', 'manual']);
+  const feedbackActions = new Set<FeedbackAction>(['accepted', 'completed', 'impression', 'replaced', 'removed', 'skipped', 'manual']);
   const seenFeedback = new Set<string>();
   if (!(payload.recommendationFeedback ?? []).every((item) => {
     const key = item && typeof item === 'object' ? `${item.workoutId}\u001f${item.exerciseId}\u001f${item.action}` : '';
     const okay = !!item && typeof item === 'object' && workoutIds.has(item.workoutId) && isString(item.exerciseId) && feedbackActions.has(item.action)
       && (item.relatedExerciseId == null || isString(item.relatedExerciseId)) && isTimestamp(item.createdAt)
+      && (item.rank == null || (Number.isInteger(item.rank) && item.rank >= 1 && item.rank <= 100))
+      && (item.action !== 'impression' || item.rank != null)
       && isVersion(item.updatedAt, item.createdAt) && !seenFeedback.has(key);
     seenFeedback.add(key); return okay;
   })) return false;
@@ -317,12 +271,12 @@ function mutationStatements(env: Env, userId: string, batchId: string, hash: str
   }
   if (change.entity === 'feedback') {
     const feedback = record as SyncFeedback;
-    statements.push(env.DB.prepare(`INSERT INTO recommendation_feedback (user_id, workout_local_id, exercise_id, action, related_exercise_id, created_at, updated_at, sync_revision)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ${batchRevision} WHERE ${batchMatches} AND EXISTS (SELECT 1 FROM workouts WHERE user_id = ? AND local_id = ?)
+    statements.push(env.DB.prepare(`INSERT INTO recommendation_feedback (user_id, workout_local_id, exercise_id, action, related_exercise_id, rank, created_at, updated_at, sync_revision)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ${batchRevision} WHERE ${batchMatches} AND EXISTS (SELECT 1 FROM workouts WHERE user_id = ? AND local_id = ?)
         AND (COALESCE((SELECT sync_revision FROM recommendation_feedback WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND action = ?), 0) = ?
           OR COALESCE((SELECT sync_revision FROM recommendation_feedback WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND action = ?), 0) = ${batchRevision})
-      ON CONFLICT(user_id, workout_local_id, exercise_id, action) DO UPDATE SET related_exercise_id = excluded.related_exercise_id, created_at = excluded.created_at, updated_at = excluded.updated_at, sync_revision = excluded.sync_revision
-    `).bind(userId, feedback.workoutId, feedback.exerciseId, feedback.action, feedback.relatedExerciseId ?? null, feedback.createdAt, now(), ...revisionArgs, ...gateArgs, userId, feedback.workoutId, userId, feedback.workoutId, feedback.exerciseId, feedback.action, change.baseRevision, userId, feedback.workoutId, feedback.exerciseId, feedback.action, ...revisionArgs));
+      ON CONFLICT(user_id, workout_local_id, exercise_id, action) DO UPDATE SET related_exercise_id = excluded.related_exercise_id, rank = excluded.rank, created_at = excluded.created_at, updated_at = excluded.updated_at, sync_revision = excluded.sync_revision
+    `).bind(userId, feedback.workoutId, feedback.exerciseId, feedback.action, feedback.relatedExerciseId ?? null, feedback.rank ?? null, feedback.createdAt, now(), ...revisionArgs, ...gateArgs, userId, feedback.workoutId, userId, feedback.workoutId, feedback.exerciseId, feedback.action, change.baseRevision, userId, feedback.workoutId, feedback.exerciseId, feedback.action, ...revisionArgs));
     statements.push(env.DB.prepare(`INSERT OR IGNORE INTO sync_changes (user_id, revision, entity, record_key, deleted, payload)
       SELECT ?, ${batchRevision}, 'feedback', ?, 0, ? WHERE EXISTS (SELECT 1 FROM recommendation_feedback WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND action = ? AND sync_revision = ${batchRevision})`).bind(userId, ...revisionArgs, change.key, payload, userId, feedback.workoutId, feedback.exerciseId, feedback.action, ...revisionArgs));
   }
@@ -385,14 +339,14 @@ async function friends(env: Env, userId: string) {
 }
 
 async function profile(env: Env, userId: string) {
-  const row = await env.DB.prepare(`SELECT clerk_user_id AS clerkUserId, display_name AS displayName, image_url AS imageUrl,
+  const row = await env.DB.prepare(`SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl,
     goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation,
     training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment,
     session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers
     FROM user_info WHERE user_id = ?`).bind(userId).first<ProfileRow>();
   if (!row) throw new Error('Profile not found.');
   const { goals, favoriteExerciseIds, availableEquipment, optInSimilarUsers } = row;
-  return { clerkUserId: row.clerkUserId, displayName: row.displayName, imageUrl: row.imageUrl, recommendationPreferences: {
+  return { userId: row.userId, displayName: row.displayName, imageUrl: row.imageUrl, recommendationPreferences: {
     goals: parseStringArray(goals), weightLb: row.weightLb, heightInches: row.heightInches, experience: row.experience, favoriteExerciseIds: parseStringArray(favoriteExerciseIds),
     trainingLocation: row.trainingLocation, trainingDays: row.trainingDays, gymId: row.gymId,
     availableEquipment: parseStringArray(availableEquipment), sessionMinutes: row.sessionMinutes, optInSimilarUsers: optInSimilarUsers === 1,
@@ -437,7 +391,12 @@ async function updateProfile(request: Request, env: Env, userId: string) {
   }
   if (!assignments.length) return json({ error: 'Provide a profile field to update.' }, 400);
   assignments.push('updated_at = ?'); values.push(now(), userId);
-  await env.DB.prepare(`UPDATE user_info SET ${assignments.join(', ')} WHERE user_id = ?`).bind(...values).run();
+  const appProfile = env.DB.prepare(`UPDATE user_info SET ${assignments.join(', ')} WHERE user_id = ?`).bind(...values);
+  if (displayName === undefined) await appProfile.run();
+  else await env.DB.batch([
+    appProfile,
+    env.DB.prepare('UPDATE user SET name = ?, updatedAt = ? WHERE id = ?').bind(displayName, Date.now(), userId),
+  ]);
   return json({ profile: await profile(env, userId) });
 }
 
@@ -517,33 +476,37 @@ async function deleteAccount(env: Env, userId: string) {
 
 async function exportAccount(env: Env, userId: string) {
   const [profileRow, workouts, sets, muscles, ratings, feedback, connections] = await Promise.all([
-    env.DB.prepare('SELECT clerk_user_id AS clerkUserId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
-    env.DB.prepare('SELECT local_id AS id, split, created_at AS createdAt, ended_at AS endedAt FROM workouts WHERE user_id = ? ORDER BY created_at').bind(userId).all(),
-    env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE user_id = ? ORDER BY completed_at').bind(userId).all(),
-    env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, muscle FROM set_muscles WHERE user_id = ?').bind(userId).all(),
-    env.DB.prepare('SELECT workout_local_id AS workoutId, muscle, exhaustion, created_at AS createdAt FROM workout_muscle_ratings WHERE user_id = ?').bind(userId).all(),
-    env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, action, related_exercise_id AS relatedExerciseId, created_at AS createdAt FROM recommendation_feedback WHERE user_id = ? ORDER BY created_at').bind(userId).all(),
+    env.DB.prepare('SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
+    env.DB.prepare('SELECT local_id AS id, split, created_at AS createdAt, ended_at AS endedAt FROM workouts WHERE user_id = ? ORDER BY created_at, local_id').bind(userId).all(),
+    env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE user_id = ? ORDER BY completed_at, workout_local_id, exercise_id, set_number').bind(userId).all(),
+    env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, muscle FROM set_muscles WHERE user_id = ? ORDER BY workout_local_id, exercise_id, set_number, muscle').bind(userId).all(),
+    env.DB.prepare('SELECT workout_local_id AS workoutId, muscle, exhaustion, created_at AS createdAt FROM workout_muscle_ratings WHERE user_id = ? ORDER BY created_at, workout_local_id, muscle').bind(userId).all(),
+    env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, action, related_exercise_id AS relatedExerciseId, rank, created_at AS createdAt FROM recommendation_feedback WHERE user_id = ? ORDER BY created_at, workout_local_id, exercise_id, action').bind(userId).all(),
     env.DB.prepare('SELECT friend_id AS friendId, created_at AS createdAt FROM friendships WHERE user_id = ? ORDER BY created_at').bind(userId).all(),
   ]);
   return json({ exportedAt: new Date().toISOString(), profile: profileRow, workouts: workouts.results, sets: sets.results, setMuscles: muscles.results, muscleRatings: ratings.results, recommendationFeedback: feedback.results, friendConnections: connections.results });
 }
 
-export default {
-  async fetch(request, env): Promise<Response> {
-    if (request.method === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS' } });
+async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'GET') {
       const response = publicPage(url.pathname, env);
       if (response) return response;
     }
     if (request.method === 'POST' && url.pathname === '/v1/deletion-requests') return requestAccountDeletion(request, env);
+    const auth = createAuth(env, ctx);
+    if (url.pathname.startsWith('/api/auth/')) return auth.handler(request);
     // The old anonymous-session endpoint is intentionally removed. It could
-    // create identities unrelated to Clerk and break cross-device ownership.
-    const user = await authenticate(request, env);
-    if (!user) return json({ error: 'Unauthorized.' }, 401);
+    // create identities unrelated to Better Auth and break cross-device ownership.
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session) return json({ error: 'Unauthorized.' }, 401);
+    const origin = request.headers.get('Origin');
+    const trustedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,mobile://').split(',').map((value) => value.trim());
+    if (!['GET', 'HEAD'].includes(request.method) && origin && !trustedOrigins.includes(origin)) return json({ error: 'Untrusted origin.' }, 403);
+    const user: AuthenticatedUser = { id: session.user.id, displayName: session.user.name?.trim() || 'Lifter', imageUrl: session.user.image ?? null };
     // This route intentionally precedes ensureUser: a retry after a partial
     // client failure must not recreate the row it is trying to remove.
-    if (request.method === 'DELETE' && url.pathname === '/v1/account') return deleteAccount(env, user.id);
+    if (request.method === 'DELETE' && url.pathname === '/v1/account') return json({ error: 'Use /api/auth/delete-user so identity and app data are removed together.' }, 410);
     try { await ensureUser(env, user); }
     catch { return json({ error: 'Could not establish account.' }, 500); }
     if (request.method === 'POST' && url.pathname === '/v1/sync') return pushSyncChunk(request, env, user.id);
@@ -558,6 +521,40 @@ export default {
     if (request.method === 'GET' && url.pathname === '/v1/export') return exportAccount(env, user.id);
     if (request.method === 'POST' && url.pathname === '/v1/onboarding') return saveOnboarding(request, env, user.id);
     return json({ error: 'Not found.' }, 404);
+}
+
+export default {
+  async fetch(request, env, ctx): Promise<Response> {
+    const requestId = crypto.randomUUID();
+    const startedAt = Date.now();
+    let response: Response;
+    let error: { name: string; message: string } | undefined;
+    try {
+      if (request.method === 'OPTIONS') response = new Response(null);
+      else response = await handleRequest(request, env, ctx);
+    } catch (cause) {
+      error = cause instanceof Error ? { name: cause.name, message: cause.message } : { name: 'Error', message: String(cause) };
+      response = json({ error: 'Internal server error.' }, 500);
+    }
+    const durationMs = Date.now() - startedAt;
+    const status = response.status;
+    const level = status >= 500 ? 'error' : 'info';
+    console.log({
+      event: 'http_request', level, requestId, method: request.method,
+      path: new URL(request.url).pathname, status, durationMs,
+      ...(error ? { error } : {}),
+    });
+    const headers = new Headers(response.headers);
+    headers.set('X-Request-ID', requestId);
+    const origin = request.headers.get('Origin');
+    const allowedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,mobile://').split(',').map((value) => value.trim());
+    if (origin && allowedOrigins.includes(origin)) headers.set('Access-Control-Allow-Origin', origin);
+    headers.set('Access-Control-Allow-Credentials', 'true');
+    headers.set('Vary', 'Origin');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Cookie, Authorization, Expo-Origin');
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    headers.set('Access-Control-Expose-Headers', 'X-Request-ID, Set-Auth-Cookie');
+    return new Response(response.body, { status, statusText: response.statusText, headers });
   },
 } satisfies ExportedHandler<Env>;
 

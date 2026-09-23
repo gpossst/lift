@@ -8,10 +8,11 @@
     "unrs-resolver"
   ],
   "dependencies": {
-    "@clerk/expo": "^4.6.1",
+    "@better-auth/expo": "^1.7.5",
     "@expo/ui": "~57.0.19",
     "@lottiefiles/dotlottie-react": "^0.13.5",
     "@shopify/react-native-skia": "2.6.2",
+    "better-auth": "^1.7.5",
     "drizzle-orm": "^0.45.2",
     "expo": "~57.0.24",
     "expo-auth-session": "~57.0.12",
@@ -22,6 +23,7 @@
     "expo-device": "~57.0.2",
     "expo-font": "~57.0.4",
     "expo-glass-effect": "~57.0.3",
+    "expo-haptics": "~57.0.3",
     "expo-image": "~57.0.5",
     "expo-linking": "~57.0.10",
     "expo-router": "~57.0.22",

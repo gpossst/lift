@@ -1,0 +1,11 @@
+node_modules
+.output
+dist
+.tanstack
+.wrangler
+.git
+.env*
+!.env.example
+README.md
+Dockerfile
+.dockerignore

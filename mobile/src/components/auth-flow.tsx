@@ -1,301 +1,237 @@
-import { useClerk, useSignIn, useSignUp, useUser } from '@clerk/expo';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import * as ExpoLinking from 'expo-linking';
+import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
 import { Wordmark } from '@/components/wordmark';
+import { authClient } from '@/lib/auth-client';
 import type { AppearanceColors } from '@/lib/appearance';
 
 type AuthMode = 'signIn' | 'signUp';
-type AuthStep = 'credentials' | 'signUpCode' | 'recoveryEmail' | 'recoveryCode' | 'newPassword' | 'mfa';
-type MfaStrategy = 'totp' | 'phone_code' | 'email_code' | 'backup_code';
+type AuthStep = 'credentials' | 'verifyEmail' | 'recoveryEmail' | 'mfa';
+type MfaMethod = 'totp' | 'otp' | 'backup';
 type Styles = ReturnType<typeof createStyles>;
-
-const mfaLabels: Record<MfaStrategy, string> = {
-  totp: 'Authenticator app',
-  phone_code: 'Text message',
-  email_code: 'Email code',
-  backup_code: 'Backup code',
-};
 
 export function AuthFlow({ mode, onBack, onModeChange }: { mode: AuthMode; onBack: () => void; onModeChange: (mode: AuthMode) => void }) {
   const { colors } = useAppearance();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { signIn, errors: signInErrors, fetchStatus: signInStatus } = useSignIn();
-  const { signUp, errors: signUpErrors, fetchStatus: signUpStatus } = useSignUp();
   const [step, setStep] = useState<AuthStep>('credentials');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  const [mfaStrategy, setMfaStrategy] = useState<MfaStrategy>('totp');
-  const [localError, setLocalError] = useState<string | null>(null);
-  const busy = signInStatus === 'fetching' || signUpStatus === 'fetching';
+  const [methods, setMethods] = useState<string[]>([]);
+  const [method, setMethod] = useState<MfaMethod>('totp');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const availableMfa = signIn.supportedSecondFactors
-    .map((factor) => factor.strategy)
-    .filter((strategy): strategy is MfaStrategy => strategy in mfaLabels)
-    .filter((strategy, index, all) => all.indexOf(strategy) === index);
-
-  const error = localError
-    ?? (mode === 'signUp'
-      ? signUpErrors.fields.emailAddress?.message || signUpErrors.fields.password?.message || signUpErrors.fields.code?.message || signUpErrors.global?.[0]?.message
-      : signInErrors.fields.identifier?.message || signInErrors.fields.password?.message || signInErrors.fields.code?.message || signInErrors.global?.[0]?.message);
-
-  const finalizeSignIn = async () => {
-    await signIn.finalize();
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true); setError(null);
+    try { await action(); } catch (reason) { setError(messageFrom(reason)); }
+    finally { setBusy(false); }
   };
 
-  const chooseMfa = async (strategy?: MfaStrategy) => {
-    const currentStrategies = signIn.supportedSecondFactors
-      .map((factor) => factor.strategy)
-      .filter((item): item is MfaStrategy => item in mfaLabels)
-      .filter((item, index, all) => all.indexOf(item) === index);
-    const next = strategy ?? currentStrategies.find((item) => item !== 'backup_code') ?? currentStrategies[0];
-    if (!next) { setLocalError('No supported verification method is available.'); return; }
-    setLocalError(null);
-    setCode('');
-    setMfaStrategy(next);
-    const result = next === 'phone_code'
-      ? await signIn.mfa.sendPhoneCode()
-      : next === 'email_code'
-        ? await signIn.mfa.sendEmailCode()
-        : { error: null };
-    if (!result.error) setStep('mfa');
-  };
-
-  const continueAfterSignIn = async () => {
-    if (signIn.status === 'complete') return finalizeSignIn();
-    if (signIn.status === 'needs_second_factor') return chooseMfa();
-    if (signIn.status === 'needs_client_trust') return chooseMfa('email_code');
-    setLocalError('Clerk needs another sign-in step that Lift does not support yet.');
-  };
-
-  const submitCredentials = async () => {
-    setLocalError(null);
-    if (!email.trim() || !password) { setLocalError('Enter your email and password.'); return; }
+  const submitCredentials = () => run(async () => {
+    if (!email.trim() || !password) throw new Error('Enter your email and password.');
+    if (password.length < 12) throw new Error('Use at least 12 characters for your password.');
     if (mode === 'signUp') {
-      const { error: requestError } = await signUp.password({ emailAddress: email.trim(), password });
-      if (requestError) return;
-      const { error: sendError } = await signUp.verifications.sendEmailCode();
-      if (!sendError) { setCode(''); setStep('signUpCode'); }
+      const result = await authClient.signUp.email({ email: email.trim(), password, name: email.trim().split('@')[0] ?? 'Lift user', callbackURL: ExpoLinking.createURL('/auth/verified') });
+      if (result.error) throw result.error;
+      setStep('verifyEmail');
       return;
     }
-    const { error: requestError } = await signIn.password({ emailAddress: email.trim(), password });
-    if (!requestError) await continueAfterSignIn();
+    const result = await authClient.signIn.email({ email: email.trim(), password });
+    if (result.error) throw result.error;
+    const data = result.data as (Record<string, unknown> & { twoFactorRedirect?: boolean; twoFactorMethods?: string[] }) | null;
+    if (data?.twoFactorRedirect) {
+      const available = data.twoFactorMethods ?? [];
+      setMethods(available);
+      const initial: MfaMethod = available.includes('totp') ? 'totp' : available.includes('otp') ? 'otp' : 'backup';
+      setMethod(initial);
+      if (initial === 'otp') {
+        const sent = await authClient.twoFactor.sendOtp();
+        if (sent.error) throw sent.error;
+      }
+      setStep('mfa');
+    }
+  });
+
+  const resendVerification = () => run(async () => {
+    const result = await authClient.sendVerificationEmail({ email: email.trim(), callbackURL: ExpoLinking.createURL('/auth/verified') });
+    if (result.error) throw result.error;
+  });
+
+  const requestReset = () => run(async () => {
+    if (!email.trim()) throw new Error('Enter the email on your account.');
+    const result = await authClient.requestPasswordReset({ email: email.trim(), redirectTo: ExpoLinking.createURL('/reset-password') });
+    if (result.error) throw result.error;
+    setError('If the account exists, a password reset link is on its way.');
+  });
+
+  const verifyMfa = () => run(async () => {
+    const result = method === 'totp' ? await authClient.twoFactor.verifyTotp({ code })
+      : method === 'otp' ? await authClient.twoFactor.verifyOtp({ code })
+        : await authClient.twoFactor.verifyBackupCode({ code });
+    if (result.error) throw result.error;
+  });
+
+  const chooseMethod = async (next: MfaMethod) => {
+    setMethod(next); setCode(''); setError(null);
+    if (next === 'otp') await run(async () => {
+      const result = await authClient.twoFactor.sendOtp();
+      if (result.error) throw result.error;
+    });
   };
 
-  const verifySignUp = async () => {
-    setLocalError(null);
-    const { error: requestError } = await signUp.verifications.verifyEmailCode({ code });
-    if (requestError) return;
-    if (signUp.status === 'complete') await signUp.finalize();
-    else setLocalError('Your account still needs another verification step.');
+  const goBack = () => {
+    if (step === 'credentials') onBack();
+    else { setStep('credentials'); setCode(''); setError(null); }
   };
 
-  const sendRecoveryCode = async () => {
-    setLocalError(null);
-    if (!email.trim()) { setLocalError('Enter the email on your account.'); return; }
-    const { error: createError } = await signIn.create({ identifier: email.trim() });
-    if (createError) return;
-    const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
-    if (!sendError) { setCode(''); setStep('recoveryCode'); }
-  };
+  const title = step === 'verifyEmail' ? 'Check your email.' : step === 'recoveryEmail' ? 'Reset password.' : step === 'mfa' ? 'Verify.' : mode === 'signIn' ? 'Sign in.' : 'Create account.';
+  const subtitle = step === 'verifyEmail' ? email : step === 'mfa' ? method === 'otp' ? 'Email code' : method === 'backup' ? 'Backup code' : 'Authenticator app' : undefined;
 
-  const verifyRecoveryCode = async () => {
-    setLocalError(null);
-    const { error: requestError } = await signIn.resetPasswordEmailCode.verifyCode({ code });
-    if (!requestError && signIn.status === 'needs_new_password') { setPassword(''); setStep('newPassword'); }
-  };
-
-  const setNewPassword = async () => {
-    setLocalError(null);
-    const { error: requestError } = await signIn.resetPasswordEmailCode.submitPassword({ password, signOutOfOtherSessions: true });
-    if (!requestError) await continueAfterSignIn();
-  };
-
-  const verifyMfa = async () => {
-    setLocalError(null);
-    const result = mfaStrategy === 'totp' ? await signIn.mfa.verifyTOTP({ code })
-      : mfaStrategy === 'phone_code' ? await signIn.mfa.verifyPhoneCode({ code })
-        : mfaStrategy === 'email_code' ? await signIn.mfa.verifyEmailCode({ code })
-          : await signIn.mfa.verifyBackupCode({ code });
-    if (!result.error) await continueAfterSignIn();
-  };
-
-  const goBack = async () => {
-    if (step === 'credentials') { onBack(); return; }
-    await signIn.reset();
-    await signUp.reset();
-    setStep('credentials');
-    setCode('');
-    setLocalError(null);
-  };
-
-  const screen = step === 'credentials'
-    ? mode === 'signIn'
-      ? { title: 'Sign in.' }
-      : { title: 'Create account.' }
-    : step === 'signUpCode'
-      ? { title: 'Check your email.', subtitle: email }
-      : step === 'recoveryEmail'
-        ? { title: 'Reset password.' }
-        : step === 'recoveryCode'
-          ? { title: 'Enter the code.', subtitle: email }
-          : step === 'newPassword'
-            ? { title: 'New password.' }
-            : { title: 'Verify.', subtitle: mfaLabels[mfaStrategy] };
-
-  return <AuthShell title={screen.title} subtitle={screen.subtitle} onBack={() => { void goBack(); }} styles={styles}>
+  return <AuthShell title={title} subtitle={subtitle} onBack={goBack} styles={styles}>
     {step === 'credentials' && <>
       <Field label="Email" value={email} onChangeText={setEmail} autoComplete="email" keyboardType="email-address" styles={styles} colors={colors} />
       <Field label="Password" value={password} onChangeText={setPassword} autoComplete={mode === 'signUp' ? 'new-password' : 'current-password'} secureTextEntry styles={styles} colors={colors} />
-      {mode === 'signIn' && <Pressable accessibilityRole="button" onPress={() => { setLocalError(null); setStep('recoveryEmail'); }} style={styles.textAction}><Text style={styles.textActionLabel}>Forgot password?</Text></Pressable>}
+      {mode === 'signIn' && <Pressable accessibilityRole="button" onPress={() => { setError(null); setStep('recoveryEmail'); }} style={styles.textAction}><Text style={styles.textActionLabel}>Forgot password?</Text></Pressable>}
       <ErrorMessage message={error} styles={styles} />
-      <ActionButton label={busy ? 'Working…' : mode === 'signIn' ? 'Sign in' : 'Create account'} disabled={busy} onPress={() => { void submitCredentials(); }} styles={styles} />
-      <Pressable accessibilityRole="button" onPress={() => onModeChange(mode === 'signIn' ? 'signUp' : 'signIn')} style={styles.switchAction}>
-        <Text style={styles.switchTextStrong}>{mode === 'signIn' ? 'Create account' : 'Sign in'}</Text>
-      </Pressable>
-      {mode === 'signUp' && <View nativeID="clerk-captcha" />}
+      <ActionButton label={busy ? 'Working…' : mode === 'signIn' ? 'Sign in' : 'Create account'} disabled={busy} onPress={submitCredentials} styles={styles} />
+      <Pressable accessibilityRole="button" onPress={() => onModeChange(mode === 'signIn' ? 'signUp' : 'signIn')} style={styles.switchAction}><Text style={styles.switchTextStrong}>{mode === 'signIn' ? 'Create account' : 'Sign in'}</Text></Pressable>
     </>}
-    {step === 'signUpCode' && <CodeForm code={code} setCode={setCode} error={error} busy={busy} label="Verify account" onSubmit={verifySignUp} onResend={() => signUp.verifications.sendEmailCode()} styles={styles} colors={colors} />}
+    {step === 'verifyEmail' && <>
+      <Text style={styles.subtitle}>Open the verification link we sent to {email} to finish creating your account.</Text>
+      <ErrorMessage message={error} styles={styles} />
+      <ActionButton label={busy ? 'Sending…' : 'Resend verification email'} disabled={busy} onPress={() => { void resendVerification(); }} styles={styles} />
+    </>}
     {step === 'recoveryEmail' && <>
       <Field label="Email" value={email} onChangeText={setEmail} autoComplete="email" keyboardType="email-address" styles={styles} colors={colors} />
       <ErrorMessage message={error} styles={styles} />
-      <ActionButton label={busy ? 'Sending…' : 'Send code'} disabled={busy} onPress={() => { void sendRecoveryCode(); }} styles={styles} />
-    </>}
-    {step === 'recoveryCode' && <CodeForm code={code} setCode={setCode} error={error} busy={busy} label="Verify code" onSubmit={verifyRecoveryCode} onResend={() => signIn.resetPasswordEmailCode.sendCode()} styles={styles} colors={colors} />}
-    {step === 'newPassword' && <>
-      <Field label="New password" value={password} onChangeText={setPassword} autoComplete="new-password" secureTextEntry styles={styles} colors={colors} />
-      <ErrorMessage message={error} styles={styles} />
-      <ActionButton label={busy ? 'Saving…' : 'Save password'} disabled={busy} onPress={() => { void setNewPassword(); }} styles={styles} />
+      <ActionButton label={busy ? 'Sending…' : 'Send reset link'} disabled={busy} onPress={() => { void requestReset(); }} styles={styles} />
     </>}
     {step === 'mfa' && <>
-      {availableMfa.length > 1 && <View style={styles.methodRow}>{availableMfa.map((strategy) => <Pressable key={strategy} accessibilityRole="radio" accessibilityState={{ checked: strategy === mfaStrategy }} onPress={() => { void chooseMfa(strategy); }} style={[styles.method, strategy === mfaStrategy && styles.methodActive]}><Text style={[styles.methodText, strategy === mfaStrategy && styles.methodTextActive]}>{mfaLabels[strategy]}</Text></Pressable>)}</View>}
-      <CodeForm code={code} setCode={setCode} error={error} busy={busy} label="Verify" onSubmit={verifyMfa} onResend={mfaStrategy === 'phone_code' ? () => signIn.mfa.sendPhoneCode() : mfaStrategy === 'email_code' ? () => signIn.mfa.sendEmailCode() : undefined} styles={styles} colors={colors} />
+      <View style={styles.methodRow}>
+        {(['totp', ...(methods.includes('otp') ? ['otp' as const] : []), 'backup'] as MfaMethod[]).map((item) => <Pressable key={item} accessibilityRole="radio" accessibilityState={{ checked: item === method }} onPress={() => { void chooseMethod(item); }} style={[styles.method, item === method && styles.methodActive]}><Text style={[styles.methodText, item === method && styles.methodTextActive]}>{item === 'totp' ? 'Authenticator' : item === 'otp' ? 'Email code' : 'Backup code'}</Text></Pressable>)}
+      </View>
+      <CodeForm code={code} setCode={setCode} error={error} busy={busy} label="Verify" onSubmit={verifyMfa} styles={styles} colors={colors} />
     </>}
   </AuthShell>;
 }
 
-export function AccountTaskFlow({ task }: { task: 'setup-mfa' | 'reset-password' }) {
-  return task === 'setup-mfa' ? <MfaSetupFlow /> : <ForcedPasswordReset />;
-}
+export function AccountTaskFlow({ onDone }: { onDone: () => void }) { return <MfaSetupFlow onDone={onDone} />; }
 
-function MfaSetupFlow() {
+export function PasswordResetFlow() {
+  const { token } = useLocalSearchParams<{ token?: string }>();
   const { colors } = useAppearance();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { user } = useUser();
-  const clerk = useClerk();
-  const [stage, setStage] = useState<'loading' | 'setup' | 'backup'>('loading');
-  const [uri, setUri] = useState('');
-  const [secret, setSecret] = useState('');
-  const [code, setCode] = useState('');
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const didStart = useRef(false);
-
-  const startTotp = useCallback(async () => {
-    if (!user) return;
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    if (!token) { setError('This reset link is invalid or expired. Request another one.'); return; }
     setBusy(true); setError(null);
     try {
-      const totp = await user.createTOTP();
-      setUri(totp.uri ?? '');
-      setSecret(totp.secret ?? '');
-      setStage('setup');
-    } catch (reason) { setError(messageFrom(reason)); setStage('setup'); }
-    finally { setBusy(false); }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user || didStart.current) return;
-    didStart.current = true;
-    void startTotp();
-  }, [startTotp, user]);
-
-  const verify = async () => {
-    if (!user || busy) return;
-    setBusy(true); setError(null);
-    try {
-      await user.verifyTOTP({ code });
-      const backup = await user.createBackupCode();
-      setBackupCodes(backup.codes);
-      setStage('backup');
+      const result = await authClient.resetPassword({ newPassword: password, token });
+      if (result.error) throw result.error;
+      router.replace('/');
     } catch (reason) { setError(messageFrom(reason)); }
     finally { setBusy(false); }
   };
-  const finish = async () => { await clerk.setActive({ session: clerk.session?.id }); };
+  return <AuthShell title="New password." styles={styles}>
+    <Field label="New password" value={password} onChangeText={setPassword} autoComplete="new-password" secureTextEntry styles={styles} colors={colors} />
+    <ErrorMessage message={error} styles={styles} />
+    <ActionButton label={busy ? 'Saving…' : 'Save password'} disabled={busy || password.length < 12} onPress={() => { void submit(); }} styles={styles} />
+  </AuthShell>;
+}
 
-  const title = stage === 'backup' ? 'Save backup codes.' : 'Set up MFA.';
-  const subtitle = stage === 'backup' ? undefined : 'Use your authenticator app.';
-  return <AuthShell title={title} subtitle={subtitle} styles={styles}>
-    {stage === 'loading' ? <ActivityIndicator color={colors.accent} size="large" /> : stage === 'setup' ? <>
+export function MfaSetupFlow({ onDone }: { onDone: () => void }) {
+  const { colors } = useAppearance();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [password, setPassword] = useState('');
+  const [method, setMethod] = useState<'totp' | 'otp'>('totp');
+  const [code, setCode] = useState('');
+  const [uri, setUri] = useState('');
+  const [secret, setSecret] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [stage, setStage] = useState<'password' | 'setup' | 'backup'>('password');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const start = () => run(async () => {
+    const result = await authClient.twoFactor.enable({ password, method, issuer: 'Lift' });
+    if (result.error) throw result.error;
+    const data = result.data as { totpURI?: string; backupCodes?: string[] };
+    setUri(data.totpURI ?? '');
+    setSecret(data.totpURI ? new URL(data.totpURI).searchParams.get('secret') ?? '' : '');
+    setBackupCodes(data.backupCodes ?? []);
+    setStage('setup');
+  });
+
+  const verify = () => run(async () => {
+    const result = method === 'totp'
+      ? await authClient.twoFactor.verifyTotp({ code })
+      : await authClient.twoFactor.verifyOtp({ code });
+    if (result.error) throw result.error;
+    if (!backupCodes.length) {
+      const backup = await authClient.twoFactor.generateBackupCodes({ password });
+      if (backup.error) throw backup.error;
+      setBackupCodes(backup.data.backupCodes);
+    }
+    setStage('backup');
+  });
+
+  const finish = async () => {
+    await authClient.getSession();
+    onDone();
+  };
+
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true); setError(null);
+    try { await action(); } catch (reason) { setError(messageFrom(reason)); }
+    finally { setBusy(false); }
+  };
+
+  return <AuthShell title={stage === 'backup' ? 'Save backup codes.' : 'Set up MFA.'} subtitle={stage === 'setup' ? 'Use your authenticator app.' : undefined} styles={styles}>
+    {stage === 'password' && <>
+      <Text style={styles.subtitle}>Confirm your password to add an authenticator or email code.</Text>
+      <Field label="Password" value={password} onChangeText={setPassword} autoComplete="current-password" secureTextEntry styles={styles} colors={colors} />
+      <View style={styles.methodRow}>{(['totp', 'otp'] as const).map((item) => <Pressable key={item} accessibilityRole="radio" accessibilityState={{ checked: item === method }} onPress={() => setMethod(item)} style={[styles.method, item === method && styles.methodActive]}><Text style={[styles.methodText, item === method && styles.methodTextActive]}>{item === 'totp' ? 'Authenticator' : 'Email code'}</Text></Pressable>)}</View>
+      <ErrorMessage message={error} styles={styles} />
+      <ActionButton label={busy ? 'Preparing…' : 'Continue'} disabled={busy || !password} onPress={() => { void start(); }} styles={styles} />
+    </>}
+    {stage === 'setup' && <>
       {!!uri && <ActionButton label="Open authenticator app" onPress={() => { void Linking.openURL(uri).catch((reason: unknown) => setError(messageFrom(reason))); }} styles={styles} />}
       {!!secret && <View style={styles.secretBox}><Text style={styles.secretLabel}>Manual setup code</Text><Text selectable style={styles.secret}>{secret}</Text></View>}
-      {!secret && <ActionButton label={busy ? 'Preparing…' : 'Try setup again'} disabled={busy} onPress={() => { void startTotp(); }} styles={styles} />}
-      <Field label="Authenticator code" value={code} onChangeText={setCode} autoComplete="one-time-code" keyboardType="number-pad" maxLength={6} styles={styles} colors={colors} />
+      {method === 'otp' && <Text style={styles.subtitle}>Enter the verification code sent to your email.</Text>}
+      <Field label={method === 'totp' ? 'Authenticator code' : 'Email code'} value={code} onChangeText={setCode} autoComplete="one-time-code" keyboardType="number-pad" maxLength={6} styles={styles} colors={colors} />
       <ErrorMessage message={error} styles={styles} />
       <ActionButton label={busy ? 'Verifying…' : 'Verify code'} disabled={busy || code.length < 6} onPress={() => { void verify(); }} styles={styles} />
-    </> : <>
-      <View style={styles.backupGrid}>{backupCodes.map((item) => <Text selectable key={item} style={styles.backupCode}>{item}</Text>)}</View>
+    </>}
+    {stage === 'backup' && <>
+      {!!backupCodes.length && <View style={styles.backupGrid}>{backupCodes.map((item) => <Text selectable key={item} style={styles.backupCode}>{item}</Text>)}</View>}
+      <Text style={styles.subtitle}>Store these backup codes somewhere safe. Each code works once.</Text>
       <ErrorMessage message={error} styles={styles} />
       <ActionButton label="Done" onPress={() => { void finish(); }} styles={styles} />
     </>}
   </AuthShell>;
 }
 
-function ForcedPasswordReset() {
-  const { colors } = useAppearance();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const { user } = useUser();
-  const clerk = useClerk();
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const submit = async () => {
-    if (!user || busy) return;
-    setBusy(true); setError(null);
-    try {
-      await user.updatePassword({ newPassword: password, signOutOfOtherSessions: true });
-      await clerk.setActive({ session: clerk.session?.id });
-    } catch (reason) { setError(messageFrom(reason)); }
-    finally { setBusy(false); }
-  };
-  return <AuthShell title="New password required." styles={styles}>
-    <Field label="New password" value={password} onChangeText={setPassword} autoComplete="new-password" secureTextEntry styles={styles} colors={colors} />
-    <ErrorMessage message={error} styles={styles} />
-    <ActionButton label={busy ? 'Saving…' : 'Update password'} disabled={busy || !password} onPress={() => { void submit(); }} styles={styles} />
-  </AuthShell>;
-}
-
 function AuthShell({ title, subtitle, onBack, children, styles }: { title: string; subtitle?: string; onBack?: () => void; children: ReactNode; styles: Styles }) {
-  return <SafeAreaView style={styles.safe}>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {onBack && <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack} style={styles.backButton}><Text style={styles.back}>‹ Back</Text></Pressable>}
-        <Animated.View entering={FadeInUp.duration(320)} style={styles.authCard}>
-          <Wordmark height={22} />
-          <Text style={styles.title}>{title}</Text>
-          {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-          <View style={styles.form}>{children}</View>
-        </Animated.View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  </SafeAreaView>;
+  return <SafeAreaView style={styles.safe}><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    {onBack && <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack} style={styles.backButton}><Text style={styles.back}>‹ Back</Text></Pressable>}
+    <Animated.View entering={FadeInUp.duration(320)} style={styles.authCard}><Wordmark height={22} /><Text style={styles.title}>{title}</Text>{!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}<View style={styles.form}>{children}</View></Animated.View>
+  </ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 function Field({ label, value, onChangeText, styles, colors, ...props }: { label: string; value: string; onChangeText: (value: string) => void; styles: Styles; colors: AppearanceColors; secureTextEntry?: boolean; keyboardType?: 'email-address' | 'number-pad'; autoComplete?: 'email' | 'current-password' | 'new-password' | 'one-time-code'; maxLength?: number }) {
   return <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} placeholderTextColor={colors.subtleText} autoCapitalize="none" autoCorrect={false} style={styles.input} {...props} /></View>;
 }
 
-function CodeForm({ code, setCode, error, busy, label, onSubmit, onResend, styles, colors }: { code: string; setCode: (value: string) => void; error?: string | null; busy: boolean; label: string; onSubmit: () => Promise<void>; onResend?: () => Promise<unknown>; styles: Styles; colors: AppearanceColors }) {
-  return <>
-    <Field label="Verification code" value={code} onChangeText={setCode} autoComplete="one-time-code" keyboardType="number-pad" styles={styles} colors={colors} />
-    {!!onResend && <Pressable accessibilityRole="button" onPress={() => { void onResend(); }} style={styles.textAction}><Text style={styles.textActionLabel}>Resend code</Text></Pressable>}
-    <ErrorMessage message={error} styles={styles} />
-    <ActionButton label={busy ? 'Checking…' : label} disabled={busy || !code} onPress={() => { void onSubmit(); }} styles={styles} />
-  </>;
+function CodeForm({ code, setCode, error, busy, label, onSubmit, styles, colors }: { code: string; setCode: (value: string) => void; error?: string | null; busy: boolean; label: string; onSubmit: () => void; styles: Styles; colors: AppearanceColors }) {
+  return <><Field label="Verification code" value={code} onChangeText={setCode} autoComplete="one-time-code" keyboardType="number-pad" styles={styles} colors={colors} /><ErrorMessage message={error} styles={styles} /><ActionButton label={busy ? 'Checking…' : label} disabled={busy || !code} onPress={onSubmit} styles={styles} /></>;
 }
 
 function ErrorMessage({ message, styles }: { message?: string | null; styles: Styles }) {
@@ -307,31 +243,18 @@ function ActionButton({ label, onPress, disabled, styles }: { label: string; onP
 }
 
 function messageFrom(error: unknown) {
-  if (error && typeof error === 'object' && 'errors' in error) {
-    const errors = (error as { errors?: { message?: string; longMessage?: string }[] }).errors;
-    return errors?.[0]?.longMessage ?? errors?.[0]?.message ?? 'That didn’t work. Try again.';
-  }
-  return error instanceof Error ? error.message : 'That didn’t work. Try again.';
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
+  return 'That didn’t work. Try again.';
 }
 
 function createStyles(colors: AppearanceColors) {
   return StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
-    content: { flexGrow: 1, padding: 24 }, backButton: { alignSelf: 'flex-start', paddingVertical: 8, paddingRight: 20 },
-    back: { color: colors.mutedText, fontSize: 16, fontWeight: '700' }, authCard: { flex: 1, paddingTop: 42 },
-    title: { color: colors.text, fontSize: 42, fontWeight: '900', letterSpacing: -1.7, lineHeight: 44, marginTop: 22, maxWidth: 340 },
-    subtitle: { color: colors.mutedText, fontSize: 16, lineHeight: 23, marginTop: 13, maxWidth: 330 }, form: { marginTop: 42, gap: 16 },
-    fieldGroup: { gap: 8 }, fieldLabel: { color: colors.mutedText, fontSize: 13, fontWeight: '800' },
-    input: { minHeight: 58, borderRadius: 16, borderWidth: 1.5, borderColor: colors.surfaceStrong, backgroundColor: colors.surface, color: colors.text, fontSize: 17, fontWeight: '700', paddingHorizontal: 18 },
-    button: { minHeight: 56, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-    buttonDisabled: { opacity: 0.5 }, buttonPressed: { transform: [{ scale: 0.98 }], opacity: 0.92 }, buttonText: { color: colors.accentText, fontSize: 16, fontWeight: '900' },
-    textAction: { alignSelf: 'flex-end', paddingVertical: 2 }, textActionLabel: { color: colors.mutedText, fontSize: 14, fontWeight: '800' },
-    switchAction: { alignItems: 'center', paddingVertical: 12 }, switchTextStrong: { color: colors.text, fontSize: 14, fontWeight: '900' },
-    error: { color: '#E05252', fontSize: 14, fontWeight: '700', lineHeight: 20 },
-    methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, method: { borderRadius: 999, borderWidth: 1.5, borderColor: colors.surfaceStrong, paddingHorizontal: 14, paddingVertical: 10 },
-    methodActive: { borderColor: colors.accent, backgroundColor: colors.accent }, methodText: { color: colors.mutedText, fontSize: 13, fontWeight: '800' }, methodTextActive: { color: colors.accentText },
-    secretBox: { borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.surfaceStrong, padding: 16, gap: 8 },
-    secretLabel: { color: colors.mutedText, fontSize: 13, fontWeight: '800' }, secret: { color: colors.text, fontSize: 15, fontWeight: '800', letterSpacing: 1.2 },
-    backupGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, backupCode: { width: '47%', borderRadius: 12, backgroundColor: colors.surface, color: colors.text, fontSize: 14, fontWeight: '800', padding: 12, textAlign: 'center' },
+    safe: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 }, content: { flexGrow: 1, padding: 24 }, backButton: { alignSelf: 'flex-start', paddingVertical: 8, paddingRight: 20 },
+    back: { color: colors.mutedText, fontSize: 16, fontWeight: '700' }, authCard: { flex: 1, paddingTop: 42 }, title: { color: colors.text, fontSize: 42, fontWeight: '900', letterSpacing: -1.7, lineHeight: 44, marginTop: 22, maxWidth: 340 },
+    subtitle: { color: colors.mutedText, fontSize: 16, lineHeight: 23, marginTop: 13, maxWidth: 330 }, form: { marginTop: 42, gap: 16 }, fieldGroup: { gap: 8 }, fieldLabel: { color: colors.mutedText, fontSize: 13, fontWeight: '800' },
+    input: { minHeight: 58, borderRadius: 16, borderWidth: 1.5, borderColor: colors.surfaceStrong, backgroundColor: colors.surface, color: colors.text, fontSize: 17, fontWeight: '700', paddingHorizontal: 18 }, button: { minHeight: 56, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+    buttonDisabled: { opacity: 0.5 }, buttonPressed: { transform: [{ scale: 0.98 }], opacity: 0.92 }, buttonText: { color: colors.accentText, fontSize: 16, fontWeight: '900' }, textAction: { alignSelf: 'flex-end', paddingVertical: 2 }, textActionLabel: { color: colors.accent, fontSize: 14, fontWeight: '800' },
+    switchAction: { alignSelf: 'center', padding: 12 }, switchTextStrong: { color: colors.accent, fontSize: 15, fontWeight: '900' }, error: { color: '#D74C41', fontSize: 13, lineHeight: 18, fontWeight: '700' }, methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, method: { borderWidth: 1, borderColor: colors.surfaceStrong, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 12 }, methodActive: { backgroundColor: colors.accent, borderColor: colors.accent }, methodText: { color: colors.mutedText, fontSize: 12, fontWeight: '800' }, methodTextActive: { color: colors.accentText },
+    secretBox: { padding: 16, borderRadius: 14, backgroundColor: colors.surface }, secretLabel: { color: colors.mutedText, fontSize: 12, fontWeight: '800' }, secret: { color: colors.text, marginTop: 8, fontSize: 16, fontWeight: '900', letterSpacing: 2 }, backupGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, backupCode: { width: '47%', padding: 10, color: colors.text, backgroundColor: colors.surface, borderRadius: 8, textAlign: 'center', fontWeight: '800' },
   });
 }

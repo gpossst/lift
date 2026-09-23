@@ -1,4 +1,3 @@
-import { useAuth, useReverification, useUser } from '@clerk/expo';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, Minus, Moon, Plus, Sun } from 'react-native-feather';
 import { useEffect, useRef, useState } from 'react';
@@ -7,18 +6,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
 import { clearLocalAccountData } from '@/db';
-import { accountPageUrl, deleteAccountData, exportAccountData } from '@/lib/account';
+import { exerciseCatalog } from '@/db/exercise-catalog';
+import { accountPageUrl, exportAccountData } from '@/lib/account';
 import { accentOptions, type AppearanceMode } from '@/lib/appearance';
 import { setCloudSyncUser } from '@/lib/cloud-sync';
 import { clearPendingOnboarding } from '@/lib/onboarding';
 import { getProfile, updateProfile } from '@/lib/profile';
+import { authClient } from '@/lib/auth-client';
+import { MfaSetupFlow } from '@/components/auth-flow';
 
-type Group = 'profile' | 'appearance' | 'workouts';
+type Group = 'profile' | 'appearance' | 'workouts' | 'legal';
 
 const groupCopy: Record<Group, { title: string; description: string }> = {
   profile: { title: 'Profile', description: 'Manage your account and session.' },
   appearance: { title: 'Appearance', description: 'Choose the background and color that keeps you focused.' },
   workouts: { title: 'Workouts', description: 'Control timers and suggestions while you train.' },
+  legal: { title: 'Legal & Support', description: 'Policies, support, and account-deletion resources.' },
 };
 
 export default function SettingsGroupScreen() {
@@ -37,15 +40,18 @@ export default function SettingsGroupScreen() {
       {selectedGroup === 'profile' && <ProfileSettings />}
       {selectedGroup === 'appearance' && <AppearanceSettings />}
       {selectedGroup === 'workouts' && <WorkoutSettings />}
+      {selectedGroup === 'legal' && <LegalSettings />}
     </ScrollView>
   </SafeAreaView>;
 }
 
 function ProfileSettings() {
   const { colors } = useAppearance();
-  const { getToken, signOut } = useAuth();
-  const { user } = useUser();
+  const { data: session } = authClient.useSession();
+  const user = session?.user;
   const [displayName, setDisplayName] = useState('');
+  const [favoriteExerciseIds, setFavoriteExerciseIds] = useState<string[]>([]);
+  const [favoriteQuery, setFavoriteQuery] = useState('');
   const [cohortOptIn, setCohortOptIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -53,20 +59,21 @@ function ProfileSettings() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePhrase, setDeletePhrase] = useState('');
   const [deleting, setDeleting] = useState(false);
-  const [deletionCommitted, setDeletionCommitted] = useState(false);
+  const [deletionPassword, setDeletionPassword] = useState('');
+  const [mfaOpen, setMfaOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loaded = useRef(false);
 
   useEffect(() => {
     if (loaded.current) return;
     loaded.current = true;
-    void getProfile(getToken).then((profile) => { setDisplayName(profile.displayName); setCohortOptIn(profile.recommendationPreferences?.optInSimilarUsers === true); }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load profile.')).finally(() => setLoading(false));
-  }, [getToken]);
+    void getProfile().then((profile) => { setDisplayName(profile.displayName); setFavoriteExerciseIds(profile.recommendationPreferences?.favoriteExerciseIds ?? []); setCohortOptIn(profile.recommendationPreferences?.optInSimilarUsers === true); }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load profile.')).finally(() => setLoading(false));
+  }, []);
 
   const save = async () => {
     if (saving) return;
     setSaving(true); setError(null);
-    try { setDisplayName((await updateProfile(getToken, displayName)).displayName); }
+    try { setDisplayName((await updateProfile(displayName)).displayName); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save profile.'); }
     finally { setSaving(false); }
   };
@@ -75,66 +82,102 @@ function ProfileSettings() {
     if (saving) return;
     const previous = cohortOptIn;
     setCohortOptIn(value); setSaving(true); setError(null);
-    try { setCohortOptIn((await updateProfile(getToken, { recommendationPreferences: { optInSimilarUsers: value } })).recommendationPreferences?.optInSimilarUsers === true); }
+    try { setCohortOptIn((await updateProfile({ recommendationPreferences: { optInSimilarUsers: value } })).recommendationPreferences?.optInSimilarUsers === true); }
     catch (reason) { setCohortOptIn(previous); setError(reason instanceof Error ? reason.message : 'Could not save privacy preference.'); }
+    finally { setSaving(false); }
+  };
+
+  const saveFavorites = async () => {
+    if (saving) return;
+    setSaving(true); setError(null);
+    try { setFavoriteExerciseIds((await updateProfile({ recommendationPreferences: { favoriteExerciseIds } })).recommendationPreferences?.favoriteExerciseIds ?? []); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save favorite exercises.'); }
     finally { setSaving(false); }
   };
 
   const exportData = async () => {
     if (exporting) return;
     setExporting(true); setError(null);
-    try { await exportAccountData(getToken, { email: user?.primaryEmailAddress?.emailAddress ?? null, name: user?.fullName ?? null }); }
+    try { await exportAccountData({ email: user?.email ?? null, name: user?.name ?? null }); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not export data.'); }
     finally { setExporting(false); }
   };
 
-  const deleteIdentity = useReverification(async () => {
-    if (!user) throw new Error('Your account is not available. Sign in again.');
-    setCloudSyncUser(null);
-    await deleteAccountData(getToken);
-    setDeletionCommitted(true);
-    clearLocalAccountData();
-    await clearPendingOnboarding();
-    await user.delete();
-  });
-
   const deleteAccount = async () => {
-    if (deleting || (!deletionCommitted && deletePhrase !== 'DELETE')) return;
+    if (deleting || deletePhrase !== 'DELETE' || !deletionPassword) return;
     setDeleting(true); setError(null);
-    try { await deleteIdentity(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Account deletion did not finish. Retry to continue safely.'); }
-    finally { setDeleting(false); }
-  };
-
-  const openPage = async (name: 'privacy' | 'terms' | 'support' | 'delete-account') => {
-    const url = accountPageUrl(name);
-    if (!url) { setError('Cloud sync is not configured.'); return; }
-    await Linking.openURL(url).catch(() => setError('Could not open that link.'));
+    setCloudSyncUser(null);
+    try {
+      const result = await authClient.deleteUser({ password: deletionPassword });
+      if (result.error) throw result.error;
+      clearLocalAccountData();
+      await clearPendingOnboarding();
+    }
+    catch (reason) {
+      setCloudSyncUser(user?.id ?? null);
+      setError(reason instanceof Error ? reason.message : 'Account deletion did not finish. Retry to continue safely.');
+    }
+    finally { setDeletionPassword(''); setDeleting(false); }
   };
 
   return <>
     {loading ? <ActivityIndicator color={colors.accent} /> : <><Text style={[styles.sectionLabel, { color: colors.mutedText }]}>DISPLAY NAME</Text><View style={[styles.nameRow, { borderBottomColor: colors.surfaceStrong }]}><TextInput value={displayName} onChangeText={setDisplayName} maxLength={40} placeholder="Display name" placeholderTextColor={colors.subtleText} style={[styles.nameInput, { color: colors.text }]} accessibilityLabel="Display name" />
       <Pressable onPress={() => void save()} disabled={saving || !displayName.trim()} style={({ pressed }) => [styles.saveButton, pressed && styles.pressed, (saving || !displayName.trim()) && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save display name"><Text style={[styles.saveText, { color: colors.accent }]}>{saving ? 'Saving…' : 'Save'}</Text></Pressable></View>
+      <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>FAVORITE EXERCISES</Text>
+      <TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} autoCapitalize="none" autoCorrect={false} placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.favoriteSearch, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Search favorite exercises" />
+      <Text style={[styles.favoriteCount, { color: colors.mutedText }]}>{favoriteExerciseIds.length} of 5 selected</Text>
+      <View>{favoriteChoices(favoriteQuery, favoriteExerciseIds).map((exercise) => {
+        const selected = favoriteExerciseIds.includes(exercise.id);
+        return <Pressable key={exercise.id} disabled={!selected && favoriteExerciseIds.length >= 5} onPress={() => setFavoriteExerciseIds((current) => selected ? current.filter((id) => id !== exercise.id) : [...current, exercise.id])} style={({ pressed }) => [styles.favoriteChoice, { borderBottomColor: colors.surfaceStrong }, !selected && favoriteExerciseIds.length >= 5 && styles.disabled, pressed && styles.pressed]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
+          <View style={styles.favoriteChoiceText}><Text style={[styles.favoriteChoiceName, { color: colors.text }]}>{exercise.name}</Text><Text style={[styles.favoriteChoiceDetail, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View>
+          <Text style={[styles.favoriteMark, { color: selected ? colors.accent : colors.subtleText }]}>{selected ? '✓' : '+'}</Text>
+        </Pressable>;
+      })}</View>
+      <Pressable onPress={() => void saveFavorites()} disabled={saving} style={({ pressed }) => [styles.favoritesSave, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed, saving && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save favorite exercises"><Text style={[styles.saveText, { color: colors.accent }]}>{saving ? 'Saving…' : 'Save favorites'}</Text></Pressable>
       {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}</>}
     <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>PRIVACY</Text>
     <View style={[styles.preferenceRow, { borderBottomColor: colors.surfaceStrong }]}><View style={styles.preferenceCopy}><Text style={[styles.preferenceTitle, { color: colors.text }]}>Anonymous cohort comparisons</Text><Text style={[styles.preferenceDescription, { color: colors.mutedText }]}>Use your height, weight, goals, schedule, and workout totals only in groups of at least five. Friends never see these details.</Text></View><Switch value={cohortOptIn} disabled={saving || loading} onValueChange={(value) => void setCohort(value)} trackColor={{ false: colors.surfaceStrong, true: colors.accent }} thumbColor={colors.background} accessibilityLabel="Use my data in anonymous cohort comparisons" /></View>
     <Pressable onPress={() => void exportData()} disabled={exporting} style={({ pressed }) => [styles.accountRow, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button"><Text style={[styles.accountRowText, { color: colors.text }]}>{exporting ? 'Preparing export…' : 'Export my data'}</Text></Pressable>
     <Text style={[styles.dataNote, { color: colors.mutedText }]}>Lift stores profile measurements, workout history, friend connections, and cohort preferences while your account is active. See the privacy policy for retention details.</Text>
-    <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>LEGAL & SUPPORT</Text>
-    {([['Privacy policy', 'privacy'], ['Terms of use', 'terms'], ['Support contact', 'support'], ['Web data-deletion request', 'delete-account']] as const).map(([label, page]) => <Pressable key={page} onPress={() => void openPage(page)} style={({ pressed }) => [styles.accountRow, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="link"><Text style={[styles.accountRowText, { color: colors.text }]}>{label}</Text></Pressable>)}
-    <Text style={[styles.disclaimer, { color: colors.mutedText }]}>Lift provides general fitness information—not medical advice, diagnosis, or treatment. Consult a qualified professional and stop if you experience pain or concerning symptoms.</Text>
-    <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>ACCOUNT</Text><Pressable onPress={() => void signOut()} style={({ pressed }) => [styles.accountRow, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Sign out"><Text style={styles.destructiveText}>Sign out</Text></Pressable>
+    <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>ACCOUNT</Text>
+    <Pressable onPress={() => setMfaOpen(true)} disabled={user?.twoFactorEnabled} style={({ pressed }) => [styles.accountRow, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button"><Text style={[styles.accountRowText, { color: colors.text }]}>{user?.twoFactorEnabled ? 'MFA is enabled' : 'Set up MFA'}</Text></Pressable>
+    <Pressable onPress={() => void authClient.signOut()} style={({ pressed }) => [styles.accountRow, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Sign out"><Text style={styles.destructiveText}>Sign out</Text></Pressable>
     <Pressable onPress={() => { setError(null); setDeleteOpen(true); }} style={({ pressed }) => [styles.accountRow, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Delete account"><Text style={styles.destructiveText}>Delete account</Text></Pressable>
-    <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => { if (!deleting && !deletionCommitted) setDeleteOpen(false); }}>
+    <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => { if (!deleting) setDeleteOpen(false); }}>
       <View style={styles.modalOverlay}><View style={[styles.modalCard, { backgroundColor: colors.background }]}>
-        <Text style={[styles.modalTitle, { color: colors.text }]}>{deletionCommitted ? 'Finish account deletion' : 'Delete your account?'}</Text>
-        <Text style={[styles.modalCopy, { color: colors.mutedText }]}>{deletionCommitted ? 'Your Lift app data and local cache are already deleted. Retry to finish deleting your Clerk identity.' : 'This permanently deletes your identity, measurements, workouts, friend connections, cohort preferences, and local account cache. This cannot be undone.'}</Text>
-        {!deletionCommitted && <><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Type DELETE to confirm</Text><TextInput value={deletePhrase} onChangeText={setDeletePhrase} autoCapitalize="characters" autoCorrect={false} editable={!deleting} style={[styles.deleteInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Type DELETE to confirm account deletion" /></>}
+        <Text style={[styles.modalTitle, { color: colors.text }]}>Delete your account?</Text>
+        <Text style={[styles.modalCopy, { color: colors.mutedText }]}>This permanently deletes your identity, measurements, workouts, friend connections, cohort preferences, and local account cache. This cannot be undone.</Text>
+        <><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Type DELETE to confirm</Text><TextInput value={deletePhrase} onChangeText={setDeletePhrase} autoCapitalize="characters" autoCorrect={false} editable={!deleting} style={[styles.deleteInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Type DELETE to confirm account deletion" /></>
+        <TextInput value={deletionPassword} onChangeText={setDeletionPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Password" placeholderTextColor={colors.subtleText} editable={!deleting} style={[styles.deleteInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Confirm password to delete account" />
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-        <Pressable onPress={() => void deleteAccount()} disabled={deleting || (!deletionCommitted && deletePhrase !== 'DELETE')} style={({ pressed }) => [styles.deleteButton, (deleting || (!deletionCommitted && deletePhrase !== 'DELETE')) && styles.disabled, pressed && styles.pressed]} accessibilityRole="button"><Text style={styles.deleteButtonText}>{deleting ? 'Deleting…' : deletionCommitted ? 'Retry deletion' : 'Permanently delete account'}</Text></Pressable>
-        {!deletionCommitted && <Pressable onPress={() => setDeleteOpen(false)} disabled={deleting} style={styles.cancelButton} accessibilityRole="button"><Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text></Pressable>}
+        <Pressable onPress={() => void deleteAccount()} disabled={deleting || deletePhrase !== 'DELETE' || !deletionPassword} style={({ pressed }) => [styles.deleteButton, (deleting || deletePhrase !== 'DELETE' || !deletionPassword) && styles.disabled, pressed && styles.pressed]} accessibilityRole="button"><Text style={styles.deleteButtonText}>{deleting ? 'Deleting…' : 'Permanently delete account'}</Text></Pressable>
+        <Pressable onPress={() => setDeleteOpen(false)} disabled={deleting} style={styles.cancelButton} accessibilityRole="button"><Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text></Pressable>
       </View></View>
     </Modal>
+    <Modal visible={mfaOpen} animationType="slide" onRequestClose={() => setMfaOpen(false)}><MfaSetupFlow onDone={() => setMfaOpen(false)} /></Modal>
+  </>;
+}
+
+function favoriteChoices(query: string, selectedIds: readonly string[]) {
+  const selected = new Set(selectedIds);
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return exerciseCatalog.filter((exercise) => selected.has(exercise.id) || (!terms.length ? exercise.isFeatured : terms.every((term) => `${exercise.name} ${exercise.area} ${exercise.equipment}`.toLowerCase().includes(term))))
+    .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || b.isFeatured - a.isFeatured || a.name.localeCompare(b.name)).slice(0, 12);
+}
+
+function LegalSettings() {
+  const { colors } = useAppearance();
+  const [error, setError] = useState<string | null>(null);
+  const openPage = async (name: 'privacy' | 'terms' | 'support' | 'delete-account') => {
+    const url = accountPageUrl(name);
+    if (!url) { setError('Cloud sync is not configured.'); return; }
+    await Linking.openURL(url).catch(() => setError('Could not open that link.'));
+  };
+  return <>
+    <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>RESOURCES</Text>
+    {([['Privacy policy', 'privacy'], ['Terms of use', 'terms'], ['Support contact', 'support'], ['Web data-deletion request', 'delete-account']] as const).map(([label, page]) => <Pressable key={page} onPress={() => void openPage(page)} style={({ pressed }) => [styles.accountRow, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="link"><Text style={[styles.accountRowText, { color: colors.text }]}>{label}</Text></Pressable>)}
+    {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+    <Text style={[styles.disclaimer, { color: colors.mutedText }]}>Lift provides general fitness information—not medical advice, diagnosis, or treatment. Consult a qualified professional and stop if you experience pain or concerning symptoms.</Text>
   </>;
 }
 
@@ -173,5 +216,5 @@ function ModeOption({ mode, label, Icon, selected, onPress }: { mode: Appearance
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 }, header: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 13 }, backButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, title: { fontSize: 28, fontWeight: '900', letterSpacing: -1.2 }, content: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 40 }, copy: { maxWidth: 280, fontSize: 14, lineHeight: 20, fontWeight: '700' }, sectionLabel: { marginTop: 38, marginBottom: 2, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, nameInput: { flex: 1, height: 64, paddingHorizontal: 0, fontSize: 16, fontWeight: '800' }, nameRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 10 }, saveButton: { height: 54, paddingLeft: 18, alignItems: 'center', justifyContent: 'center' }, saveText: { fontSize: 15, fontWeight: '900' }, error: { marginTop: 8, color: '#FF5151', fontSize: 12, fontWeight: '700' }, disabled: { opacity: .5 }, modeRow: {}, modeOption: { minHeight: 72, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 }, modeText: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, swatches: { marginTop: 10, flexDirection: 'row', gap: 18 }, swatchButton: { alignItems: 'center', gap: 8 }, swatch: { width: 58, height: 58, borderRadius: 29, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, swatchLabel: { fontSize: 11, fontWeight: '900' }, preferenceRow: { minHeight: 96, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, preferenceCopy: { flex: 1 }, preferenceSwitch: { transform: [{ translateY: 10 }] }, preferenceTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 }, preferenceDescription: { marginTop: 4, maxWidth: 240, fontSize: 12, lineHeight: 16, fontWeight: '700' }, durationRow: { minHeight: 82, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, durationControl: { height: 44, minWidth: 128, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, durationText: { minWidth: 48, textAlign: 'center', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, accountRow: { minHeight: 64, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: 'center' }, accountRowText: { fontSize: 15, fontWeight: '900' }, destructiveText: { color: '#E23D3D', fontSize: 15, fontWeight: '900' }, dataNote: { marginTop: 14, fontSize: 12, lineHeight: 18, fontWeight: '700' }, disclaimer: { marginTop: 18, fontSize: 12, lineHeight: 18, fontWeight: '700' }, modalOverlay: { flex: 1, padding: 24, backgroundColor: 'rgba(0,0,0,.45)', alignItems: 'center', justifyContent: 'center' }, modalCard: { width: '100%', maxWidth: 440, borderRadius: 24, padding: 24 }, modalTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.8 }, modalCopy: { marginTop: 10, fontSize: 14, lineHeight: 21, fontWeight: '700' }, fieldPrompt: { marginTop: 22, marginBottom: 7, fontSize: 12, fontWeight: '900' }, deleteInput: { minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 15, fontSize: 17, fontWeight: '900', letterSpacing: 1 }, deleteButton: { minHeight: 54, marginTop: 20, borderRadius: 15, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center' }, deleteButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' }, cancelButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' }, cancelText: { fontSize: 15, fontWeight: '900' }, pressed: { opacity: .78, transform: [{ scale: .985 }] },
+  safeArea: { flex: 1 }, header: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 13 }, backButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, title: { fontSize: 28, fontWeight: '900', letterSpacing: -1.2 }, content: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 40 }, copy: { maxWidth: 280, fontSize: 14, lineHeight: 20, fontWeight: '700' }, sectionLabel: { marginTop: 38, marginBottom: 2, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, nameInput: { flex: 1, height: 64, paddingHorizontal: 0, fontSize: 16, fontWeight: '800' }, nameRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 10 }, saveButton: { height: 54, paddingLeft: 18, alignItems: 'center', justifyContent: 'center' }, saveText: { fontSize: 15, fontWeight: '900' }, favoriteSearch: { height: 52, marginTop: 12, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, fontSize: 16, fontWeight: '800' }, favoriteCount: { marginTop: 10, fontSize: 12, fontWeight: '800' }, favoriteChoice: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, favoriteChoiceText: { flex: 1 }, favoriteChoiceName: { fontSize: 15, fontWeight: '900' }, favoriteChoiceDetail: { marginTop: 3, fontSize: 12, fontWeight: '700' }, favoriteMark: { minWidth: 22, textAlign: 'center', fontSize: 20, fontWeight: '900' }, favoritesSave: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, alignItems: 'flex-end', justifyContent: 'center' }, error: { marginTop: 8, color: '#FF5151', fontSize: 12, fontWeight: '700' }, disabled: { opacity: .5 }, modeRow: {}, modeOption: { minHeight: 72, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 }, modeText: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, swatches: { marginTop: 10, flexDirection: 'row', gap: 18 }, swatchButton: { alignItems: 'center', gap: 8 }, swatch: { width: 58, height: 58, borderRadius: 29, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, swatchLabel: { fontSize: 11, fontWeight: '900' }, preferenceRow: { minHeight: 96, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, preferenceCopy: { flex: 1 }, preferenceSwitch: { transform: [{ translateY: 10 }] }, preferenceTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 }, preferenceDescription: { marginTop: 4, maxWidth: 240, fontSize: 12, lineHeight: 16, fontWeight: '700' }, durationRow: { minHeight: 82, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, durationControl: { height: 44, minWidth: 128, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, durationText: { minWidth: 48, textAlign: 'center', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, accountRow: { minHeight: 64, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: 'center' }, accountRowText: { fontSize: 15, fontWeight: '900' }, destructiveText: { color: '#E23D3D', fontSize: 15, fontWeight: '900' }, dataNote: { marginTop: 14, fontSize: 12, lineHeight: 18, fontWeight: '700' }, disclaimer: { marginTop: 18, fontSize: 12, lineHeight: 18, fontWeight: '700' }, modalOverlay: { flex: 1, padding: 24, backgroundColor: 'rgba(0,0,0,.45)', alignItems: 'center', justifyContent: 'center' }, modalCard: { width: '100%', maxWidth: 440, borderRadius: 24, padding: 24 }, modalTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.8 }, modalCopy: { marginTop: 10, fontSize: 14, lineHeight: 21, fontWeight: '700' }, fieldPrompt: { marginTop: 22, marginBottom: 7, fontSize: 12, fontWeight: '900' }, deleteInput: { minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 15, fontSize: 17, fontWeight: '900', letterSpacing: 1 }, deleteButton: { minHeight: 54, marginTop: 20, borderRadius: 15, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center' }, deleteButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' }, cancelButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' }, cancelText: { fontSize: 15, fontWeight: '900' }, pressed: { opacity: .78, transform: [{ scale: .985 }] },
 });

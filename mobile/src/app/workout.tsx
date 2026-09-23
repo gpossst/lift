@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
+import * as Haptics from "expo-haptics";
 import { ChevronLeft, Delete, Info, Minus, Plus, Trash2, X } from "react-native-feather";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Animated, { cancelAnimation, Easing, FadeIn, SlideInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
@@ -202,6 +203,7 @@ export default function WorkoutScreen() {
         reps: Math.round(Number(reps)),
         completedAt: new Date(),
       });
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setSetNumber((v) => v + 1);
       const nextHistory = getWorkoutHistory(exerciseId);
       const currentSets = nextHistory.filter((set) => set.workoutId === workoutId);

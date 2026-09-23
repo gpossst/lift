@@ -1,78 +1,76 @@
-# Lift sync Worker
+# Lift API and authentication Worker
 
-The Worker is a Clerk-authenticated, local-first sync service. The verified
-Clerk session JWT `sub` is the D1 user ID, so the same Clerk account has the
-same workout history and friend graph on every device. Workout histories are
-never returned to another account; friends can only see each other's latest PR.
+This Cloudflare Worker owns Lift authentication and the local-first sync API at
+`api.lift.garrett.one`. Better Auth stores users, sessions, email verification,
+password reset, rate limits, TOTP, email OTP, backup codes, and MFA lockout in
+the same D1 database as profiles, workouts, recommendations, and friends.
 
-## Deploy
+## Production configuration
 
-1. Configure the D1 binding in `wrangler.jsonc` and run `bun install` in this
-   directory.
-2. In Clerk Dashboard, copy **API keys → JWT public key → PEM public key** and
-   save it as a Worker secret:
+Set the Worker secrets; do not commit their values:
 
-   ```sh
-   bunx wrangler secret put CLERK_JWT_KEY
-   ```
+```sh
+bunx wrangler secret put BETTER_AUTH_SECRET
+bunx wrangler secret put BETTER_AUTH_SECRETS
+bunx wrangler secret put RESEND_API_KEY
+bunx wrangler secret put RESEND_FROM_EMAIL
+bunx wrangler secret put SUPPORT_EMAIL
+```
 
-   The Worker validates RS256 signatures locally with Web Crypto. Set these
-   optional variables too when available: `CLERK_ISSUER` (exact Clerk issuer)
-   and `CLERK_AUTHORIZED_PARTIES` (comma-separated allowed `azp` origins).
-3. Apply the schema before deploying:
+For local development, copy `.dev.vars.example` to `.dev.vars`; Wrangler loads
+that ignored file without exposing the values to the client bundles.
 
-   ```sh
-   bunx wrangler d1 migrations apply lift --remote
-   bun run deploy
-   ```
-4. Configure the mobile app with both its Clerk publishable key and:
+Generate `BETTER_AUTH_SECRET` with `openssl rand -base64 32`. Versioned secrets
+use `version:value` entries with the current version first, for example
+`2:<current>,1:<previous>`; retain the previous value while encrypted MFA state
+is being rotated. Configure these non-secret values in production:
 
-   ```sh
-   EXPO_PUBLIC_SYNC_API_URL=https://lift-sync.<your-subdomain>.workers.dev
-   ```
+```text
+BETTER_AUTH_URL=https://api.lift.garrett.one
+TRUSTED_ORIGINS=https://lift.garrett.one,mobile://
+```
 
-## Sync API
+In Resend, verify `lift.garrett.one` (or the exact sending domain) and use a
+sender such as `Lift <auth@lift.garrett.one>`. Then deploy:
 
-Every non-OPTIONS request requires `Authorization: Bearer <Clerk session JWT>`.
-`POST /v1/session` was intentionally removed; anonymous device tokens cannot
-provide cross-device ownership.
+```sh
+bun install
+bun run check
+bunx wrangler d1 migrations apply liftdb --remote
+bun run deploy
+```
 
-- `GET /v1/sync?cursor=<id>&limit=<1..100>` returns the next change page as
-  `{ changes, cursor, hasMore, revision }`. New clients start at cursor `0`.
-- `POST /v1/sync` accepts `{ batchId, changes }` with at most three mutations.
-  The batch ID is idempotent, the chunk is one atomic D1 batch, and each change
-  carries the server revision it was based on. A stale edit is ignored and the
-  canonical winner is returned by the following pull. Device timestamps are
-  domain data only and never decide conflicts.
-- Keys are `workoutId`, `workoutId\\u001fexerciseId\\u001fsetNumber`,
-  `workoutId\\u001fmuscle`, and
-  `workoutId\\u001fexerciseId\\u001faction` for workouts, sets, ratings, and
-  recommendation feedback respectively.
-- `GET /v1/profile` returns the signed-in user's app profile and optional
-  recommendation preferences. `PATCH /v1/profile` accepts `displayName`
-  (1–40 characters) and partial `recommendationPreferences`; omitted values are
-  preserved and nullable values can be cleared with `null`. Similar-user
-  comparisons require explicit opt-in and at least five exactly matched peers.
-- `GET /v1/friends` returns `{ friends: { count, users } }`; friend users
-  include their app display name and initial Clerk profile image.
-- `GET /v1/friends/prs` returns at most one recent max-weight personal record
-  per friend; it never exposes workout or set history.
-- `GET /v1/friends/code` and `POST /v1/friends` manage six-character alphanumeric friend codes.
-- `GET /v1/export` returns a portable JSON copy of the signed-in user's profile,
-  workouts, ratings, recommendation feedback, and friend connections.
-- `DELETE /v1/account` deletes the authenticated user's D1 parent row; foreign
-  keys cascade through all app data. It returns success when already deleted so
-  the client can safely retry before deleting the Clerk identity.
+The mobile app uses `EXPO_PUBLIC_API_URL=https://api.lift.garrett.one`. The web
+app uses `VITE_API_URL=https://api.lift.garrett.one`.
 
-## Privacy and account deletion
+## Authentication
 
-The Worker serves public `/privacy`, `/terms`, `/support`, and `/delete-account`
-pages. Set `SUPPORT_EMAIL` to a monitored mailbox before release. The web form
-stores retry-safe requests in `account_deletion_requests`; operations should
-verify the account email in Clerk, delete the Clerk user and D1 user row, mark
-the request `completed`, and purge completed request records within 30 days.
+Better Auth is mounted at `/api/auth/*`. Email/password accounts must verify
+their email before signing in. TOTP is the recommended second factor; Resend
+email OTP and single-use backup codes are supported fallbacks. Protected
+`/v1/*` routes accept only a valid Better Auth session cookie. Browser requests
+must come from a configured trusted origin; the Worker never uses wildcard
+credentialed CORS.
 
-Pre-Clerk anonymous rows are preserved in D1 but deliberately not linked to a
-Clerk account: automatically assigning a legacy device's data to an account
-would be an account-takeover risk. A future explicit, authenticated migration
-can offer users a one-time import path.
+Clients delete accounts through Better Auth's `/api/auth/delete-user` endpoint,
+which also cascades the existing app-owned `users` row and all related data.
+`DELETE /v1/account` is intentionally retired.
+
+## App API
+
+- `GET /v1/sync?cursor=<id>&limit=<1..100>` pulls incremental changes.
+- `POST /v1/sync` pushes an idempotent batch of at most three mutations.
+- `GET|PATCH /v1/profile` reads or updates the current user's private profile.
+- `GET /v1/recommendations` returns private/cohort recommendations.
+- `GET /v1/friends`, `GET /v1/friends/prs`, `GET /v1/friends/code`, and
+  `POST /v1/friends` manage the limited friend surface.
+- `GET /v1/export` returns a portable account export.
+- `POST /v1/onboarding` saves onboarding preferences.
+
+Public `/privacy`, `/terms`, `/support`, and `/delete-account` pages remain
+available. The deletion request form records a retry-safe support request; it
+does not replace authenticated in-app deletion.
+
+Legacy pre-Better-Auth rows cannot be auto-linked safely because D1 does not
+store an email-to-old-provider-ID mapping. If production Clerk users already
+exist, export that mapping and run an explicit account migration before launch.

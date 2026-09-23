@@ -45,7 +45,7 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
 export function getWorkoutMuscleRatings(workoutId: string): WorkoutMuscleRating[];
 export type ExerciseRecommendation = { exercise: Exercise; reason: string; score: number; sets: number; reps: { min: number; max: number }; restSeconds: number; estimatedMinutes: number };
 export function getExerciseRecommendations(workoutId: string, split: WorkoutSplit, limit?: number, context?: RecommendationContext): ExerciseRecommendation[];
-export function recordRecommendationFeedback(workoutId: string, exerciseId: string, action: RecommendationFeedbackAction, relatedExerciseId?: string): void;
+export function recordRecommendationFeedback(workoutId: string, exerciseId: string, action: RecommendationFeedbackAction, rank?: number): void;
 export function getNextSetNumberForWorkout(exerciseId: string, workoutId: string): number;
 export type WorkoutHistoryPoint = { workoutId: string; setNumber: number; weight: number; reps: number; completedAt: Date };
 export function getWorkoutHistory(exerciseId: string): WorkoutHistoryPoint[];

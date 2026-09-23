@@ -1,4 +1,4 @@
-export type ClerkTokenProvider = () => Promise<string | null>;
+import { apiUrl, authHeaders } from '@/lib/auth-client';
 
 export type Friend = {
   id: string;
@@ -18,18 +18,12 @@ export type FriendPersonalRecord = Friend & {
   completedAt: number;
 };
 
-const endpoint = process.env.EXPO_PUBLIC_SYNC_API_URL?.replace(/\/$/, '');
-
-async function request<T>(getToken: ClerkTokenProvider, path: string, init?: RequestInit): Promise<T> {
-  if (!endpoint) throw new Error('Cloud sync is not configured.');
-
-  const token = await getToken();
-  if (!token) throw new Error('Your session has expired. Please sign in again.');
-
-  const response = await fetch(`${endpoint}${path}`, {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiUrl}${path}`, {
     ...init,
+    credentials: 'omit',
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...await authHeaders(),
       'Content-Type': 'application/json',
       ...init?.headers,
     },
@@ -39,21 +33,21 @@ async function request<T>(getToken: ClerkTokenProvider, path: string, init?: Req
   return payload;
 }
 
-/** Friend records are scoped by the authenticated Clerk user on the API. */
-export async function getFriendCode(getToken: ClerkTokenProvider): Promise<string> {
-  return (await request<{ code: string }>(getToken, '/v1/friends/code')).code;
+/** Friend records are scoped by the authenticated user on the API. */
+export async function getFriendCode(): Promise<string> {
+  return (await request<{ code: string }>('/v1/friends/code')).code;
 }
 
-export async function getFriends(getToken: ClerkTokenProvider): Promise<FriendsSummary> {
-  return (await request<{ friends: FriendsSummary }>(getToken, '/v1/friends')).friends;
+export async function getFriends(): Promise<FriendsSummary> {
+  return (await request<{ friends: FriendsSummary }>('/v1/friends')).friends;
 }
 
-export async function getFriendPersonalRecords(getToken: ClerkTokenProvider): Promise<FriendPersonalRecord[]> {
-  return (await request<{ prs: FriendPersonalRecord[] }>(getToken, '/v1/friends/prs')).prs;
+export async function getFriendPersonalRecords(): Promise<FriendPersonalRecord[]> {
+  return (await request<{ prs: FriendPersonalRecord[] }>('/v1/friends/prs')).prs;
 }
 
-export async function addFriend(getToken: ClerkTokenProvider, code: string): Promise<FriendsSummary> {
-  return (await request<{ friends: FriendsSummary }>(getToken, '/v1/friends', {
+export async function addFriend(code: string): Promise<FriendsSummary> {
+  return (await request<{ friends: FriendsSummary }>('/v1/friends', {
     method: 'POST',
     body: JSON.stringify({ code }),
   })).friends;

@@ -3,7 +3,7 @@
 // This tiny browser adapter keeps the preview usable while the native app uses Drizzle.
 import { exerciseCatalog, type Exercise, workoutSplitForExercise } from './exercise-catalog';
 import { buildDemoWorkoutSets, demoWorkoutIdPrefix, isDemoDataEnabled } from './demo-data';
-import { getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
+import { getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 export type { RecommendationContext, RecommendationFeedback, RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
@@ -34,7 +34,8 @@ const recommendationFeedbackKey = 'lift-preview-recommendation-feedback';
 const trackingVersionKey = 'lift-preview-tracking-schema-version';
 const trackingVersion = '3';
 const workoutTimeoutMs = 2 * 60 * 60 * 1_000;
-const activeClerkUserKey = 'lift-active-clerk-user';
+const activeUserKey = 'lift-active-user';
+const legacyActiveUserKey = 'lift-active-clerk-user';
 const pendingSyncKey = 'lift-cloud-sync-pending';
 const tombstonesKey = 'lift-cloud-sync-tombstones';
 const outboxKey = 'lift-cloud-sync-outbox-v2';
@@ -83,15 +84,17 @@ export function getFeaturedExercises(): Exercise[] { return getExercises().filte
 
 export function getRecommendedWorkoutSplit(now = new Date()): WorkoutSplit {
   const ratings = readRatings();
-  return recommendWorkoutSplit(getWorkoutVisits().map((visit) => {
-    const values = Object.values(ratings[visit.workout.id] ?? {});
+  const muscleRatings: MuscleExhaustionRating[] = [];
+  const history = getWorkoutVisits().map((visit) => {
+    const completedAt = visit.workout.endedAt ?? visit.workout.createdAt;
+    muscleRatings.push(...Object.entries(ratings[visit.workout.id] ?? {}).map(([muscle, exhaustion]) => ({ workoutId: visit.workout.id, split: visit.workout.split, muscle, exhaustion, completedAt })));
     return {
       split: visit.workout.split,
-      completedAt: visit.workout.endedAt ?? visit.workout.createdAt,
+      completedAt,
       sets: visit.sets,
-      exhaustion: values.length ? values.reduce((total, value) => total + value, 0) / values.length : undefined,
     };
-  }), now);
+  });
+  return recommendWorkoutSplit(history, now, muscleRatings);
 }
 
 export function createWorkout(split: WorkoutSplit): Workout {
@@ -249,17 +252,19 @@ export function getExerciseRecommendations(workoutId: string, split: WorkoutSpli
     if (!workout) return [];
     const completedAt = workout.endedAt ?? workout.createdAt;
     return Object.entries(ratings).map(([muscle, exhaustion]) => ({ workoutId: ratedWorkoutId, split: workout.split, muscle, exhaustion, completedAt }));
-  });
-  const completedSets = read().filter((set) => set.workoutId === workoutId || workouts.get(set.workoutId)?.endedAt || !workouts.has(set.workoutId));
-  return rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, context, readRecommendationFeedback());
+  }).sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.muscle.localeCompare(b.muscle));
+  const completedSets = read().filter((set) => set.workoutId === workoutId || workouts.get(set.workoutId)?.endedAt || !workouts.has(set.workoutId))
+    .sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.setNumber - b.setNumber);
+  const feedback = readRecommendationFeedback().sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.exerciseId.localeCompare(b.exerciseId));
+  return rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, context, feedback);
 }
 
 export function recordRecommendationFeedback(
-  workoutId: string, exerciseId: string, action: RecommendationFeedbackAction, relatedExerciseId?: string,
+  workoutId: string, exerciseId: string, action: RecommendationFeedbackAction, rank?: number,
 ): void {
   const feedback = readRecommendationFeedback();
   if (feedback.some((item) => item.workoutId === workoutId && item.exerciseId === exerciseId && item.action === action)) return;
-  writeRecommendationFeedback([...feedback, { workoutId, exerciseId, action, relatedExerciseId, createdAt: new Date() }]);
+  writeRecommendationFeedback([...feedback, { workoutId, exerciseId, action, rank, createdAt: new Date() }]);
   markCloudSyncDirty('feedback', [workoutId, exerciseId, action].join('\u001F'));
 }
 
@@ -358,9 +363,9 @@ export function getRecentExerciseExhaustion(exerciseId: string, excludingWorkout
   const recent = readWorkouts()
     .filter((workout) => workout.id !== excludingWorkoutId && now.getTime() - (workout.endedAt ?? workout.createdAt).getTime() <= 14 * 86_400_000)
     .sort((a, b) => (b.endedAt ?? b.createdAt).getTime() - (a.endedAt ?? a.createdAt).getTime())
-    .map((workout) => Object.entries(readRatings()[workout.id] ?? {}).filter(([muscle]) => target.has(muscle)).map(([, value]) => value))
+    .map((workout) => Object.entries(readRatings()[workout.id] ?? {}).filter(([muscle]) => target.has(muscle)).map(([, value]) => getEffectiveExhaustion(value, workout.endedAt ?? workout.createdAt, now)))
     .find((ratings) => ratings.length);
-  return recent ? recent.reduce((sum, value) => sum + value, 0) / recent.length : undefined;
+  return recent ? Math.max(...recent) : undefined;
 }
 
 export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint) {
@@ -476,13 +481,13 @@ function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: stri
 }
 
 export function prepareCloudSyncForUser(userId: string) {
-  const activeUserId = storage?.getItem(activeClerkUserKey);
+  const activeUserId = storage?.getItem(activeUserKey) ?? storage?.getItem(legacyActiveUserKey);
   if (!activeUserId) {
-    storage?.setItem(activeClerkUserKey, userId);
+    storage?.setItem(activeUserKey, userId);
     if (readWorkouts().some((workout) => !workout.id.startsWith(demoWorkoutIdPrefix))) storage?.setItem(pendingSyncKey, '1');
     return;
   }
-  if (activeUserId === userId) return;
+  if (activeUserId === userId) { storage?.removeItem(legacyActiveUserKey); return; }
   write([]);
   writeWorkouts([]);
   writeRatings({});
@@ -492,7 +497,8 @@ export function prepareCloudSyncForUser(userId: string) {
   storage?.removeItem(outboxKey);
   storage?.removeItem(versionsKey);
   storage?.removeItem(cursorKey);
-  storage?.setItem(activeClerkUserKey, userId);
+  storage?.setItem(activeUserKey, userId);
+  storage?.removeItem(legacyActiveUserKey);
   syncDemoWorkoutData();
 }
 
@@ -501,7 +507,7 @@ export function clearLocalAccountData() {
   write([]);
   writeWorkouts([]);
   writeRatings({});
-  for (const item of [recommendationFeedbackKey, tombstonesKey, pendingSyncKey, outboxKey, versionsKey, cursorKey, activeClerkUserKey]) storage?.removeItem(item);
+  for (const item of [recommendationFeedbackKey, tombstonesKey, pendingSyncKey, outboxKey, versionsKey, cursorKey, activeUserKey, legacyActiveUserKey]) storage?.removeItem(item);
   syncDemoWorkoutData();
 }
 
@@ -536,7 +542,7 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
         if (change.entity === 'rating') { const ratings = readRatings(); const workoutId = String(record.workoutId); ratings[workoutId] = { ...ratings[workoutId], [String(record.muscle)]: Number(record.exhaustion) }; writeRatings(ratings); }
         if (change.entity === 'feedback') {
           const feedback = readRecommendationFeedback(); const index = feedback.findIndex((item) => item.workoutId === record.workoutId && item.exerciseId === record.exerciseId && item.action === record.action);
-          const item = { workoutId: String(record.workoutId), exerciseId: String(record.exerciseId), action: record.action as RecommendationFeedbackAction, relatedExerciseId: record.relatedExerciseId == null ? undefined : String(record.relatedExerciseId), createdAt: new Date(Number(record.createdAt) * 1000) };
+          const item = { workoutId: String(record.workoutId), exerciseId: String(record.exerciseId), action: record.action as RecommendationFeedbackAction, rank: record.rank == null ? undefined : Number(record.rank), createdAt: new Date(Number(record.createdAt) * 1000) };
           if (index < 0) feedback.push(item); else feedback[index] = item; writeRecommendationFeedback(feedback);
         }
       }

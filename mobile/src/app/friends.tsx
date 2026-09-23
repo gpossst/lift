@@ -1,4 +1,3 @@
-import { useAuth } from '@clerk/expo';
 import { useFocusEffect } from 'expo-router';
 import { Check, RefreshCw, Users } from 'react-native-feather';
 import { useCallback, useState } from 'react';
@@ -10,7 +9,6 @@ import { addFriend, getFriendCode, getFriends, type Friend, type FriendsSummary 
 
 export default function FriendsScreen() {
   const { colors } = useAppearance();
-  const { getToken } = useAuth();
   const [code, setCode] = useState('');
   const [friendCode, setFriendCode] = useState<string | null>(null);
   const [friends, setFriends] = useState<FriendsSummary | null>(null);
@@ -22,7 +20,7 @@ export default function FriendsScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [nextCode, nextFriends] = await Promise.all([getFriendCode(getToken), getFriends(getToken)]);
+      const [nextCode, nextFriends] = await Promise.all([getFriendCode(), getFriends()]);
       setFriendCode(nextCode);
       setFriends(nextFriends);
     } catch (reason) {
@@ -30,7 +28,7 @@ export default function FriendsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, []);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -39,7 +37,7 @@ export default function FriendsScreen() {
     setAdding(true);
     setError(null);
     try {
-      setFriends(await addFriend(getToken, code));
+      setFriends(await addFriend(code));
       setCode('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not add friend.');

@@ -26,10 +26,12 @@ yourself are kept.
 
 ## Account deletion release setup
 
-- Enable user self-deletion in the Clerk Dashboard so the in-app Profile flow
-  can remove the Clerk identity after deleting D1 and local account data.
+- Configure Better Auth email verification, Resend, and MFA in the Worker. The
+  in-app Profile flow deletes the identity and synchronized app data together.
 - Apply the Worker migrations and set its `SUPPORT_EMAIL` to a monitored inbox.
-- Use `<EXPO_PUBLIC_SYNC_API_URL>/delete-account` as the Google Play account
+- Set `EXPO_PUBLIC_API_URL` to the Worker origin (defaults to
+  `https://api.lift.garrett.one`).
+- Use `<EXPO_PUBLIC_API_URL>/delete-account` as the Google Play account
   deletion URL. The same host serves `/privacy`, `/terms`, and `/support`.
 
 In the output, you'll find options to open the app in a

@@ -44,6 +44,7 @@ export const recommendationFeedback = sqliteTable('recommendation_feedback', {
   exerciseId: text('exercise_id').notNull(),
   action: text('action').notNull(),
   relatedExerciseId: text('related_exercise_id'),
+  rank: integer('rank'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
