@@ -7,7 +7,7 @@ import { nitro } from 'nitro/vite'
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
-  plugins: [tanstackStart(), nitro(), viteReact()],
+  plugins: [tanstackStart(), nitro({ preset: 'node-server' }), viteReact()],
 })
 
 export default config
