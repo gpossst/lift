@@ -24,7 +24,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => (
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[character]!);
 
-async function sendEmail(env: AuthEnv, to: string, subject: string, text: string, action?: { label: string; url: string }) {
+export async function sendEmail(env: AuthEnv, to: string, subject: string, text: string, action?: { label: string; url: string }) {
   const apiKey = required(env.RESEND_API_KEY, 'RESEND_API_KEY');
   const from = required(env.RESEND_FROM_EMAIL, 'RESEND_FROM_EMAIL');
   const safeText = escapeHtml(text).replace(/\n/g, '<br>');

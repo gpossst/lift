@@ -1,8 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { authClient } from '#/lib/auth'
+import { Icon } from '#/components/icons'
+import { Wordmark } from '#/components/wordmark'
 
 export const Route = createFileRoute('/')({ component: Home })
+
+// Weekly activity heatmap shown inside the hero phone preview.
+const activity = [0, 0, 1, 0, 2, 0, 0, 1, 0, 0, 3, 0, 0, 2, 0, 2, 4, 0, 0, 1, 0, 0, 0, 0, 2, 4, 0, 0, 1, 0, 3, 0, 0, 2, 0]
 
 function Home() {
   const { data: session, isPending } = authClient.useSession()
@@ -52,7 +57,7 @@ function Home() {
   return (
     <main className="site-shell">
       <nav aria-label="Primary navigation">
-        <a className="brand" href="/" aria-label="Lift home"><span>LI</span><i />FT</a>
+        <a className="brand" href="/" aria-label="Lift home"><Wordmark height={22} /></a>
         <div className="account-actions">
           {!isPending && (signedIn
             ? <button className="text-button" type="button" onClick={() => setView('account')}>{session.user.name || session.user.email}</button>
@@ -70,34 +75,59 @@ function Home() {
             : <p className="connected">Your Lift account is connected.</p>}
         </div>
 
-        <div className="training-board" aria-label="Example weekly training summary">
-          <div className="board-top"><span>This week</span><strong>3 sessions</strong></div>
-          <div className="week" aria-hidden="true">
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => <div key={`${day}-${index}`} className={index === 0 || index === 2 || index === 4 ? 'trained' : ''}><span>{day}</span><i /></div>)}
-          </div>
-          <div className="next-session">
-            <span>Up next</span>
-            <strong>Pull</strong>
-            <p>Back and biceps are ready. Start from your last working weights.</p>
+        <div className="hero-visual">
+          <div className="phone" role="img" aria-label="Lift app home screen">
+            <div className="phone-island" />
+            <div className="phone-screen">
+              <div className="app-title">Home</div>
+              <div className="app-trend">
+                <div className="app-trend-row"><span className="app-trend-value">128<em>LB</em></span><span className="app-trend-change">+12% from last week</span></div>
+                <div className="app-trend-label">Weekly volume</div>
+                <svg className="app-chart" viewBox="0 0 260 70" preserveAspectRatio="none" aria-hidden="true">
+                  {[18, 38, 58].map((y) => <line key={y} x1="0" x2="260" y1={y} y2={y} className="app-chart-grid" />)}
+                  <polyline points="0,58 37,50 74,54 111,36 148,40 185,24 222,20 260,8" className="app-chart-line" />
+                </svg>
+                <div className="app-tabs"><span className="is-active">All</span><span>Push</span><span>Pull</span><span>Legs</span></div>
+              </div>
+              <div className="app-activity">
+                <div className="app-activity-head"><strong>September activity</strong><span>11 DAYS</span></div>
+                <div className="app-grid" aria-hidden="true">{activity.map((level, index) => <i key={index} data-level={level} />)}</div>
+              </div>
+              <div className="app-next"><span>YOUR NEXT WORKOUT</span><strong>Pull · Back and biceps</strong></div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="principles" aria-label="What Lift does">
-        <article><strong>Log fast</strong><p>Sets, reps, weight, and effort without breaking the flow of a workout.</p></article>
-        <article><strong>Recover intelligently</strong><p>Recent muscle fatigue changes recommendations until your body catches up.</p></article>
-        <article><strong>Own the history</strong><p>Your account keeps training consistent across devices and remains exportable.</p></article>
+      <section className="features" aria-label="What Lift does">
+        <div className="features-head">
+          <p className="intro">What you get</p>
+          <h2>Everything you need to train with context.</h2>
+        </div>
+        <div className="principles">
+          <article><span className="feature-icon"><Icon name="zap" /></span><strong>Log fast</strong><p>Sets, reps, weight, and effort without breaking the flow of a workout.</p></article>
+          <article><span className="feature-icon"><Icon name="activity" /></span><strong>Recover intelligently</strong><p>Recent muscle fatigue changes recommendations until your body catches up.</p></article>
+          <article><span className="feature-icon"><Icon name="archive" /></span><strong>Own the history</strong><p>Your account keeps training consistent across devices and remains exportable.</p></article>
+        </div>
       </section>
 
+      {!signedIn && <section className="cta-band">
+        <div>
+          <h2>Your next session starts here.</h2>
+          <p>Free to start, and your training history stays yours.</p>
+        </div>
+        <button className="button cta-button" type="button" onClick={() => setView('signup')}>Start with Lift</button>
+      </section>}
+
       <footer>
-        <span>Lift</span>
+        <span className="brand"><Wordmark height={20} /></span>
         <div><a href="https://api.lift.garrett.one/privacy">Privacy</a><a href="https://api.lift.garrett.one/terms">Terms</a><a href="https://api.lift.garrett.one/support">Support</a></div>
       </footer>
       {view && <div className="auth-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAccount() }}>
         <section className="auth-panel" role="dialog" aria-modal="true" aria-labelledby="auth-title">
           <button className="auth-close" aria-label="Close" type="button" onClick={closeAccount}>×</button>
           {view === 'account' ? <>
-            <p className="intro">Your account</p><h2 id="auth-title">{session?.user.name || session?.user.email}</h2>
+            <Wordmark height={18} /><h2 id="auth-title">{session?.user.name || session?.user.email}</h2>
             <p className="auth-note">{session?.user.email}</p>
             {message && <p className="auth-message" role="status">{message}</p>}
             {session?.user && !session.user.emailVerified && <div className="auth-feature"><p>Check your inbox and open the verification link sent to {session.user.email}.</p><button type="button" className="text-button" onClick={() => void submit(undefined, () => authClient.sendVerificationEmail({ email: session.user.email, callbackURL: window.location.origin }), 'Verification email sent.')}>Resend verification email</button></div>}
@@ -117,7 +147,7 @@ function Home() {
             <button className="text-button" type="button" onClick={() => void authClient.signOut().then(() => closeAccount())}>Sign out</button>
             <div className="auth-feature"><h3>Delete account</h3><p className="auth-note">This permanently deletes your identity, profile, workouts, recommendations, and friend connections.</p><label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label><button className="text-button" type="button" disabled={busy || !password} onClick={() => { if (window.confirm('Permanently delete your Lift account and all of its data?')) void submit(undefined, async () => { const result = await authClient.deleteUser({ password }); if (!result.error) closeAccount(); return result }, 'Account deleted.') }}>Delete account</button></div>
           </> : <>
-            <p className="intro">Lift account</p>
+            <Wordmark height={18} />
             <h2 id="auth-title">{view === 'signup' ? 'Create your account' : view === 'signin' ? 'Welcome back' : view === 'forgot' ? 'Reset your password' : view === 'reset' ? 'Choose a new password' : 'Two-factor check'}</h2>
             {view === 'two-factor' ? <form onSubmit={(e) => void submit(e, async () => {
               const result = secondFactor === 'backup'

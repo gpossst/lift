@@ -58,7 +58,7 @@
   },
   "scripts": {
     "start": "expo start",
-    "test": "bun src/lib/exercise-recommendations.test.ts && bun src/db/custom-splits.test.ts",
+    "test": "bun src/lib/exercise-recommendations.test.ts && bun src/db/custom-splits.test.ts && bun src/db/account-switch.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "bun run lint && bun run typecheck && bun run test",
     "reset-project": "node ./scripts/reset-project.js",

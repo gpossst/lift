@@ -31,7 +31,8 @@ TRUSTED_ORIGINS=https://lift.garrett.one,mobile://
 ```
 
 In Resend, verify `lift.garrett.one` (or the exact sending domain) and use a
-sender such as `Lift <auth@lift.garrett.one>`. Then deploy:
+sender such as `Lift <auth@lift.garrett.one>`. Then deploy. The deploy command
+runs checks and verifies required remote secrets and bindings before publishing:
 
 ```sh
 bun install
@@ -39,6 +40,9 @@ bun run check
 bunx wrangler d1 migrations apply liftdb --remote
 bun run deploy
 ```
+
+`GET /healthz` checks required runtime configuration and D1 connectivity; it
+returns `200` only when the Worker is ready to serve traffic.
 
 The mobile app uses `EXPO_PUBLIC_API_URL=https://api.lift.garrett.one`. The web
 app uses `VITE_API_URL=https://api.lift.garrett.one`.
@@ -69,8 +73,44 @@ which also cascades the existing app-owned `users` row and all related data.
 - `POST /v1/onboarding` saves onboarding preferences.
 
 Public `/privacy`, `/terms`, `/support`, and `/delete-account` pages remain
-available. The deletion request form records a retry-safe support request; it
-does not replace authenticated in-app deletion.
+available. The deletion request form emails a 24-hour ownership-verification
+link. An hourly scheduled Worker deletes verified accounts through the same
+database cascade as in-app deletion, rejects expired or unmatched requests,
+records every state transition, and removes request email addresses 30 days
+after completion or rejection.
+
+## Account-deletion operations
+
+Apply migration `0015_account_deletion_workflow.sql` before deploying the
+scheduled handler. The expected lifecycle is `pending → verified → completed`;
+`pending → rejected` means the link expired, and `verified → rejected` means no
+account matched the verified address. Request tokens are stored only as SHA-256
+hashes and are cleared on verification or rejection.
+
+Check the queue and its audit trail without selecting verification-token data:
+
+```sh
+bunx wrangler d1 execute liftdb --remote --command \
+  "SELECT status, COUNT(*) AS requests, MIN(updated_at) AS oldest FROM account_deletion_requests GROUP BY status"
+bunx wrangler d1 execute liftdb --remote --command \
+  "SELECT request_id, from_status, to_status, actor, reason, created_at FROM account_deletion_request_events ORDER BY created_at DESC LIMIT 100"
+```
+
+The cron runs at the start of every hour and processes up to 100 expired and
+100 verified requests per run. Alert if a verified request remains for more
+than two hours. Inspect Worker logs for scheduled-handler exceptions, correct
+the D1 or configuration failure, then retry from the Cloudflare dashboard's
+Workers & Pages → `lift-sync` → Triggers view; processing is idempotent.
+
+For local verification, run `bunx wrangler dev --test-scheduled`, submit and
+verify a request, then invoke `http://localhost:8787/__scheduled`. A successful
+terminal transition leaves its non-PII audit events in place. The next hourly
+run clears email addresses from terminal requests after 30 days; confirm with:
+
+```sh
+bunx wrangler d1 execute liftdb --remote --command \
+  "SELECT COUNT(*) AS overdue FROM account_deletion_requests WHERE terminal_at <= unixepoch() - 2592000 AND email IS NOT NULL"
+```
 
 Legacy pre-Better-Auth rows cannot be auto-linked safely because D1 does not
 store an email-to-old-provider-ID mapping. If production Clerk users already

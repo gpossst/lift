@@ -33,14 +33,14 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={[styles.shell, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 10) }]}>
-      <Svg width="100%" height={32} style={styles.gradient} pointerEvents="none">
+      <Svg width="100%" height={24} style={styles.gradient} pointerEvents="none">
         <Defs>
-          <LinearGradient id="navbar-padding-gradient" x1="0" y1="0" x2="0" y2="1">
+          <LinearGradient id="navbar-top-fade" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={colors.background} stopOpacity="0" />
             <Stop offset="1" stopColor={colors.background} stopOpacity="1" />
           </LinearGradient>
         </Defs>
-        <Rect width="100%" height="100%" fill="url(#navbar-padding-gradient)" />
+        <Rect width="100%" height="100%" fill="url(#navbar-top-fade)" />
       </Svg>
       <View style={styles.tabRow} accessibilityRole="tablist">
         {tabs.slice(0, 2).map((tab) => <TabButton key={tab.route} tab={tab} active={activeRoute === tab.route} onPress={() => selectTab(tab.route)} />)}
@@ -74,7 +74,7 @@ function TabButton({ tab, active, onPress }: { tab: Tab; active: boolean; onPres
 
 const styles = StyleSheet.create({
   shell: { paddingHorizontal: 14, position: 'relative' },
-  gradient: { position: 'absolute', top: -32, left: 0 },
+  gradient: { position: 'absolute', top: -24, left: 0 },
   tabRow: { height: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tabButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   startButton: { width: 58, height: 58, marginHorizontal: 5, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 0 },

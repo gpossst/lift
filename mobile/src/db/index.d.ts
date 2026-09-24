@@ -44,7 +44,7 @@ export function recordCloudSyncFailure(): void;
 export function getCloudSyncBatch(limit?: number): CloudSyncBatch | null;
 export function acknowledgeCloudSyncBatch(batchId: string, revision: number): void;
 export function getCloudSyncCursor(): number;
-export function prepareCloudSyncForUser(userId: string): void;
+export function prepareCloudSyncForUser(userId: string): boolean;
 export function clearLocalAccountData(): void;
 export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: number): void;
 export function getWorkoutMuscleRatings(workoutId: string): WorkoutMuscleRating[];

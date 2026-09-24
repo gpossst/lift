@@ -1,11 +1,13 @@
+import { ui } from '@/styles/primitives';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { Check, ChevronDown, Search, X } from 'react-native-feather';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { endWorkout, getExerciseRecommendations, getExercises, getWorkoutSplitDefinition, getWorkoutVisits, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type RecommendationContext, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
 import { syncWorkoutData } from '@/lib/cloud-sync';
 import { getProfile, updateProfile } from '@/lib/profile';
@@ -251,7 +253,7 @@ export default function ExerciseLibraryScreen() {
 
   const finishVisit = () => {
     if (!workoutId || !endWorkout(workoutId)) return;
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     const completed = new Set(workoutExerciseIds);
     const replaced = new Set(replacedExerciseIds);
     recommendationExposure.current.impressions.forEach((rank, exerciseId) => {
@@ -268,7 +270,7 @@ export default function ExerciseLibraryScreen() {
       <View style={styles.recommendationList}>
         {recommendations.map((recommendation, index) => <RecommendationCard key={recommendation.exercise.id} recommendation={recommendation} featured={index === 0} onOpen={() => openExercise(recommendation.exercise, 'recommended', recommendation)} onReplace={() => replaceRecommendation(recommendation.exercise.id)} />)}
       </View>
-      <Pressable onPress={() => setCatalogOpen(true)} style={({ pressed }) => [styles.browseButton, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Browse all"><View><Text style={[styles.browseTitle, { color: colors.text }]}>Browse all</Text><Text style={[styles.browseCopy, { color: colors.mutedText }]}>Search, filter, or choose something else</Text></View><Search width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable>
+      <Pressable onPress={() => setCatalogOpen(true)} style={({ pressed }) => [styles.browseButton, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Browse all"><View><Text style={[styles.browseTitle, { color: colors.text }]}>Browse all</Text><Text style={[styles.browseCopy, { color: colors.mutedText }]}>Search, filter, or choose something else</Text></View><Search width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable>
       <View style={styles.completedSection}>
         <Text style={[styles.completedTitle, { color: colors.text }]}>Completed</Text>
         {workoutExercises.length > 0
@@ -300,7 +302,7 @@ function RecommendationCard({ recommendation, featured, onOpen, onReplace }: { r
       <Pressable
         onPress={onOpen}
         onAccessibilityAction={({ nativeEvent }) => nativeEvent.actionName === 'swap' ? onReplace() : onOpen()}
-        style={({ pressed }) => [styles.recommendationCard, { backgroundColor: colors.surface }, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.recommendationCard, { backgroundColor: colors.surface }, pressed && ui.pressed]}
         accessibilityRole="button"
         accessibilityLabel={`Start ${exercise.name}`}
         accessibilityHint="Swipe either direction to swap this exercise"
@@ -325,8 +327,10 @@ function ExerciseCatalog({ visible, query, onQueryChange, muscleOptions, muscleF
 
 function CurrentVisit({ visit, coverage, onEnd, onRefresh }: { visit: WorkoutVisitSummary | null; coverage: ReturnType<typeof getWorkoutCoverage>; onEnd: () => void; onRefresh: () => void }) {
 	const { colors, mode } = useAppearance();
+  const { bottom } = useSafeAreaInsets();
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
   useEffect(() => {
     // Schedule each refresh for the next elapsed-time boundary. The elapsed
     // value is always derived from when this workout was created, never from
@@ -340,6 +344,11 @@ function CurrentVisit({ visit, coverage, onEnd, onRefresh }: { visit: WorkoutVis
     refreshTimer();
     return () => clearTimeout(timeout);
   }, [onRefresh, visit?.workout.createdAt]);
+  useEffect(() => {
+    if (!confirmEnd) return;
+    const timeout = setTimeout(() => setConfirmEnd(false), 2_000);
+    return () => clearTimeout(timeout);
+  }, [confirmEnd]);
   if (!visit || visit.workout.endedAt) return null;
   const workoutStartedAt = visit.workout.createdAt.getTime();
   const seconds = Math.max(0, Math.floor((now - workoutStartedAt) / 1_000));
@@ -348,10 +357,10 @@ function CurrentVisit({ visit, coverage, onEnd, onRefresh }: { visit: WorkoutVis
     LayoutAnimation.configureNext({ duration: 240, update: { type: LayoutAnimation.Types.easeInEaseOut }, create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity }, delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity } });
     setExpanded((value) => !value);
   };
-  return <View style={[styles.visitCard, { backgroundColor: colors.inverse }]} accessibilityLabel={`Current ${workoutSplitLabel(visit.workout.split)} workout, duration ${duration}`}>
+  return <View style={[styles.visitCard, { bottom: bottom + 15, backgroundColor: colors.inverse }]} accessibilityLabel={`Current ${workoutSplitLabel(visit.workout.split)} workout, duration ${duration}`}>
     <Pressable onPress={toggleExpanded} style={styles.visitHeading} accessibilityRole="button" accessibilityLabel="Show workout muscle coverage" accessibilityState={{ expanded }}><Text style={[styles.visitTitle, { color: colors.inverseText }]}>{workoutSplitLabel(visit.workout.split)} day</Text><View style={styles.visitTime}><Text style={[styles.visitTimeText, { color: colors.inverseText }]}>{duration}</Text><ChevronDown width={17} height={17} color={colors.accent} strokeWidth={2.7} style={[styles.visitChevron, expanded && styles.visitChevronExpanded]} /></View></Pressable>
-    {expanded && <View style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} targetMuscles={getWorkoutSplitDefinition(visit.workout.split)?.muscles} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: mode === 'dark' ? '#B34842' : '#FF7565' }]} /><Text style={[styles.missedLegendText, { color: colors.inverseText }]}>Not trained yet</Text></View></View>}
-    <Pressable onPress={onEnd} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.accent }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel="End workout"><Text style={styles.endVisitText}>End workout</Text></Pressable>
+    {expanded && <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} targetMuscles={getWorkoutSplitDefinition(visit.workout.split)?.muscles} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: mode === 'dark' ? '#B34842' : '#FF7565' }]} /><Text style={[styles.missedLegendText, { color: colors.inverseText }]}>Not trained yet</Text></View></Animated.View>}
+    <Pressable onPress={() => confirmEnd ? onEnd() : setConfirmEnd(true)} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.accent }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel={confirmEnd ? 'Confirm end workout' : 'End workout'}><Text style={[styles.endVisitText, { color: colors.accentText }]}>{confirmEnd ? 'Confirm' : 'End workout'}</Text></Pressable>
   </View>;
 }
 
@@ -415,7 +424,7 @@ function matchesSplit(exercise: Exercise, split?: string) {
   return true;
 }
 
-function ExerciseRow({ exercise, onPress }: { exercise: Exercise; onPress: () => void }) { const { colors } = useAppearance(); return <Pressable onPress={onPress} style={({ pressed }) => [styles.row, { borderColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name}`}><View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{exercise.name}</Text><View style={styles.metaRow}><Text numberOfLines={1} style={[styles.area, { color: colors.mutedText }]}>{exerciseMuscleLabel(exercise)}</Text><View style={[styles.metaDot, { backgroundColor: colors.subtleText }]} /><Text numberOfLines={1} style={[styles.equipment, { color: colors.mutedText }]}>{exercise.equipment}</Text></View></View></Pressable>; }
+function ExerciseRow({ exercise, onPress }: { exercise: Exercise; onPress: () => void }) { const { colors } = useAppearance(); return <Pressable onPress={onPress} style={({ pressed }) => [styles.row, { borderColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name}`}><View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{exercise.name}</Text><View style={styles.metaRow}><Text numberOfLines={1} style={[styles.area, { color: colors.mutedText }]}>{exerciseMuscleLabel(exercise)}</Text><View style={[styles.metaDot, { backgroundColor: colors.subtleText }]} /><Text numberOfLines={1} style={[styles.equipment, { color: colors.mutedText }]}>{exercise.equipment}</Text></View></View></Pressable>; }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, position: 'relative', backgroundColor: '#F9F9F7' },
@@ -475,7 +484,7 @@ const styles = StyleSheet.create({
   area: { fontSize: 9, fontWeight: '900', letterSpacing: .8 },
   metaDot: { width: 3, height: 3, borderRadius: 2 },
   equipment: { flexShrink: 1, fontSize: 11, fontWeight: '700' },
-  visitCard: { position: 'absolute', zIndex: 1000, elevation: 20, left: 0, right: 0, bottom: 28, overflow: 'hidden', marginHorizontal: 16, paddingTop: 16, paddingHorizontal: 16, borderRadius: 19, shadowColor: '#0C0E0A', shadowOpacity: .16, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
+  visitCard: { position: 'absolute', zIndex: 1000, elevation: 20, left: 0, right: 0, overflow: 'hidden', marginHorizontal: 24, paddingTop: 16, paddingHorizontal: 16, borderRadius: 19, shadowColor: '#0C0E0A', shadowOpacity: .16, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
   visitHeading: { minHeight: 29, flexDirection: 'row', alignItems: 'center' },
   visitTime: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 },
   visitTimeText: { fontSize: 13, fontVariant: ['tabular-nums'], fontWeight: '900', letterSpacing: .15 },
@@ -486,9 +495,9 @@ const styles = StyleSheet.create({
   missedLegend: { position: 'absolute', top: 4, right: 2, flexDirection: 'row', alignItems: 'center', gap: 5 },
   missedLegendDot: { width: 7, height: 7, borderRadius: 4 },
   missedLegendText: { fontSize: 10, fontWeight: '800' },
-  endVisitButton: { height: 48, marginTop: 12, marginHorizontal: -16, borderTopLeftRadius: 14, borderTopRightRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  endVisitButton: { height: 60, marginTop: 12, marginHorizontal: -16, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   endVisitButtonPressed: { opacity: .78 },
-  endVisitText: { fontSize: 13, fontWeight: '900', letterSpacing: -.15, color: '#151612' },
+  endVisitText: { fontSize: 18, fontWeight: '800', letterSpacing: -.3 },
   favoriteOverlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,.48)' },
   favoriteSheet: { maxHeight: '82%', borderRadius: 24, padding: 22 },
   favoriteTitle: { fontSize: 23, lineHeight: 28, fontWeight: '900', letterSpacing: -.5 },
@@ -505,7 +514,7 @@ const styles = StyleSheet.create({
   favoriteSaveText: { fontSize: 15, fontWeight: '900' },
   favoriteSkip: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   favoriteSkipText: { fontSize: 14, fontWeight: '700' },
-  pressed: { opacity: .78, transform: [{ scale: .985 }] },
+
   empty: { paddingTop: 43, alignItems: 'center' },
   emptyTitle: { fontSize: 18, fontWeight: '900', color: '#1B1C17' },
   emptyCopy: { marginTop: 7, fontSize: 13, fontWeight: '600', color: '#7C8177' },

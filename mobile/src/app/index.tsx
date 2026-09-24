@@ -1,3 +1,4 @@
+import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -5,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Circle } from '@shopify/react-native-skia';
 import { LineGraph, type SelectionDotProps } from 'react-native-graph';
 import Animated, { FadeIn, SlideInDown, useDerivedValue } from 'react-native-reanimated';
-import Svg, { Line, Polyline } from 'react-native-svg';
+import Svg, { Defs, Line, LinearGradient, Polyline, Rect, Stop } from 'react-native-svg';
 import { closeExpiredWorkouts, getActiveWorkout, getWorkoutSplitTrends, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
 import { syncWorkoutData } from '@/lib/cloud-sync';
@@ -68,23 +69,29 @@ export default function HomeScreen() {
 	const trendContext = selectedPoint ? formatWeekOf(selectedPoint.date) : volumeLabel;
 	const trendChange = !selectedPoint && volumeChange !== null ? `${volumeChange >= 0 ? '+' : ''}${volumeChange}% from last week` : null;
 
-	return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-		<View style={styles.header}><Text style={[styles.title, { color: colors.text }]}>Home</Text></View>
-		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} scrollEnabled={friendCount !== 0}>
-			{returnPlan && <Pressable onPress={() => router.push('/start')} style={({ pressed }) => [styles.returnPlanCard, { backgroundColor: colors.accent }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Planned next workout ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}`}><Text style={[styles.returnPlanKicker, { color: colors.accentText }]}>YOUR NEXT WORKOUT</Text><Text style={[styles.returnPlanText, { color: colors.accentText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}</Text></Pressable>}
-			<View style={styles.section}>
-				{activeTrend ? <>
-					<View style={styles.trendSummary}><View style={styles.trendRow}><Text style={[styles.trendValue, { color: colors.text }]}>{formatVolume(displayedPoint?.volume ?? 0)} <Text style={styles.unit}>LB</Text></Text>{trendChange && <Text style={[styles.trendChange, { color: colors.mutedText }]}>{trendChange}</Text>}</View><Text style={[styles.trendContext, { color: colors.mutedText }]}>{trendContext}</Text></View>
-					<VolumeChart points={chartPoints} onSelect={setSelectedPoint} onInteractionEnd={() => setSelectedPoint(null)} colors={colors} />
-					<View style={styles.splitTabs}>
-						{trends.map((trend) => <Pressable key={trend.split} onPress={() => { setSelectedSplit(trend.split); setSelectedPoint(null); }} style={styles.splitTab}><Text style={[styles.splitTabText, { color: colors.subtleText }, activeTrend.split === trend.split && { color: colors.text, textDecorationColor: colors.accent }]}>{trend.split === 'ALL' ? 'ALL' : trend.split[0] + trend.split.slice(1).toLowerCase()}</Text></Pressable>)}
-					</View>
-				</> : <Text style={[styles.emptyTrend, { color: colors.subtleText }]}>LOG A WORKOUT TO SEE YOUR TREND</Text>}
-			</View>
+	return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
+		<View style={[ui.header, { backgroundColor: colors.background }]}><Text style={[ui.title, { color: colors.text }]}>Home</Text></View>
+		<View style={styles.scrollArea}>
+			<ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+				{returnPlan && <Pressable onPress={() => router.push('/start')} style={({ pressed }) => [styles.returnPlanCard, { backgroundColor: colors.accent }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Planned next workout ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}`}><Text style={[styles.returnPlanKicker, { color: colors.accentText }]}>YOUR NEXT WORKOUT</Text><Text style={[styles.returnPlanText, { color: colors.accentText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}</Text></Pressable>}
+				<View style={styles.section}>
+					{activeTrend ? <>
+						<View style={styles.trendSummary}><View style={styles.trendRow}><Text style={[styles.trendValue, { color: colors.text }]}>{formatVolume(displayedPoint?.volume ?? 0)} <Text style={styles.unit}>LB</Text></Text>{trendChange && <Text style={[styles.trendChange, { color: colors.mutedText }]}>{trendChange}</Text>}</View><Text style={[styles.trendContext, { color: colors.mutedText }]}>{trendContext}</Text></View>
+						<VolumeChart points={chartPoints} onSelect={setSelectedPoint} onInteractionEnd={() => setSelectedPoint(null)} colors={colors} />
+						<View style={styles.splitTabs}>
+							{trends.map((trend) => <Pressable key={trend.split} onPress={() => { setSelectedSplit(trend.split); setSelectedPoint(null); }} style={styles.splitTab}><Text style={[styles.splitTabText, { color: colors.subtleText }, activeTrend.split === trend.split && { color: colors.text, textDecorationColor: colors.accent }]}>{trend.split === 'ALL' ? 'ALL' : trend.split[0] + trend.split.slice(1).toLowerCase()}</Text></Pressable>)}
+						</View>
+					</> : <Text style={[styles.emptyTrend, { color: colors.subtleText }]}>LOG A WORKOUT TO SEE YOUR TREND</Text>}
+				</View>
 
-			<MonthActivity visits={visits} colors={colors} />
-			<FriendPersonalRecords records={friendRecords} friendCount={friendCount} />
-		</ScrollView>
+				<MonthActivity visits={visits} colors={colors} />
+				<FriendPersonalRecords records={friendRecords} friendCount={friendCount} />
+			</ScrollView>
+			<Svg width="100%" height={24} style={styles.topFade} pointerEvents="none">
+				<Defs><LinearGradient id="home-top-fade" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={colors.background} stopOpacity="1" /><Stop offset="1" stopColor={colors.background} stopOpacity="0" /></LinearGradient></Defs>
+				<Rect width="100%" height="100%" fill="url(#home-top-fade)" />
+			</Svg>
+		</View>
 	</SafeAreaView>;
 }
 
@@ -181,7 +188,7 @@ function MonthActivity({ visits, colors }: { visits: WorkoutVisitSummary[]; colo
 					<View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
 					<Text style={[styles.sheetTitle, { color: colors.text }]}>Choose a workout</Text>
 					{workoutPicker && <><Text style={[styles.sheetDate, { color: colors.mutedText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(workoutPicker.date)}</Text>
-						{workoutPicker.visits.map((visit) => <Pressable key={visit.workout.id} onPress={() => { setWorkoutPicker(null); router.push({ pathname: '/history-detail', params: { workoutId: visit.workout.id } }); }} style={({ pressed }) => [styles.workoutOption, { borderColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View ${workoutSplitLabel(visit.workout.split)} workout`}>
+						{workoutPicker.visits.map((visit) => <Pressable key={visit.workout.id} onPress={() => { setWorkoutPicker(null); router.push({ pathname: '/history-detail', params: { workoutId: visit.workout.id } }); }} style={({ pressed }) => [styles.workoutOption, { borderColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`View ${workoutSplitLabel(visit.workout.split)} workout`}>
 							<View><Text style={[styles.workoutOptionTitle, { color: colors.text }]}>{workoutSplitLabel(visit.workout.split)} workout</Text><Text style={[styles.workoutOptionMeta, { color: colors.mutedText }]}>{visit.exercises} exercises  ·  {visit.sets} sets  ·  {visit.volume ? `${formatVolume(visit.volume)} lb` : `${visit.reps} reps`}</Text></View>
 						</Pressable>)}</>}
 				</Animated.View>
@@ -194,14 +201,14 @@ function FriendPersonalRecords({ records, friendCount }: { records: FriendPerson
 	const { colors } = useAppearance();
 	const exercises = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
 	if (!records.length && friendCount !== 0) return null;
-	if (friendCount === 0) return <Pressable onPress={() => router.push('/friends')} style={({ pressed }) => [styles.addFriendsCard, { backgroundColor: colors.surface }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Add friends to see updates">
+	if (friendCount === 0) return <Pressable onPress={() => router.push('/friends')} style={({ pressed }) => [styles.addFriendsCard, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Add friends to see updates">
 		<Text style={[styles.addFriendsText, { color: colors.text }]}>Add friends to see updates</Text>
 	</Pressable>;
 	return <View style={styles.friendRecords}>
 		<Text style={[styles.friendRecordsLabel, { color: colors.mutedText }]}>FRIENDS’ RECENT PRS</Text>
-		<View style={[styles.friendRecordList, { borderColor: colors.surfaceStrong }]}>{records.map((record) => {
+		<View style={[styles.friendRecordList, { borderColor: colors.surfaceStrong }]}>{records.slice(0, 3).map((record) => {
 			const initials = record.displayName.trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'L';
-			return <View key={record.id} style={[styles.friendRecord, { borderColor: colors.surfaceStrong }]}>
+			return <View key={`${record.id}:${record.exerciseId}:${record.completedAt}`} style={[styles.friendRecord, { borderColor: colors.surfaceStrong }]}>
 				{record.imageUrl ? <Image source={{ uri: record.imageUrl }} style={styles.friendAvatar} accessibilityLabel={`${record.displayName}'s profile photo`} /> : <View style={[styles.friendAvatar, styles.friendInitials, { backgroundColor: colors.surfaceStrong }]}><Text style={[styles.friendInitialsText, { color: colors.text }]}>{initials}</Text></View>}
 				<View style={styles.friendRecordCopy}><Text style={[styles.friendName, { color: colors.text }]} numberOfLines={1}>{record.displayName}</Text><Text style={[styles.friendExercise, { color: colors.mutedText }]} numberOfLines={1}>{exercises.get(record.exerciseId) ?? 'Exercise'} · {record.reps} reps</Text></View>
 				<Text style={[styles.friendWeight, { color: colors.text }]}>{record.weight} <Text style={styles.friendWeightUnit}>LB</Text></Text>
@@ -219,14 +226,12 @@ function activityColor(sets: number, colors: AppColors) {
 }
 
 const styles = StyleSheet.create({
-	safeArea: { flex: 1, backgroundColor: '#F9F9F7' },
-	header: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, title: { fontSize: 28, fontWeight: '900', letterSpacing: -1.2 },
-	content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 },
+	scrollArea: { flex: 1 }, scrollView: { flex: 1 }, topFade: { position: 'absolute', top: 0, left: 0 },
+	content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 },
 	section: { paddingBottom: 21 }, returnPlanCard: { padding: 18, borderRadius: 18, marginBottom: 22 }, returnPlanKicker: { fontSize: 9, fontWeight: '900', letterSpacing: .9 }, returnPlanText: { marginTop: 5, fontSize: 19, fontWeight: '900', letterSpacing: -.5 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }, sectionNote: { fontSize: 9, fontWeight: '800', letterSpacing: .7, color: '#95998F' },
 	splitTabs: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 3, paddingHorizontal: 4 }, splitTab: { minWidth: 55, alignItems: 'center', paddingVertical: 8 }, splitTabText: { fontSize: 12, fontWeight: '900', letterSpacing: .1, color: '#858980' }, splitTabTextActive: { color: '#1A1B16', textDecorationLine: 'underline', textDecorationColor: '#FFCC4A', textDecorationStyle: 'solid' }, trendSummary: { marginBottom: 5 }, trendRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }, trendValue: { fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -1.45, color: '#1B1C17' }, trendChange: { flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1, textAlign: 'right' }, trendContext: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1 }, activityTitle: { fontSize: 25, lineHeight: 29, fontWeight: '900', letterSpacing: -1.2, color: '#1B1C17' }, emptyTrend: { fontSize: 10, fontWeight: '900', letterSpacing: .8, color: '#969A91', paddingVertical: 38, textAlign: 'center' }, chart: { height: 88 }, graphArea: { height: 88, position: 'relative', backgroundColor: '#F9F9F7' }, lineGraph: { ...StyleSheet.absoluteFill }, unit: { fontSize: 10, letterSpacing: 0 },
 	weekdayLabels: { flexDirection: 'row', gap: 6, marginBottom: 6 }, weekdayLabel: { flex: 1, textAlign: 'center', fontSize: 8, fontWeight: '900', letterSpacing: .35, color: '#969A91' }, calendarGrid: { gap: 6 }, calendarRow: { flexDirection: 'row', gap: 6 }, calendarCell: { flex: 1, aspectRatio: 1, borderRadius: 4 }, calendarCellOutside: { opacity: 0 }, calendarCellPressed: { opacity: .72, transform: [{ scale: .93 }] },
 	sheetOverlay: { flex: 1, justifyContent: 'flex-end' }, sheetBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,.38)' }, workoutSheet: { minHeight: 250, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 28, borderTopLeftRadius: 25, borderTopRightRadius: 25 }, sheetHandle: { width: 37, height: 4, borderRadius: 2, alignSelf: 'center' }, sheetTitle: { marginTop: 22, fontSize: 22, fontWeight: '900', letterSpacing: -.8 }, sheetDate: { marginTop: 3, marginBottom: 13, fontSize: 13, fontWeight: '700' }, workoutOption: { minHeight: 68, borderTopWidth: 1, justifyContent: 'center' }, workoutOptionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 }, workoutOptionMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', letterSpacing: -.1 },
-	pressed: { opacity: .78, transform: [{ scale: .985 }] },
 	friendRecords: { marginTop: 4 }, friendRecordsLabel: { marginBottom: 10, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, friendRecordList: { borderTopWidth: 1 }, friendRecord: { minHeight: 62, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 11 }, friendAvatar: { width: 36, height: 36, borderRadius: 12 }, friendInitials: { alignItems: 'center', justifyContent: 'center' }, friendInitialsText: { fontSize: 12, fontWeight: '900' }, friendRecordCopy: { flex: 1, minWidth: 0 }, friendName: { fontSize: 15, fontWeight: '900', letterSpacing: -.3 }, friendExercise: { marginTop: 1, fontSize: 11, fontWeight: '700' }, friendWeight: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 }, friendWeightUnit: { fontSize: 9, letterSpacing: 0 },
 	addFriendsCard: { marginTop: 4, minHeight: 72, paddingHorizontal: 18, borderRadius: 18, justifyContent: 'center' }, addFriendsText: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 },
 });

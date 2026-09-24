@@ -23,7 +23,20 @@ globalThis.fetch = async (input, init) => {
   sentEmails.push(JSON.parse(init.body));
   return Response.json({ id: crypto.randomUUID() });
 };
-const env = { DB, BETTER_AUTH_URL: 'https://api.lift.test', BETTER_AUTH_SECRETS: `2:${'n'.repeat(40)},1:${'o'.repeat(40)}`, BETTER_AUTH_SECRET: 'legacy-secret-that-is-at-least-32-characters', TRUSTED_ORIGINS: 'https://lift.test,mobile://', RESEND_API_KEY: 're_test', RESEND_FROM_EMAIL: 'Lift <auth@lift.test>' };
+let denySync = false;
+let denyExpensive = false;
+const env = {
+  DB,
+  BETTER_AUTH_URL: 'https://api.lift.test',
+  BETTER_AUTH_SECRETS: `2:${'n'.repeat(40)},1:${'o'.repeat(40)}`,
+  BETTER_AUTH_SECRET: 'legacy-secret-that-is-at-least-32-characters',
+  TRUSTED_ORIGINS: 'https://lift.test,mobile://',
+  RESEND_API_KEY: 're_test',
+  RESEND_FROM_EMAIL: 'Lift <auth@lift.test>',
+  DELETION_RATE_LIMITER: { limit: async () => ({ success: true }) },
+  SYNC_RATE_LIMITER: { limit: async () => ({ success: !denySync }) },
+  EXPENSIVE_RATE_LIMITER: { limit: async () => ({ success: !denyExpensive }) },
+};
 const pending = [];
 let requestNumber = 1;
 const ctx = { waitUntil(promise) { pending.push(promise); } };
@@ -70,6 +83,13 @@ const totp = (uri) => {
   return ((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).toString().padStart(6, '0');
 };
 
+const health = await call('/healthz');
+if (health.status !== 200 || !(await health.json()).ok) throw new Error('Readiness check failed with valid configuration and D1.');
+const publicPage = await call('/delete-account');
+for (const header of ['content-security-policy', 'strict-transport-security', 'x-frame-options', 'x-content-type-options', 'referrer-policy']) if (!publicPage.headers.has(header)) throw new Error(`Security header missing: ${header}`);
+const oversized = await call('/api/auth/sign-up/email', { method: 'POST', body: 'x'.repeat(64 * 1024 + 1) });
+if (oversized.status !== 413) throw new Error('Oversized request body reached the route handler.');
+
 const untrusted = await call('/api/auth/sign-up/email', { method: 'POST', headers: { Origin: 'https://evil.test' }, body: JSON.stringify({ email: 'evil@lift.test', name: 'Evil', password: 'correct horse battery staple' }) });
 if (untrusted.status < 400) throw new Error('Better Auth accepted an untrusted origin.');
 
@@ -93,6 +113,14 @@ oneCookie = cookieFrom(verifyMfa);
 if ((await call('/v1/sync', { headers: { Cookie: 'better-auth.session_token=forged' } })).status !== 401) throw new Error('Forged session cookie was accepted.');
 if ((await call('/v1/sync', { headers: { Cookie: oneCookie } })).status !== 200) throw new Error('Valid Better Auth session was rejected.');
 if ((await call('/v1/sync', { method: 'POST', headers: { Cookie: oneCookie, Origin: 'https://evil.test' }, body: '{}' })).status !== 403) throw new Error('Custom API mutation accepted an untrusted origin.');
+denySync = true;
+const throttledSync = await call('/v1/sync', { headers: { Cookie: oneCookie } });
+denySync = false;
+if (throttledSync.status !== 429 || throttledSync.headers.get('retry-after') !== '60') throw new Error('Sync endpoint was not rate limited.');
+denyExpensive = true;
+const throttledRecommendations = await call('/v1/recommendations', { headers: { Cookie: oneCookie } });
+denyExpensive = false;
+if (throttledRecommendations.status !== 429) throw new Error('Expensive custom endpoint was not rate limited.');
 
 let twoCookie = await createUser('two@lift.test', 'Two');
 const emailCount = sentEmails.length;
@@ -100,13 +128,40 @@ const enableEmailMfa = await call('/api/auth/two-factor/enable', { method: 'POST
 const emailEnrollment = await enableEmailMfa.json();
 if (enableEmailMfa.status !== 200 || emailEnrollment.method !== 'otp' || !(await DB.prepare("SELECT twoFactorEnabled FROM user WHERE email = 'two@lift.test'").first()).twoFactorEnabled || sentEmails.length !== emailCount) throw new Error('Email MFA should enable without sending or verifying an enrollment code.');
 twoCookie = cookieFrom(enableEmailMfa);
+await call('/v1/profile', { method: 'PATCH', headers: { Cookie: twoCookie }, body: JSON.stringify({ displayName: 'Two Lifter' }) });
+const oneId = (await DB.prepare("SELECT id FROM user WHERE email = 'one@lift.test'").first()).id;
+const twoId = (await DB.prepare("SELECT id FROM user WHERE email = 'two@lift.test'").first()).id;
+const oneCode = (await (await call('/v1/friends/code', { headers: { Cookie: oneCookie } })).json()).code;
+const twoCode = (await (await call('/v1/friends/code', { headers: { Cookie: twoCookie } })).json()).code;
+const addedFriend = await call('/v1/friends', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ code: oneCode }) });
+if (addedFriend.status !== 201 || (await addedFriend.json()).friends.count !== 1) throw new Error('Reciprocal friend connection could not be added.');
+await call(`/v1/friends/${oneId}`, { method: 'DELETE', headers: { Cookie: twoCookie } });
+const [oneAfterRemoval, twoAfterRemoval] = await Promise.all([
+  call('/v1/friends', { headers: { Cookie: oneCookie } }).then((response) => response.json()),
+  call('/v1/friends', { headers: { Cookie: twoCookie } }).then((response) => response.json()),
+]);
+if (oneAfterRemoval.friends.count || twoAfterRemoval.friends.count) throw new Error('Removing a friend did not remove both sides of the connection.');
+await call('/v1/friends', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ code: oneCode }) });
+const blockedFriend = await call(`/v1/friends/${oneId}/block`, { method: 'POST', headers: { Cookie: twoCookie } });
+const blockedSummary = await blockedFriend.json();
+if (blockedFriend.status !== 200 || blockedSummary.friends.count || blockedSummary.friends.blocked?.[0]?.id !== oneId) throw new Error('Blocking did not remove and retain the blocked friend.');
+if ((await call('/v1/friends', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ code: twoCode }) })).status !== 409) throw new Error('A blocked connection could be re-added.');
+await call(`/v1/friends/${oneId}/block`, { method: 'DELETE', headers: { Cookie: twoCookie } });
+if ((await call('/v1/friends', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ code: twoCode }) })).status !== 201) throw new Error('Unblocking did not allow the connection to be added again.');
+await DB.prepare("INSERT INTO workouts (user_id, local_id, split, created_at, ended_at) VALUES (?, 'friend-feed', 'push', 1000, 4000)").bind(oneId).run();
+await DB.batch([
+  DB.prepare("INSERT INTO workout_sets (user_id, workout_local_id, set_number, exercise_id, weight, reps, completed_at) VALUES (?, 'friend-feed', 1, 'bench-press', 100, 5, 1000)").bind(oneId),
+  DB.prepare("INSERT INTO workout_sets (user_id, workout_local_id, set_number, exercise_id, weight, reps, completed_at) VALUES (?, 'friend-feed', 2, 'bench-press', 110, 5, 2000)").bind(oneId),
+  DB.prepare("INSERT INTO workout_sets (user_id, workout_local_id, set_number, exercise_id, weight, reps, completed_at) VALUES (?, 'friend-feed', 3, 'bench-press', 120, 3, 3000)").bind(oneId),
+]);
+const friendFeed = await (await call('/v1/friends/prs', { headers: { Cookie: twoCookie } })).json();
+if (friendFeed.prs.length !== 2 || friendFeed.prs[0].weight !== 120 || friendFeed.prs[1].weight !== 110) throw new Error('Friend feed did not return recent PRs in newest-first order.');
 const pushed = await call('/v1/sync', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ batchId: 'account-isolation', changes: [{ entity: 'workout', key: 'private', operation: 'upsert', baseRevision: 0, record: { id: 'private', split: 'push', createdAt: 1, endedAt: null } }] }) });
 if (pushed.status !== 200) throw new Error(`Authenticated account could not write sync data: ${await pushed.text()}`);
 const own = await (await call('/v1/sync', { headers: { Cookie: oneCookie } })).json();
 const other = await (await call('/v1/sync', { headers: { Cookie: twoCookie } })).json();
 if (own.changes?.length !== 1 || other.changes?.length !== 0) throw new Error('Authenticated account data crossed Better Auth users.');
 
-const twoId = (await DB.prepare("SELECT id FROM user WHERE email = 'two@lift.test'").first()).id;
 const deleted = await call('/api/auth/delete-user', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ password: 'correct horse battery staple' }) });
 if (deleted.status !== 200 || await DB.prepare("SELECT 1 FROM user WHERE email = 'two@lift.test'").first() || await DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(twoId).first()) throw new Error('Better Auth account deletion did not remove identity and app data.');
 

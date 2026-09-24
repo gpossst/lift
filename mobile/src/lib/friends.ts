@@ -9,6 +9,7 @@ export type Friend = {
 export type FriendsSummary = {
   count: number;
   users: Friend[];
+  blocked: Friend[];
 };
 
 export type FriendPersonalRecord = Friend & {
@@ -51,4 +52,16 @@ export async function addFriend(code: string): Promise<FriendsSummary> {
     method: 'POST',
     body: JSON.stringify({ code }),
   })).friends;
+}
+
+export async function removeFriend(friendId: string): Promise<FriendsSummary> {
+  return (await request<{ friends: FriendsSummary }>(`/v1/friends/${encodeURIComponent(friendId)}`, { method: 'DELETE' })).friends;
+}
+
+export async function blockFriend(friendId: string): Promise<FriendsSummary> {
+  return (await request<{ friends: FriendsSummary }>(`/v1/friends/${encodeURIComponent(friendId)}/block`, { method: 'POST' })).friends;
+}
+
+export async function unblockFriend(friendId: string): Promise<FriendsSummary> {
+  return (await request<{ friends: FriendsSummary }>(`/v1/friends/${encodeURIComponent(friendId)}/block`, { method: 'DELETE' })).friends;
 }

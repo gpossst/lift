@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const exercises = sqliteTable('exercise_catalog', {
   id: text('id').primaryKey(),
@@ -30,7 +30,7 @@ export const workoutSets = sqliteTable('workout_sets', {
   exerciseId: text('exercise_id').notNull().references(() => exercises.id),
   workoutId: text('workout_id').notNull().references(() => workouts.id),
   setNumber: integer('set_number').notNull(),
-  weight: integer('weight').notNull(),
+  weight: real('weight').notNull(),
   reps: integer('reps').notNull(),
   completedAt: integer('completed_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),

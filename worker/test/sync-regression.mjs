@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 
 const temp = mkdtempSync(join(tmpdir(), 'lift-sync-regression-'));
-const { default: handler, __testDeleteAccount: deleteAccount, __testExportAccount: exportAccount, __testPullSyncChanges: pull, __testPushSyncChunk: push } = await import('../src/index.ts');
+const sentEmails = [];
+globalThis.fetch = async (_input, init) => {
+  sentEmails.push(JSON.parse(init.body));
+  return Response.json({ id: crypto.randomUUID() });
+};
+const { default: handler, __testDeleteAccount: deleteAccount, __testExportAccount: exportAccount, __testProcessDeletionRequests: processDeletionRequests, __testPullSyncChanges: pull, __testPushSyncChunk: push } = await import('../src/index.ts');
 const mf = new Miniflare(convertV4MiniflareOptions({
   compatibilityDate: '2026-08-31',
   modules: true,
@@ -34,13 +39,33 @@ const deletionPage = await handler.fetch(new Request('https://test/delete-accoun
 if (deletionPage.status !== 200 || !(await deletionPage.text()).includes('Delete your Lift account')) throw new Error('Public deletion resource is unavailable.');
 let deletionRequestCount = 0;
 const DELETION_RATE_LIMITER = { limit: async () => ({ success: ++deletionRequestCount <= 5 }) };
-const webRequest = (email = 'OWNER@example.com') => handler.fetch(new Request('https://test/v1/deletion-requests', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.1' }, body: JSON.stringify({ email, confirm: true }) }), { DB, DELETION_RATE_LIMITER });
+const deletionEnv = { DB, DELETION_RATE_LIMITER, BETTER_AUTH_URL: 'https://test', RESEND_API_KEY: 're_test', RESEND_FROM_EMAIL: 'Lift <auth@lift.test>' };
+const webRequest = (email = 'OWNER@example.com') => handler.fetch(new Request('https://test/v1/deletion-requests', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.1' }, body: JSON.stringify({ email, confirm: true }) }), deletionEnv);
 const requested = await (await webRequest()).json();
 const retriedRequest = await (await webRequest()).json();
 if (!requested.requestId || requested.requestId !== retriedRequest.requestId) throw new Error('Web deletion request retry created a duplicate.');
 for (let request = 2; request < 5; request++) await webRequest(`owner${request}@example.com`);
 const throttledRequest = await webRequest('owner5@example.com');
 if (throttledRequest.status !== 429 || (await DB.prepare('SELECT COUNT(*) AS count FROM account_deletion_requests').first()).count !== 4) throw new Error('Web deletion requests were not rate limited before the database write.');
+const verificationToken = sentEmails[1].text.match(/token=([0-9a-f-]+)/i)?.[1];
+if (!verificationToken) throw new Error('Deletion verification email did not include a token.');
+const verificationPage = await handler.fetch(new Request(`https://test/delete-account/verify?token=${verificationToken}`), deletionEnv);
+if (verificationPage.headers.get('cache-control') !== 'no-store') throw new Error('Deletion verification token page was cacheable.');
+await DB.prepare("INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES ('deletion-owner', 'Owner', 'owner@example.com', 1, 1, 1)").run();
+await DB.prepare("INSERT INTO users (id, created_at) VALUES ('deletion-owner', 1)").run();
+const verifiedResponse = await handler.fetch(new Request('https://test/v1/deletion-requests/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: verificationToken }) }), deletionEnv);
+if (verifiedResponse.status !== 200 || (await DB.prepare('SELECT status FROM account_deletion_requests WHERE id = ?').bind(requested.requestId).first()).status !== 'verified') throw new Error('Deletion request email verification failed.');
+await processDeletionRequests(deletionEnv);
+const completedRequest = await DB.prepare('SELECT status FROM account_deletion_requests WHERE id = ?').bind(requested.requestId).first();
+const eventCount = await DB.prepare('SELECT COUNT(*) AS count FROM account_deletion_request_events WHERE request_id = ?').bind(requested.requestId).first();
+if (completedRequest.status !== 'completed' || eventCount.count !== 3 || await DB.prepare("SELECT 1 FROM user WHERE id = 'deletion-owner'").first() || await DB.prepare("SELECT 1 FROM users WHERE id = 'deletion-owner'").first()) throw new Error('Verified deletion request was not processed and audited.');
+await DB.prepare("INSERT INTO account_deletion_requests (id, email, status, verification_token_hash, verification_expires_at, created_at, updated_at) VALUES ('expired-request', 'expired@example.com', 'pending', 'expired', 1, 1, 1)").run();
+await DB.prepare("INSERT INTO account_deletion_request_events (id, request_id, from_status, to_status, actor, reason, created_at) VALUES ('expired-event', 'expired-request', NULL, 'pending', 'requester', 'request_submitted', 1)").run();
+await DB.prepare('UPDATE account_deletion_requests SET terminal_at = 1 WHERE id = ?').bind(requested.requestId).run();
+await processDeletionRequests(deletionEnv, 30 * 24 * 60 * 60 + 2);
+const cleanedRequest = await DB.prepare('SELECT email FROM account_deletion_requests WHERE id = ?').bind(requested.requestId).first();
+const expiredRequest = await DB.prepare("SELECT status FROM account_deletion_requests WHERE id = 'expired-request'").first();
+if (cleanedRequest.email !== null || expiredRequest.status !== 'rejected') throw new Error('Deletion request retention or expiration cleanup failed.');
 await DB.prepare("INSERT INTO users (id, created_at) VALUES ('user', 1)").run();
 const env = { DB };
 const workout = (id, createdAt = 10) => ({ entity: 'workout', key: id, operation: 'upsert', baseRevision: 0, record: { id, split: 'push', createdAt, endedAt: null } });

@@ -1,3 +1,4 @@
+import { ui } from '@/styles/primitives';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, ChevronRight } from 'react-native-feather';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -22,15 +23,15 @@ export default function HistoryDetailScreen() {
   const requiresWeight = new Map(getExercises().map((exercise) => [exercise.id, exerciseRequiresWeight(exercise)]));
   const back = () => router.canGoBack() ? router.back() : router.replace('/history');
 
-  if (!visit) return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}><View style={styles.missing}><Text style={[styles.missingText, { color: colors.text }]}>Workout unavailable</Text><Pressable onPress={back}><Text style={[styles.backText, { color: colors.text }]}>Back to history</Text></Pressable></View></SafeAreaView>;
+  if (!visit) return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}><View style={styles.missing}><Text style={[styles.missingText, { color: colors.text }]}>Workout unavailable</Text><Pressable onPress={back}><Text style={[styles.backText, { color: colors.text }]}>Back to history</Text></Pressable></View></SafeAreaView>;
 
   const date = visit.workout.endedAt ?? visit.workout.createdAt;
   const duration = visit.workout.endedAt ? formatDuration(date.getTime() - visit.workout.createdAt.getTime()) : null;
   const hasRequiredWeight = exercises.some((exercise) => requiresWeight.get(exercise.id) ?? true);
   const split = workoutSplitLabel(visit.workout.split);
 
-  return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-    <View style={styles.header}><Pressable onPress={back} hitSlop={10} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Back to workout history"><ArrowLeft width={22} height={22} color={colors.text} strokeWidth={2.5} /></Pressable></View>
+  return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}>
+    <View style={styles.header}><Pressable onPress={back} hitSlop={10} style={ui.backButton} accessibilityRole="button" accessibilityLabel="Back to workout history"><ArrowLeft width={22} height={22} color={colors.text} strokeWidth={2.5} /></Pressable></View>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
         <View style={[styles.completeMark, { backgroundColor: colors.accent }]}><Text style={[styles.completeMarkText, { color: colors.accentText }]}>✓</Text></View>
@@ -50,8 +51,8 @@ export default function HistoryDetailScreen() {
           const weighted = required || exercise.sets.some((set) => set.weight > 0);
           return <View key={exercise.id} style={[styles.exercise, { borderColor: colors.surfaceStrong, borderBottomWidth: index === exercises.length - 1 ? 0 : 1 }]}>
             <Pressable onPress={() => router.navigate({ pathname: '/history', params: { exerciseId: exercise.id } })} style={({ pressed }) => [styles.exerciseHeading, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View progress for ${exercise.name}`}>
-              <Text style={[styles.exerciseIndex, { color: colors.subtleText }]}>{String(index + 1).padStart(2, '0')}</Text>
-              <View style={styles.exerciseCopy}><Text style={[styles.exerciseName, { color: colors.text }]} numberOfLines={2}>{exercise.name}</Text><Text style={[styles.exerciseDetail, { color: colors.mutedText }]}>{exercise.sets.length} {exercise.sets.length === 1 ? 'set' : 'sets'}</Text></View>
+              <Text style={[ui.listIndex, { color: colors.subtleText }]}>{String(index + 1).padStart(2, '0')}</Text>
+              <View style={styles.exerciseCopy}><Text style={[ui.listName, { color: colors.text }]} numberOfLines={2}>{exercise.name}</Text><Text style={[ui.listMeta, { color: colors.mutedText }]}>{exercise.sets.length} {exercise.sets.length === 1 ? 'set' : 'sets'}</Text></View>
               <ChevronRight width={18} height={18} color={colors.subtleText} strokeWidth={2.2} />
             </Pressable>
             <View style={styles.sets}>{exercise.sets.map((set) => <View key={set.number} style={styles.setRow}>
@@ -66,13 +67,11 @@ export default function HistoryDetailScreen() {
 }
 
 function Stat({ label, value, colors }: { label: string; value: string; colors: ReturnType<typeof useAppearance>['colors'] }) {
-  return <View style={[styles.stat, { backgroundColor: colors.surface }]}><Text style={[styles.statValue, { color: colors.text }]}>{value}</Text><Text style={[styles.statLabel, { color: colors.mutedText }]}>{label}</Text></View>;
+  return <View style={[ui.stat, { backgroundColor: colors.surface }]}><Text style={[ui.statValue, { color: colors.text }]}>{value}</Text><Text style={[ui.statLabel, { color: colors.mutedText }]}>{label}</Text></View>;
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
   header: { height: 52, paddingHorizontal: 24, justifyContent: 'center' },
-  backButton: { width: 38, height: 38, marginLeft: -9, alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 },
   hero: { alignItems: 'center', paddingTop: 6, paddingBottom: 26 },
   completeMark: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
@@ -81,17 +80,12 @@ const styles = StyleSheet.create({
   title: { marginTop: 5, fontSize: 38, lineHeight: 42, fontWeight: '900', letterSpacing: -1.8, textAlign: 'center' },
   date: { marginTop: 8, fontSize: 14, fontWeight: '700', letterSpacing: -.15, textAlign: 'center' },
   totals: { flexDirection: 'row', gap: 8 },
-  stat: { flex: 1, minHeight: 82, borderRadius: 16, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  statValue: { fontSize: 18, lineHeight: 22, fontWeight: '900', letterSpacing: -.7 },
   statLabel: { marginTop: 3, fontSize: 10, fontWeight: '800', textAlign: 'center' },
   training: { marginTop: 28 },
   sectionTitle: { marginBottom: 8, fontSize: 10, fontWeight: '900', letterSpacing: .8, textTransform: 'uppercase' },
   exercise: { paddingBottom: 16, marginBottom: 10 },
   exerciseHeading: { minHeight: 56, flexDirection: 'row', alignItems: 'center' },
-  exerciseIndex: { width: 31, fontSize: 11, fontWeight: '900', letterSpacing: .5 },
   exerciseCopy: { flex: 1, minWidth: 0, paddingRight: 8 },
-  exerciseName: { fontSize: 15, fontWeight: '800', letterSpacing: -.35 },
-  exerciseDetail: { marginTop: 2, fontSize: 12, fontWeight: '700' },
   sets: { marginLeft: 31 },
   setRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   setLabel: { fontSize: 12, fontWeight: '700' },

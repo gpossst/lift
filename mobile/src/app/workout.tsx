@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import {
   deleteWorkoutSet,
@@ -58,6 +58,7 @@ function readSupersetIds(value: string | string[] | undefined, currentExerciseId
 
 export default function WorkoutScreen() {
 	const { colors, restTimerEnabled, useRecommendedRestTimer, restTimerSeconds } = useAppearance();
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     id: string;
     name: string;
@@ -165,14 +166,13 @@ export default function WorkoutScreen() {
     const timer = setTimeout(() => {
       const nextHistory = getWorkoutHistory(exerciseId);
       const currentSets = nextHistory.filter((set) => set.workoutId === workoutId);
-      const firstSet = currentSets.find((set) => set.setNumber === 1);
       const lastSet = currentSets.at(-1);
       const continueAddedWeight = !requiresWeight && Boolean(lastSet?.weight);
       setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
       setHistory(nextHistory);
       setIncludesAddedWeight(continueAddedWeight);
-      setWeight(String((requiresWeight ? firstSet : continueAddedWeight ? lastSet : undefined)?.weight ?? ""));
-      setReps(firstSet ? String(firstSet.reps) : "");
+      setWeight(String((requiresWeight || continueAddedWeight ? lastSet : undefined)?.weight ?? ""));
+      setReps(lastSet ? String(lastSet.reps) : "");
       setField(requiresWeight || continueAddedWeight ? "weight" : "reps");
       setSelectedSetIndex(null);
     }, 0);
@@ -183,8 +183,10 @@ export default function WorkoutScreen() {
     const next = (v: string) =>
       key === "backspace"
         ? v.slice(0, -1)
-        : key === "." && (field === "reps" || v.includes("."))
+        : key === "." && (field === "reps" || v.includes(".") || v.split(".")[1]?.length >= 2)
           ? v
+          : field === "weight" && v.includes(".") && v.split(".")[1].length >= 2
+            ? v
           : v === "0"
             ? key
             : v + key;
@@ -199,19 +201,18 @@ export default function WorkoutScreen() {
         exerciseId,
         workoutId,
         setNumber,
-        weight: usesWeight ? Math.round(Number(weight)) : 0,
+        weight: usesWeight ? Number(weight) : 0,
         reps: Math.round(Number(reps)),
         completedAt: new Date(),
       });
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       setSetNumber((v) => v + 1);
       const nextHistory = getWorkoutHistory(exerciseId);
       const currentSets = nextHistory.filter((set) => set.workoutId === workoutId);
-      const firstSet = currentSets.find((set) => set.setNumber === 1);
       const lastSet = currentSets.at(-1);
       setHistory(nextHistory);
-      setWeight(String((requiresWeight ? firstSet : lastSet?.weight ? lastSet : undefined)?.weight ?? ""));
-      setReps(String(firstSet?.reps ?? ""));
+      setWeight(String((requiresWeight || lastSet?.weight ? lastSet : undefined)?.weight ?? ""));
+      setReps(String(lastSet?.reps ?? ""));
       setField(usesWeight ? "weight" : "reps");
       if (supersetExercises.length > 1) {
         const currentIndex = supersetExercises.findIndex((exercise) => exercise.id === exerciseId);
@@ -500,8 +501,8 @@ export default function WorkoutScreen() {
         </Pressable>
       </View>
       <Modal visible={restEndsAt !== null} animationType="fade" presentationStyle="fullScreen" onRequestClose={skipRest}>
-        <SafeAreaView style={[styles.restModal, { backgroundColor: colors.background }]}>
-          <View style={styles.restScreen}>
+        <SafeAreaView edges={["top", "left", "right"]} style={[styles.restModal, { backgroundColor: colors.background }]}>
+          <View style={[styles.restScreen, { paddingBottom: bottomInset + 15 }]}>
             <Text style={[styles.restTitle, { color: colors.text }]}>Rest Timer</Text>
             <View style={styles.restBody}>
               <View style={styles.restDial}>
@@ -833,7 +834,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   restModal: { flex: 1 },
-  restScreen: { flex: 1, paddingHorizontal: 24, paddingTop: 18, paddingBottom: 16, alignItems: "center" },
+  restScreen: { flex: 1, paddingHorizontal: 24, paddingTop: 18, alignItems: "center" },
   restTitle: { fontSize: 28, fontWeight: "900", letterSpacing: -1 },
   restBody: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
   restDial: { width: 310, height: 310, alignItems: "center", justifyContent: "center" },

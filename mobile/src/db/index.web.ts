@@ -518,14 +518,15 @@ function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: stri
   enqueueCloudSync(entity, key, 'delete');
 }
 
-export function prepareCloudSyncForUser(userId: string) {
+export function prepareCloudSyncForUser(userId: string): boolean {
   const activeUserId = storage?.getItem(activeUserKey) ?? storage?.getItem(legacyActiveUserKey);
   if (!activeUserId) {
     storage?.setItem(activeUserKey, userId);
     if (readWorkouts().some((workout) => !workout.id.startsWith(demoWorkoutIdPrefix)) || readCustomSplits().length) storage?.setItem(pendingSyncKey, '1');
-    return;
+    return true;
   }
-  if (activeUserId === userId) { storage?.removeItem(legacyActiveUserKey); return; }
+  if (activeUserId === userId) { storage?.removeItem(legacyActiveUserKey); return true; }
+  if (hasPendingCloudSync()) return false;
   write([]);
   writeWorkouts([]);
   writeRatings({});
@@ -539,6 +540,7 @@ export function prepareCloudSyncForUser(userId: string) {
   storage?.setItem(activeUserKey, userId);
   storage?.removeItem(legacyActiveUserKey);
   syncDemoWorkoutData();
+  return true;
 }
 
 /** Remove account-owned rows and sync metadata without touching the exercise catalog. */

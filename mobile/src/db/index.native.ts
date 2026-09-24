@@ -88,7 +88,7 @@ function migrateDatabase() {
         exercise_id TEXT NOT NULL REFERENCES exercise_catalog(id),
         workout_id TEXT NOT NULL REFERENCES workouts(id),
         set_number INTEGER NOT NULL,
-        weight INTEGER NOT NULL,
+        weight REAL NOT NULL,
         reps INTEGER NOT NULL,
         completed_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL DEFAULT 0
@@ -730,22 +730,24 @@ function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: stri
   enqueueCloudSync(entity, key, 'delete');
 }
 
-/** Bind this device cache to the active account. On a real account switch,
- * old cached rows are discarded; the acknowledged account copy remains remote. */
-export function prepareCloudSyncForUser(userId: string) {
+/** Bind this device cache to the active account. Refuse an account switch while
+ * local mutations are pending so an offline workout cannot be discarded. */
+export function prepareCloudSyncForUser(userId: string): boolean {
   const activeUserId = syncState('active_user_id') ?? syncState('active_clerk_user_id');
   if (!activeUserId) {
     setSyncState('active_user_id', userId);
     if (sqlite.getFirstSync<{ count: number }>('SELECT COUNT(*) AS count FROM workouts WHERE id NOT LIKE ?', [`${demoWorkoutIdPrefix}%`])?.count || sqlite.getFirstSync<{ count: number }>('SELECT COUNT(*) AS count FROM custom_splits')?.count) setSyncState('cloud_sync_needs_seed', '1');
-    return;
+    return true;
   }
   if (activeUserId === userId) {
     sqlite.runSync("DELETE FROM sync_state WHERE key = 'active_clerk_user_id'");
-    return;
+    return true;
   }
+  if (hasPendingCloudSync()) return false;
   sqlite.execSync(`DELETE FROM recommendation_feedback; DELETE FROM workout_muscle_ratings; DELETE FROM workout_sets; DELETE FROM workouts WHERE id NOT LIKE '${demoWorkoutIdPrefix}%'; DELETE FROM custom_splits; DELETE FROM sync_tombstones; DELETE FROM sync_outbox; DELETE FROM sync_versions; DELETE FROM sync_state WHERE key LIKE 'cloud_sync_%';`);
   setSyncState('active_user_id', userId);
   sqlite.runSync("DELETE FROM sync_state WHERE key = 'active_clerk_user_id'");
+  return true;
 }
 
 /** Remove account-owned rows and sync metadata without touching the exercise catalog. */

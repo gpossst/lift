@@ -1,8 +1,10 @@
-import { createAuth, type AuthEnv } from './auth';
+import { createAuth, sendEmail, type AuthEnv } from './auth';
 
 export interface Env extends AuthEnv {
   DB: D1Database;
   DELETION_RATE_LIMITER: RateLimit;
+  SYNC_RATE_LIMITER: RateLimit;
+  EXPENSIVE_RATE_LIMITER: RateLimit;
   /** Address shown on the public support and privacy pages. */
   SUPPORT_EMAIL?: string;
 }
@@ -38,17 +40,41 @@ const feedbackKey = (feedback: Pick<SyncFeedback, 'workoutId' | 'exerciseId' | '
 const customSplitId = (id: string) => /^custom:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 const splitMuscles = new Set(['abdominals', 'abductors', 'adductors', 'biceps', 'calves', 'chest', 'forearms', 'glutes', 'hamstrings', 'lats', 'lower back', 'middle back', 'neck', 'quadriceps', 'shoulders', 'traps', 'triceps']);
 const maxSyncChunk = 3; // Three eight-muscle sets use 40 batch statements (42 for the request with user setup).
+const maxRequestBodyBytes = 64 * 1024;
+const deletionVerificationSeconds = 24 * 60 * 60;
+const deletionRetentionSeconds = 30 * 24 * 60 * 60;
 const supportEmail = (env: Env) => env.SUPPORT_EMAIL?.trim() || 'support@liftfitness.app';
 
-const page = (title: string, body: string) => new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Lift</title><style>body{font:16px/1.55 system-ui,sans-serif;max-width:720px;margin:auto;padding:32px 20px;color:#1b1c17;background:#f9f9f7}h1{font-size:2.4rem;line-height:1.05}h2{margin-top:2rem}a{color:#0969da}nav{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:40px}label{display:block;font-weight:700;margin:18px 0 6px}input,button{box-sizing:border-box;font:inherit;padding:12px;border:1px solid #aaa;border-radius:10px}input{width:100%}button{margin-top:16px;background:#1b1c17;color:white;cursor:pointer}.note{color:#5f635b}.error{color:#b42318}</style></head><body><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="/delete-account">Delete account</a></nav>${body}</body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } });
+const page = (title: string, body: string) => {
+  const nonce = crypto.randomUUID();
+  const content = body.replaceAll('<script>', `<script nonce="${nonce}">`);
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Lift</title><style nonce="${nonce}">body{font:16px/1.55 system-ui,sans-serif;max-width:720px;margin:auto;padding:32px 20px;color:#1b1c17;background:#f9f9f7}h1{font-size:2.4rem;line-height:1.05}h2{margin-top:2rem}a{color:#0969da}nav{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:40px}label{display:block;font-weight:700;margin:18px 0 6px}input,button{box-sizing:border-box;font:inherit;padding:12px;border:1px solid #aaa;border-radius:10px}input{width:100%}label input{width:auto}button{margin-top:16px;background:#1b1c17;color:white;cursor:pointer}.note{color:#5f635b}.error{color:#b42318}</style></head><body><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="/delete-account">Delete account</a></nav>${content}</body></html>`, { headers: {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'public, max-age=300',
+    'Content-Security-Policy': `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+  } });
+};
+
+const noStorePage = (title: string, body: string) => {
+  const response = page(title, body);
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-store');
+  return new Response(response.body, { status: response.status, headers });
+};
 
 function publicPage(pathname: string, env: Env) {
   const email = supportEmail(env);
   if (pathname === '/privacy') return page('Privacy policy', `<h1>Privacy policy</h1><p class="note">Effective September 23, 2026</p><h2>Data Lift handles</h2><p>Lift stores account and profile information, password hashes, verification and MFA records, workout history, recommendation preferences and feedback, and friend connections.</p><h2>Use and sharing</h2><p>We use this data to provide authentication, sync, progress, recommendations, friend features, security, and support. Cloudflare hosts account and synchronized app data, and Resend delivers transactional account email. We do not sell personal data.</p><h2>Export and retention</h2><p>You can export or delete your Lift data from Profile. In-app deletion removes the identity and synchronized app data. Limited security records and encrypted backups may remain for up to 30 additional days unless law requires longer retention.</p><h2>Your choices</h2><p>Similar-user comparisons are off by default. Contact <a href="mailto:${email}">${email}</a> for access, correction, privacy, or support requests.</p><h2>Fitness disclaimer</h2><p>Lift provides general fitness tracking and suggestions, not medical advice, diagnosis, or treatment.</p>`);
   if (pathname === '/terms') return page('Terms', `<h1>Terms of use</h1><p class="note">Effective September 22, 2026</p><p>Lift is a personal fitness tracking tool. You are responsible for your account, the accuracy of information you enter, and exercising within your abilities. Do not misuse the service, attempt unauthorized access, or use it to harm others.</p><h2>No medical advice</h2><p>Lift's tracking, comparisons, and recommendations are informational fitness features only. They are not medical advice, diagnosis, treatment, or a substitute for a qualified professional. Stop activity and seek care for pain or concerning symptoms.</p><h2>Your content and availability</h2><p>You keep ownership of data you enter and allow Lift to process it to operate the service. Features may change, and the service is provided without a guarantee that it will always be available or error-free. You can export or delete your data from Profile.</p><h2>Contact</h2><p>Questions: <a href="mailto:${email}">${email}</a>.</p>`);
   if (pathname === '/support') return page('Support', `<h1>Lift support</h1><p>For account, privacy, export, or technical help, email <a href="mailto:${email}">${email}</a>.</p><p>Include the email address on your Lift account, but never send your password or verification codes.</p><p>You can also <a href="/delete-account">request account deletion</a>.</p>`);
-  if (pathname === '/delete-account') return page('Delete account', `<h1>Delete your Lift account</h1><p>The fastest option is <strong>Lift → Settings → Profile → Delete account</strong>. It deletes your identity, profile, workouts, recommendation data, friend connections, and local account cache.</p><p>If you cannot access the app, submit this request. We will verify ownership using the account email and complete deletion within 30 days.</p><form id="request"><label for="email">Lift account email</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="254"><label><input name="confirm" type="checkbox" required style="width:auto"> I request permanent deletion of my Lift account and data.</label><button type="submit">Request deletion</button><p id="result" role="status"></p></form><script>document.querySelector('#request').addEventListener('submit',async(e)=>{e.preventDefault();const f=e.currentTarget,r=document.querySelector('#result');r.textContent='Submitting…';try{const x=await fetch('/v1/deletion-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.email.value,confirm:f.confirm.checked})}),j=await x.json();if(!x.ok)throw Error(j.error||'Request failed.');r.textContent='Request received. Reference: '+j.requestId;f.reset()}catch(x){r.textContent=x.message;r.className='error'}})</script><p>Need help? <a href="mailto:${email}">${email}</a>.</p>`);
+  if (pathname === '/delete-account') return page('Delete account', `<h1>Delete your Lift account</h1><p>The fastest option is <strong>Lift → Settings → Profile → Delete account</strong>. It deletes your identity, profile, workouts, recommendation data, friend connections, and local account cache.</p><p>If you cannot access the app, submit this request. We will verify ownership using the account email and complete deletion within 30 days.</p><form id="request"><label for="email">Lift account email</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="254"><label><input name="confirm" type="checkbox" required> I request permanent deletion of my Lift account and data.</label><button type="submit">Request deletion</button><p id="result" role="status"></p></form><script>document.querySelector('#request').addEventListener('submit',async(e)=>{e.preventDefault();const f=e.currentTarget,r=document.querySelector('#result');r.textContent='Submitting…';try{const x=await fetch('/v1/deletion-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.email.value,confirm:f.confirm.checked})}),j=await x.json();if(!x.ok)throw Error(j.error||'Request failed.');r.textContent='Request received. Reference: '+j.requestId;f.reset()}catch(x){r.textContent=x.message;r.className='error'}})</script><p>Need help? <a href="mailto:${email}">${email}</a>.</p>`);
   return null;
+}
+
+function deletionVerificationPage(url: URL) {
+  const token = url.searchParams.get('token') ?? '';
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return noStorePage('Invalid deletion link', '<h1>Invalid deletion link</h1><p>This verification link is invalid. Submit a new deletion request.</p>');
+  return noStorePage('Verify account deletion', `<h1>Verify account deletion</h1><p>Confirm that you want Lift to permanently delete the account associated with this email address.</p><form method="post" action="/v1/deletion-requests/verify"><input type="hidden" name="token" value="${token}"><button type="submit">Verify deletion request</button></form>`);
 }
 
 async function ensureUser(env: Env, user: AuthenticatedUser) {
@@ -89,7 +115,7 @@ function validPayload(value: unknown): value is SyncPayload {
   const seenSets = new Set<string>();
   if (!payload.sets.every((set) => {
     const key = set && typeof set === 'object' ? setKey(set) : '';
-    const okay = !!set && typeof set === 'object' && workoutIds.has(set.workoutId) && isString(set.workoutId) && isString(set.exerciseId) && Number.isInteger(set.setNumber) && set.setNumber > 0 && set.setNumber <= 100 && typeof set.weight === 'number' && Number.isFinite(set.weight) && set.weight >= 0 && set.weight <= 10_000 && Number.isInteger(set.reps) && set.reps > 0 && set.reps <= 10_000 && isTimestamp(set.completedAt) && Array.isArray(set.muscles) && set.muscles.length <= 8 && set.muscles.every((muscle) => isString(muscle, 80)) && isVersion(set.updatedAt, set.completedAt) && !seenSets.has(key);
+    const okay = !!set && typeof set === 'object' && workoutIds.has(set.workoutId) && isString(set.workoutId) && isString(set.exerciseId) && Number.isInteger(set.setNumber) && set.setNumber > 0 && set.setNumber <= 100 && typeof set.weight === 'number' && Number.isFinite(set.weight) && set.weight >= 0 && set.weight <= 10_000 && Math.abs(set.weight * 100 - Math.round(set.weight * 100)) < 1e-8 && Number.isInteger(set.reps) && set.reps > 0 && set.reps <= 10_000 && isTimestamp(set.completedAt) && Array.isArray(set.muscles) && set.muscles.length <= 8 && set.muscles.every((muscle) => isString(muscle, 80)) && isVersion(set.updatedAt, set.completedAt) && !seenSets.has(key);
     seenSets.add(key); return okay;
   })) return false;
   const seenRatings = new Set<string>();
@@ -364,8 +390,11 @@ async function hasChosenDisplayName(env: Env, userId: string) {
 }
 
 async function friends(env: Env, userId: string) {
-  const rows = await env.DB.prepare(`SELECT u.id, i.display_name AS displayName, i.image_url AS imageUrl FROM friendships f JOIN users u ON u.id = f.friend_id JOIN user_info i ON i.user_id = u.id WHERE f.user_id = ? ORDER BY f.created_at DESC`).bind(userId).all<{ id: string; displayName: string; imageUrl: string | null }>();
-  return { count: rows.results.length, users: rows.results };
+  const [rows, blocks] = await Promise.all([
+    env.DB.prepare(`SELECT u.id, i.display_name AS displayName, i.image_url AS imageUrl FROM friendships f JOIN users u ON u.id = f.friend_id JOIN user_info i ON i.user_id = u.id WHERE f.user_id = ? ORDER BY f.created_at DESC`).bind(userId).all<{ id: string; displayName: string; imageUrl: string | null }>(),
+    env.DB.prepare(`SELECT u.id, i.display_name AS displayName, i.image_url AS imageUrl FROM friend_blocks b JOIN users u ON u.id = b.blocked_id JOIN user_info i ON i.user_id = u.id WHERE b.blocker_id = ? ORDER BY b.created_at DESC`).bind(userId).all<{ id: string; displayName: string; imageUrl: string | null }>(),
+  ]);
+  return { count: rows.results.length, users: rows.results, blocked: blocks.results };
 }
 
 async function profile(env: Env, userId: string) {
@@ -450,7 +479,7 @@ async function saveOnboarding(request: Request, env: Env, userId: string) {
   return json({ ok: true }, 201);
 }
 
-/** The latest new max-weight set for each friend. Workout details stay private. */
+/** Recent new max-weight sets from friends. Workout details stay private. */
 async function friendPersonalRecords(env: Env, userId: string) {
   const rows = await env.DB.prepare(`
     WITH ranked_sets AS (
@@ -465,12 +494,10 @@ async function friendPersonalRecords(env: Env, userId: string) {
       JOIN user_info i ON i.user_id = f.friend_id
       JOIN workout_sets ws ON ws.user_id = f.friend_id
       WHERE f.user_id = ?
-    ), recent_records AS (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY friendId ORDER BY completedAt DESC, weight DESC) AS friendRank
-      FROM ranked_sets WHERE previousBest IS NOT NULL AND weight > previousBest
     )
     SELECT friendId AS id, displayName, imageUrl, exerciseId, weight, reps, completedAt
-    FROM recent_records WHERE friendRank = 1 ORDER BY completedAt DESC
+    FROM ranked_sets WHERE previousBest IS NOT NULL AND weight > previousBest
+    ORDER BY completedAt DESC, weight DESC LIMIT 50
   `).bind(userId).all<{ id: string; displayName: string; imageUrl: string | null; exerciseId: string; weight: number; reps: number; completedAt: number }>();
   return rows.results;
 }
@@ -483,9 +510,36 @@ async function addFriend(request: Request, env: Env, userId: string) {
   const match = await env.DB.prepare('SELECT u.id FROM users u JOIN user_info i ON i.user_id = u.id WHERE u.friend_code = ?').bind(code).first<{ id: string }>();
   if (!match) return json({ error: 'That friend code was not found.' }, 404);
   if (match.id === userId) return json({ error: 'You cannot add your own code.' }, 400);
+  const blocked = await env.DB.prepare('SELECT 1 FROM friend_blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)').bind(userId, match.id, match.id, userId).first();
+  if (blocked) return json({ error: 'This connection cannot be added.' }, 409);
   const stamp = now();
   await env.DB.batch([env.DB.prepare('INSERT OR IGNORE INTO friendships (user_id, friend_id, created_at) VALUES (?, ?, ?)').bind(userId, match.id, stamp), env.DB.prepare('INSERT OR IGNORE INTO friendships (user_id, friend_id, created_at) VALUES (?, ?, ?)').bind(match.id, userId, stamp)]);
   return json({ friends: await friends(env, userId) }, 201);
+}
+
+async function removeFriend(env: Env, userId: string, friendId: string) {
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM friendships WHERE user_id = ? AND friend_id = ?').bind(userId, friendId),
+    env.DB.prepare('DELETE FROM friendships WHERE user_id = ? AND friend_id = ?').bind(friendId, userId),
+  ]);
+  return json({ friends: await friends(env, userId) });
+}
+
+async function blockFriend(env: Env, userId: string, friendId: string) {
+  const connection = await env.DB.prepare('SELECT 1 FROM friendships WHERE user_id = ? AND friend_id = ?').bind(userId, friendId).first();
+  if (!connection) return json({ error: 'Friend not found.' }, 404);
+  const stamp = now();
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR IGNORE INTO friend_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)').bind(userId, friendId, stamp),
+    env.DB.prepare('DELETE FROM friendships WHERE user_id = ? AND friend_id = ?').bind(userId, friendId),
+    env.DB.prepare('DELETE FROM friendships WHERE user_id = ? AND friend_id = ?').bind(friendId, userId),
+  ]);
+  return json({ friends: await friends(env, userId) });
+}
+
+async function unblockFriend(env: Env, userId: string, friendId: string) {
+  await env.DB.prepare('DELETE FROM friend_blocks WHERE blocker_id = ? AND blocked_id = ?').bind(userId, friendId).run();
+  return json({ friends: await friends(env, userId) });
 }
 
 async function requestAccountDeletion(request: Request, env: Env) {
@@ -495,11 +549,77 @@ async function requestAccountDeletion(request: Request, env: Env) {
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
   if (body?.confirm !== true || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return json({ error: 'Enter your account email and confirm deletion.' }, 400);
   const id = crypto.randomUUID();
+  const token = crypto.randomUUID();
+  const tokenHash = await sha256(token);
   const stamp = now();
-  await env.DB.prepare(`INSERT INTO account_deletion_requests (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)
-    ON CONFLICT DO UPDATE SET updated_at = excluded.updated_at`).bind(id, email, stamp, stamp).run();
-  const row = await env.DB.prepare("SELECT id FROM account_deletion_requests WHERE email = ? AND status IN ('pending', 'verified')").bind(email).first<{ id: string }>();
-  return json({ requestId: row?.id ?? id }, 202);
+  const row = await env.DB.prepare(`INSERT INTO account_deletion_requests
+      (id, email, verification_token_hash, verification_expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT DO UPDATE SET verification_token_hash = excluded.verification_token_hash,
+      verification_expires_at = excluded.verification_expires_at, updated_at = excluded.updated_at
+      WHERE account_deletion_requests.status = 'pending'
+    RETURNING id, status`).bind(id, email, tokenHash, stamp + deletionVerificationSeconds, stamp, stamp).first<{ id: string; status: 'pending' | 'verified' }>();
+  const active = row ?? await env.DB.prepare("SELECT id, status FROM account_deletion_requests WHERE email = ? AND status IN ('pending', 'verified')").bind(email).first<{ id: string; status: 'pending' | 'verified' }>();
+  const requestId = active?.id ?? id;
+  await env.DB.prepare(`INSERT OR IGNORE INTO account_deletion_request_events
+    (id, request_id, from_status, to_status, actor, reason, created_at) VALUES (?, ?, NULL, 'pending', 'requester', 'request_submitted', ?)`)
+    .bind(crypto.randomUUID(), requestId, stamp).run();
+  if (active?.status === 'pending') {
+    const baseUrl = env.BETTER_AUTH_URL?.trim() || new URL(request.url).origin;
+    const verificationUrl = `${baseUrl}/delete-account/verify?token=${encodeURIComponent(token)}`;
+    await sendEmail(env, email, 'Verify your Lift account deletion request', 'Confirm ownership of this email address and your request to permanently delete the associated Lift account. This link expires in 24 hours.', { label: 'Verify deletion request', url: verificationUrl });
+  }
+  return json({ requestId }, 202);
+}
+
+async function verifyAccountDeletion(request: Request, env: Env) {
+  const contentType = request.headers.get('Content-Type') ?? '';
+  const body = contentType.includes('application/json')
+    ? await request.json().catch(() => null) as { token?: unknown } | null
+    : Object.fromEntries(new URLSearchParams(await request.text()));
+  const token = typeof body?.token === 'string' ? body.token : '';
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return noStorePage('Invalid deletion link', '<h1>Invalid deletion link</h1><p>This verification link is invalid or expired. Submit a new deletion request.</p>');
+  const stamp = now();
+  const row = await env.DB.prepare(`SELECT id FROM account_deletion_requests
+    WHERE status = 'pending' AND verification_token_hash = ? AND verification_expires_at > ?`)
+    .bind(await sha256(token), stamp).first<{ id: string }>();
+  if (!row) return noStorePage('Expired deletion link', '<h1>Deletion link expired</h1><p>This link is invalid or expired. Submit a new deletion request.</p>');
+  await env.DB.batch([
+    env.DB.prepare("UPDATE account_deletion_requests SET status = 'verified', verification_token_hash = NULL, verification_expires_at = NULL, updated_at = ? WHERE id = ? AND status = 'pending'").bind(stamp, row.id),
+    env.DB.prepare(`INSERT OR IGNORE INTO account_deletion_request_events
+      (id, request_id, from_status, to_status, actor, reason, created_at) VALUES (?, ?, 'pending', 'verified', 'requester', 'email_verified', ?)`)
+      .bind(crypto.randomUUID(), row.id, stamp),
+  ]);
+  return noStorePage('Deletion request verified', '<h1>Deletion request verified</h1><p>Your request is queued for processing. Lift will remove the account and associated data.</p>');
+}
+
+async function transitionDeletionRequest(env: Env, id: string, from: 'pending' | 'verified', to: 'completed' | 'rejected', actor: string, reason: string, stamp: number, deleteUserId?: string) {
+  const statements = [];
+  if (deleteUserId) statements.push(env.DB.prepare('DELETE FROM user WHERE id = ?').bind(deleteUserId));
+  statements.push(
+    env.DB.prepare('UPDATE account_deletion_requests SET status = ?, terminal_at = ?, updated_at = ?, verification_token_hash = NULL, verification_expires_at = NULL WHERE id = ? AND status = ?').bind(to, stamp, stamp, id, from),
+    env.DB.prepare(`INSERT OR IGNORE INTO account_deletion_request_events
+      (id, request_id, from_status, to_status, actor, reason, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM account_deletion_requests WHERE id = ? AND status = ? AND terminal_at = ?
+      )`).bind(crypto.randomUUID(), id, from, to, actor, reason, stamp, id, to, stamp),
+  );
+  await env.DB.batch(statements);
+}
+
+async function processDeletionRequests(env: Env, stamp = now()) {
+  const expired = await env.DB.prepare("SELECT id FROM account_deletion_requests WHERE status = 'pending' AND verification_expires_at <= ? LIMIT 100").bind(stamp).all<{ id: string }>();
+  for (const request of expired.results) await transitionDeletionRequest(env, request.id, 'pending', 'rejected', 'scheduler', 'verification_expired', stamp);
+
+  const verified = await env.DB.prepare("SELECT id, email FROM account_deletion_requests WHERE status = 'verified' ORDER BY updated_at LIMIT 100").all<{ id: string; email: string }>();
+  for (const request of verified.results) {
+    const user = await env.DB.prepare('SELECT id FROM user WHERE lower(email) = ?').bind(request.email.toLowerCase()).first<{ id: string }>();
+    if (user) await transitionDeletionRequest(env, request.id, 'verified', 'completed', 'scheduler', 'account_deleted', stamp, user.id);
+    else await transitionDeletionRequest(env, request.id, 'verified', 'rejected', 'scheduler', 'account_not_found', stamp);
+  }
+
+  await env.DB.prepare(`UPDATE account_deletion_requests SET email = NULL
+    WHERE email IS NOT NULL AND terminal_at <= ?`).bind(stamp - deletionRetentionSeconds).run();
 }
 
 async function deleteAccount(env: Env, userId: string) {
@@ -508,7 +628,7 @@ async function deleteAccount(env: Env, userId: string) {
 }
 
 async function exportAccount(env: Env, userId: string) {
-  const [profileRow, workouts, sets, muscles, ratings, feedback, splits, connections] = await Promise.all([
+  const [profileRow, workouts, sets, muscles, ratings, feedback, splits, connections, blocks] = await Promise.all([
     env.DB.prepare('SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
     env.DB.prepare('SELECT local_id AS id, split, created_at AS createdAt, ended_at AS endedAt FROM workouts WHERE user_id = ? ORDER BY created_at, local_id').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE user_id = ? ORDER BY completed_at, workout_local_id, exercise_id, set_number').bind(userId).all(),
@@ -517,17 +637,77 @@ async function exportAccount(env: Env, userId: string) {
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, action, related_exercise_id AS relatedExerciseId, rank, created_at AS createdAt FROM recommendation_feedback WHERE user_id = ? ORDER BY created_at, workout_local_id, exercise_id, action').bind(userId).all(),
     env.DB.prepare('SELECT id, name, json(muscles) AS muscles, updated_at AS updatedAt FROM user_splits WHERE user_id = ? ORDER BY name, id').bind(userId).all(),
     env.DB.prepare('SELECT friend_id AS friendId, created_at AS createdAt FROM friendships WHERE user_id = ? ORDER BY created_at').bind(userId).all(),
+    env.DB.prepare('SELECT blocked_id AS blockedId, created_at AS createdAt FROM friend_blocks WHERE blocker_id = ? ORDER BY created_at').bind(userId).all(),
   ]);
-  return json({ exportedAt: new Date().toISOString(), profile: profileRow, workouts: workouts.results, sets: sets.results, setMuscles: muscles.results, muscleRatings: ratings.results, recommendationFeedback: feedback.results, splits: splits.results.map((split) => ({ ...split, muscles: JSON.parse(split.muscles as string) })), friendConnections: connections.results });
+  return json({ exportedAt: new Date().toISOString(), profile: profileRow, workouts: workouts.results, sets: sets.results, setMuscles: muscles.results, muscleRatings: ratings.results, recommendationFeedback: feedback.results, splits: splits.results.map((split) => ({ ...split, muscles: JSON.parse(split.muscles as string) })), friendConnections: connections.results, friendBlocks: blocks.results });
+}
+
+async function boundedRequest(request: Request) {
+  if (!request.body) return request;
+  const declaredLength = Number(request.headers.get('Content-Length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maxRequestBodyBytes) return null;
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > maxRequestBodyBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  return new Request(request, { body });
+}
+
+function configurationErrors(env: Env) {
+  const missing: string[] = [];
+  if (!env.DB) missing.push('DB');
+  if (!env.DELETION_RATE_LIMITER) missing.push('DELETION_RATE_LIMITER');
+  if (!env.SYNC_RATE_LIMITER) missing.push('SYNC_RATE_LIMITER');
+  if (!env.EXPENSIVE_RATE_LIMITER) missing.push('EXPENSIVE_RATE_LIMITER');
+  if (!env.BETTER_AUTH_SECRET?.trim() && !env.BETTER_AUTH_SECRETS?.trim()) missing.push('BETTER_AUTH_SECRET or BETTER_AUTH_SECRETS');
+  for (const name of ['BETTER_AUTH_URL', 'TRUSTED_ORIGINS', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL'] as const) if (!env[name]?.trim()) missing.push(name);
+  return missing;
+}
+
+async function readiness(env: Env) {
+  if (configurationErrors(env).length) return json({ ok: false }, 503);
+  try {
+    const row = await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>();
+    return row?.ok === 1 ? json({ ok: true }) : json({ ok: false }, 503);
+  } catch {
+    return json({ ok: false }, 503);
+  }
+}
+
+async function customRateLimit(request: Request, env: Env, userId: string, pathname: string) {
+  const limiter = pathname === '/v1/sync' ? env.SYNC_RATE_LIMITER
+    : pathname === '/v1/recommendations' || pathname === '/v1/export' || pathname === '/v1/onboarding' || (!['GET', 'HEAD'].includes(request.method) && pathname.startsWith('/v1/friends'))
+      ? env.EXPENSIVE_RATE_LIMITER : null;
+  if (!limiter) return null;
+  const result = await limiter.limit({ key: `${userId}:${pathname}` });
+  return result.success ? null : new Response(JSON.stringify({ error: 'Too many requests. Try again later.' }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': '60' },
+  });
 }
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/healthz') return readiness(env);
+    if (request.method === 'GET' && url.pathname === '/delete-account/verify') return deletionVerificationPage(url);
     if (request.method === 'GET') {
       const response = publicPage(url.pathname, env);
       if (response) return response;
     }
     if (request.method === 'POST' && url.pathname === '/v1/deletion-requests') return requestAccountDeletion(request, env);
+    if (request.method === 'POST' && url.pathname === '/v1/deletion-requests/verify') return verifyAccountDeletion(request, env);
     const auth = createAuth(env, ctx);
     if (url.pathname.startsWith('/api/auth/')) return auth.handler(request);
     // The old anonymous-session endpoint is intentionally removed. It could
@@ -538,6 +718,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     const trustedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,mobile://').split(',').map((value) => value.trim());
     if (!['GET', 'HEAD'].includes(request.method) && origin && !trustedOrigins.includes(origin)) return json({ error: 'Untrusted origin.' }, 403);
     const user: AuthenticatedUser = { id: session.user.id, displayName: session.user.name?.trim() || 'Lifter', imageUrl: session.user.image ?? null };
+    const limited = await customRateLimit(request, env, user.id, url.pathname);
+    if (limited) return limited;
     // This route intentionally precedes ensureUser: a retry after a partial
     // client failure must not recreate the row it is trying to remove.
     if (request.method === 'DELETE' && url.pathname === '/v1/account') return json({ error: 'Use /api/auth/delete-user so identity and app data are removed together.' }, 410);
@@ -550,6 +732,15 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     if (request.method === 'GET' && url.pathname === '/v1/friends/prs') return json({ prs: await friendPersonalRecords(env, user.id) });
     if (request.method === 'GET' && url.pathname === '/v1/friends/code') return json({ code: await codeFor(env, user.id) });
     if (request.method === 'POST' && url.pathname === '/v1/friends') return addFriend(request, env, user.id);
+    const friendRoute = url.pathname.match(/^\/v1\/friends\/([^/]+)(\/block)?$/);
+    if (friendRoute) {
+      let friendId = '';
+      try { friendId = decodeURIComponent(friendRoute[1]!); } catch { return json({ error: 'Invalid friend ID.' }, 400); }
+      if (!isString(friendId, 100) || friendId === user.id) return json({ error: 'Invalid friend ID.' }, 400);
+      if (request.method === 'DELETE' && friendRoute[2]) return unblockFriend(env, user.id, friendId);
+      if (request.method === 'POST' && friendRoute[2]) return blockFriend(env, user.id, friendId);
+      if (request.method === 'DELETE' && !friendRoute[2]) return removeFriend(env, user.id, friendId);
+    }
     if (request.method === 'GET' && url.pathname === '/v1/profile') return json({ profile: await profile(env, user.id) });
     if (request.method === 'PATCH' && url.pathname === '/v1/profile') return updateProfile(request, env, user.id);
     if (request.method === 'GET' && url.pathname === '/v1/export') return exportAccount(env, user.id);
@@ -565,7 +756,10 @@ export default {
     let error: { name: string; message: string } | undefined;
     try {
       if (request.method === 'OPTIONS') response = new Response(null);
-      else response = await handleRequest(request, env, ctx);
+      else {
+        const bounded = await boundedRequest(request);
+        response = bounded ? await handleRequest(bounded, env, ctx) : json({ error: `Request body exceeds ${maxRequestBodyBytes} bytes.` }, 413);
+      }
     } catch (cause) {
       error = cause instanceof Error ? { name: cause.name, message: cause.message } : { name: 'Error', message: String(cause) };
       response = json({ error: 'Internal server error.' }, 500);
@@ -588,7 +782,15 @@ export default {
     headers.set('Access-Control-Allow-Headers', 'Content-Type, Cookie, Authorization, Expo-Origin');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
     headers.set('Access-Control-Expose-Headers', 'X-Request-ID, Set-Auth-Cookie');
+    if (!headers.has('Content-Security-Policy')) headers.set('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    headers.set('X-Frame-Options', 'DENY');
+    headers.set('X-Content-Type-Options', 'nosniff');
+    headers.set('Referrer-Policy', 'no-referrer');
     return new Response(response.body, { status, statusText: response.statusText, headers });
+  },
+  async scheduled(_controller, env, ctx): Promise<void> {
+    ctx.waitUntil(processDeletionRequests(env));
   },
 } satisfies ExportedHandler<Env>;
 
@@ -602,4 +804,5 @@ export {
   validChunk as __testValidChunk,
   validOnboarding as __testValidOnboarding,
   validPayload as __testValidPayload,
+  processDeletionRequests as __testProcessDeletionRequests,
 };

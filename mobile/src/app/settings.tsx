@@ -1,3 +1,4 @@
+import { ui } from '@/styles/primitives';
 import { router } from 'expo-router';
 import { Activity, ChevronRight, Info, Sliders, User } from 'react-native-feather';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -14,9 +15,9 @@ const groups = [
 export default function SettingsScreen() {
   const { colors } = useAppearance();
 
-  return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
     <View style={styles.header}>
-      <Text style={[styles.title, { color: colors.text }]}>Settings</Text>
+      <Text style={[ui.title, { color: colors.text }]}>Settings</Text>
     </View>
     <View style={styles.content}>
       <View style={styles.list}>
@@ -31,5 +32,5 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 }, header: { height: 72, paddingHorizontal: 24, justifyContent: 'center' }, title: { fontSize: 28, fontWeight: '900', letterSpacing: -1.2 }, content: { paddingHorizontal: 24 }, list: {}, row: { minHeight: 76, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 }, icon: { width: 28, alignItems: 'center' }, rowCopy: { flex: 1 }, rowTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, rowDescription: { marginTop: 3, fontSize: 12, lineHeight: 16, fontWeight: '700' }, pressed: { opacity: .58 },
+   header: { height: 72, paddingHorizontal: 24, justifyContent: 'center' },  content: { paddingHorizontal: 24 }, list: {}, row: { minHeight: 76, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 }, icon: { width: 28, alignItems: 'center' }, rowCopy: { flex: 1 }, rowTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, rowDescription: { marginTop: 3, fontSize: 12, lineHeight: 16, fontWeight: '700' }, pressed: { opacity: .58 },
 });

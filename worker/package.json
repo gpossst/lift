@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "bun run check && bun run validate:config && wrangler deploy",
+    "validate:config": "bun scripts/validate-config.mjs",
     "test": "bun test/auth-regression.mjs && bun test/recommendations-regression.mjs && bun test/sync-regression.mjs",
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run test"

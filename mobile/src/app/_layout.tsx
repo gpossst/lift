@@ -2,7 +2,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { router, Tabs, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, LogBox, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, LogBox, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppearanceProvider, useAppearance } from '@/components/appearance-provider';
@@ -49,8 +49,12 @@ function CloudSyncLifecycle() {
       setCloudSyncUser(null);
       return;
     }
+    if (!prepareCloudSyncForUser(userId)) {
+      setCloudSyncUser(null);
+      void authClient.signOut().finally(() => Alert.alert('Finish syncing first', 'This device has workout changes that have not synced yet. Reconnect and sign in to the previous account before switching accounts.'));
+      return;
+    }
     setCloudSyncUser(userId);
-    prepareCloudSyncForUser(userId);
     const synchronize = () => { void syncWorkoutData().catch(() => undefined); };
     synchronize();
     const subscription = AppState.addEventListener('change', (state) => {
