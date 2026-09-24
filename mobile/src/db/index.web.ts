@@ -3,7 +3,7 @@
 // This tiny browser adapter keeps the preview usable while the native app uses Drizzle.
 import { exerciseCatalog, type Exercise, workoutSplitForExercise } from './exercise-catalog';
 import { buildDemoWorkoutSets, demoWorkoutIdPrefix, isDemoDataEnabled } from './demo-data';
-import { getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
+import { defaultWorkoutSplits, getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 export type { RecommendationContext, RecommendationFeedback, RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
@@ -13,7 +13,8 @@ export type WorkoutHistoryPoint = { workoutId: string; setNumber: number; weight
 export type WorkoutStats = { visits: number; sets: number; volume: number };
 export type WorkoutActivity = { date: string; volume: number; sets: number; visits: number };
 export type WorkoutSplitTrend = { split: 'ALL' | 'PUSH' | 'PULL' | 'LEGS'; points: { weekStart: string; volume: number }[] };
-export type WorkoutSplit = 'push' | 'pull' | 'legs';
+export type WorkoutSplit = 'push' | 'pull' | 'legs' | `custom:${string}`;
+export type CustomSplit = { id: `custom:${string}`; name: string; muscles: string[] };
 export type Workout = StoredWorkout;
 export type WorkoutVisitSummary = { workout: Workout; sets: number; exercises: number; volume: number; reps: number };
 export type WorkoutVisitExercise = { id: string; name: string; sets: number; volume: number };
@@ -22,8 +23,8 @@ export type WorkoutAchievement = { exerciseId: string; name: string; level: 'sil
 export type WorkoutProgressPoint = { workoutId: string; volume: number; completedAt: Date };
 export type WorkoutMuscle = { id: string; name: string; area: string };
 export type WorkoutMuscleRating = WorkoutMuscle & { exhaustion: number };
-export type CloudSyncTombstone = { entity: 'workout' | 'set' | 'rating'; key: string; deletedAt: number };
-export type CloudSyncEntity = 'workout' | 'set' | 'rating' | 'feedback';
+export type CloudSyncTombstone = { entity: 'workout' | 'set' | 'rating' | 'split'; key: string; deletedAt: number };
+export type CloudSyncEntity = 'workout' | 'set' | 'rating' | 'feedback' | 'split';
 export type CloudSyncChange = { entity: CloudSyncEntity; key: string; operation: 'upsert' | 'delete'; baseRevision: number; record?: Record<string, unknown> };
 export type CloudSyncRemoteChange = Omit<CloudSyncChange, 'baseRevision'> & { revision: number };
 export type CloudSyncBatch = { batchId: string; changes: CloudSyncChange[] };
@@ -31,6 +32,7 @@ const key = 'lift-preview-sets';
 const workoutsKey = 'lift-preview-workouts';
 const ratingsKey = 'lift-preview-muscle-ratings';
 const recommendationFeedbackKey = 'lift-preview-recommendation-feedback';
+const customSplitsKey = 'lift-preview-custom-splits';
 const trackingVersionKey = 'lift-preview-tracking-schema-version';
 const trackingVersion = '3';
 const workoutTimeoutMs = 2 * 60 * 60 * 1_000;
@@ -62,6 +64,37 @@ const readRatings = (): Record<string, Record<string, number>> => JSON.parse(sto
 const writeRatings = (ratings: Record<string, Record<string, number>>) => storage?.setItem(ratingsKey, JSON.stringify(ratings));
 const readRecommendationFeedback = (): RecommendationFeedback[] => JSON.parse(storage?.getItem(recommendationFeedbackKey) ?? '[]').map((item: RecommendationFeedback) => ({ ...item, createdAt: new Date(item.createdAt) }));
 const writeRecommendationFeedback = (feedback: RecommendationFeedback[]) => storage?.setItem(recommendationFeedbackKey, JSON.stringify(feedback));
+const readCustomSplits = (): CustomSplit[] => JSON.parse(storage?.getItem(customSplitsKey) ?? '[]');
+const writeCustomSplits = (splits: CustomSplit[]) => storage?.setItem(customSplitsKey, JSON.stringify(splits));
+
+const builtinSplits = defaultWorkoutSplits;
+const customSplitIdPattern = /^custom:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const createSplitId = () => `custom:${'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (digit) => {
+  const random = Math.random() * 16 | 0;
+  return (digit === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
+})}` as CustomSplit['id'];
+
+export function getCustomSplits(): CustomSplit[] { return readCustomSplits().sort((a, b) => a.name.localeCompare(b.name)); }
+export function saveCustomSplit(input: { id?: CustomSplit['id']; name: string; muscles: string[] }): CustomSplit {
+  const name = input.name.trim();
+  const muscles = [...new Set(input.muscles.map((muscle) => muscle.trim()).filter(Boolean))];
+  if (!name || name.length > 40 || muscles.length < 1 || muscles.length > 12 || muscles.some((muscle) => !Object.hasOwn(muscleNames, muscle))) throw new Error('Use a name up to 40 characters and choose 1–12 catalog muscles.');
+  const split: CustomSplit = { id: input.id ?? createSplitId(), name, muscles };
+  if (!customSplitIdPattern.test(split.id)) throw new Error('Custom split IDs must be UUIDs prefixed with custom:.');
+  const splits = readCustomSplits(); const index = splits.findIndex((item) => item.id === split.id);
+  if (index < 0) splits.push(split); else splits[index] = split;
+  writeCustomSplits(splits); markCloudSyncDirty('split', split.id);
+  return split;
+}
+export function deleteCustomSplit(id: CustomSplit['id']): void {
+  const splits = readCustomSplits(); const next = splits.filter((item) => item.id !== id);
+  if (next.length === splits.length) return;
+  writeCustomSplits(next); queueCloudSyncTombstone('split', id);
+}
+export function getWorkoutSplitDefinition(split: WorkoutSplit) {
+  const builtin = builtinSplits.find((item) => item.id === split);
+  return builtin ? { ...builtin, muscles: [...builtin.muscles] } : getCustomSplits().find((item) => item.id === split) ?? null;
+}
 
 function syncDemoWorkoutData() {
   const userSets = read().filter((set) => !set.workoutId.startsWith(demoWorkoutIdPrefix));
@@ -94,7 +127,10 @@ export function getRecommendedWorkoutSplit(now = new Date()): WorkoutSplit {
       sets: visit.sets,
     };
   });
-  return recommendWorkoutSplit(history, now, muscleRatings);
+  const custom = getCustomSplits();
+  const latestSplit = history[0]?.split;
+  const definitions = custom.some((item) => item.id === latestSplit) ? custom : builtinSplits;
+  return recommendWorkoutSplit(history, now, muscleRatings, definitions) as WorkoutSplit;
 }
 
 export function createWorkout(split: WorkoutSplit): Workout {
@@ -256,7 +292,7 @@ export function getExerciseRecommendations(workoutId: string, split: WorkoutSpli
   const completedSets = read().filter((set) => set.workoutId === workoutId || workouts.get(set.workoutId)?.endedAt || !workouts.has(set.workoutId))
     .sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.setNumber - b.setNumber);
   const feedback = readRecommendationFeedback().sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.exerciseId.localeCompare(b.exerciseId));
-  return rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, context, feedback);
+  return rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, context, feedback, getWorkoutSplitDefinition(split) ?? undefined);
 }
 
 export function recordRecommendationFeedback(
@@ -421,6 +457,7 @@ function localSyncRecord(entity: CloudSyncEntity, entityKey: string): Record<str
     const exhaustion = readRatings()[workoutId]?.[muscle];
     return exhaustion === undefined ? null : { workoutId, muscle, exhaustion, createdAt: Math.floor(Date.now() / 1000) };
   }
+  if (entity === 'split') return readCustomSplits().find((item) => item.id === entityKey) ?? null;
   const [workoutId, exerciseId, action] = entityKey.split(cloudKeySeparator);
   const feedback = readRecommendationFeedback().find((item) => item.workoutId === workoutId && item.exerciseId === exerciseId && item.action === action);
   return feedback ? { ...feedback, createdAt: Math.floor(feedback.createdAt.getTime() / 1000) } : null;
@@ -442,6 +479,7 @@ function seedCloudSyncOutbox() {
   for (const set of read().filter((item) => !item.workoutId.startsWith(demoWorkoutIdPrefix))) enqueueCloudSync('set', cloudSetKey(set.workoutId, set.exerciseId, set.setNumber), 'upsert');
   for (const [workoutId, ratings] of Object.entries(readRatings())) for (const muscle of Object.keys(ratings)) enqueueCloudSync('rating', [workoutId, muscle].join(cloudKeySeparator), 'upsert');
   for (const item of readRecommendationFeedback()) enqueueCloudSync('feedback', [item.workoutId, item.exerciseId, item.action].join(cloudKeySeparator), 'upsert');
+  for (const item of readCustomSplits()) enqueueCloudSync('split', item.id, 'upsert');
   for (const item of readTombstones()) enqueueCloudSync(item.entity, item.key, 'delete');
   storage?.removeItem(pendingSyncKey);
 }
@@ -484,7 +522,7 @@ export function prepareCloudSyncForUser(userId: string) {
   const activeUserId = storage?.getItem(activeUserKey) ?? storage?.getItem(legacyActiveUserKey);
   if (!activeUserId) {
     storage?.setItem(activeUserKey, userId);
-    if (readWorkouts().some((workout) => !workout.id.startsWith(demoWorkoutIdPrefix))) storage?.setItem(pendingSyncKey, '1');
+    if (readWorkouts().some((workout) => !workout.id.startsWith(demoWorkoutIdPrefix)) || readCustomSplits().length) storage?.setItem(pendingSyncKey, '1');
     return;
   }
   if (activeUserId === userId) { storage?.removeItem(legacyActiveUserKey); return; }
@@ -492,6 +530,7 @@ export function prepareCloudSyncForUser(userId: string) {
   writeWorkouts([]);
   writeRatings({});
   storage?.removeItem(recommendationFeedbackKey);
+  storage?.removeItem(customSplitsKey);
   storage?.removeItem(tombstonesKey);
   storage?.removeItem(pendingSyncKey);
   storage?.removeItem(outboxKey);
@@ -507,7 +546,7 @@ export function clearLocalAccountData() {
   write([]);
   writeWorkouts([]);
   writeRatings({});
-  for (const item of [recommendationFeedbackKey, tombstonesKey, pendingSyncKey, outboxKey, versionsKey, cursorKey, activeUserKey, legacyActiveUserKey]) storage?.removeItem(item);
+  for (const item of [recommendationFeedbackKey, customSplitsKey, tombstonesKey, pendingSyncKey, outboxKey, versionsKey, cursorKey, activeUserKey, legacyActiveUserKey]) storage?.removeItem(item);
   syncDemoWorkoutData();
 }
 
@@ -527,6 +566,7 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
         }
         if (change.entity === 'set') write(read().filter((item) => !(item.workoutId === pieces[0] && item.exerciseId === pieces[1] && item.setNumber === Number(pieces[2]))));
         if (change.entity === 'rating') { const ratings = readRatings(); if (ratings[pieces[0]]) delete ratings[pieces[0]][pieces[1]]; writeRatings(ratings); }
+        if (change.entity === 'split') writeCustomSplits(readCustomSplits().filter((item) => item.id !== change.key));
       } else if (change.record) {
         const record = change.record;
         if (change.entity === 'workout') {
@@ -544,6 +584,11 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
           const feedback = readRecommendationFeedback(); const index = feedback.findIndex((item) => item.workoutId === record.workoutId && item.exerciseId === record.exerciseId && item.action === record.action);
           const item = { workoutId: String(record.workoutId), exerciseId: String(record.exerciseId), action: record.action as RecommendationFeedbackAction, rank: record.rank == null ? undefined : Number(record.rank), createdAt: new Date(Number(record.createdAt) * 1000) };
           if (index < 0) feedback.push(item); else feedback[index] = item; writeRecommendationFeedback(feedback);
+        }
+        if (change.entity === 'split' && String(record.id).startsWith('custom:') && Array.isArray(record.muscles)) {
+          const splits = readCustomSplits(); const index = splits.findIndex((item) => item.id === record.id);
+          const split: CustomSplit = { id: String(record.id) as CustomSplit['id'], name: String(record.name), muscles: record.muscles.filter((muscle): muscle is string => typeof muscle === 'string') };
+          if (index < 0) splits.push(split); else splits[index] = split; writeCustomSplits(splits);
         }
       }
     }

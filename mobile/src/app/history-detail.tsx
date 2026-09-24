@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getExercises, getWorkoutVisitExerciseDetails, getWorkoutVisitSummary } from '@/db';
 import { exerciseRequiresWeight } from '@/db/exercise-catalog';
 import { useAppearance } from '@/components/appearance-provider';
+import { workoutSplitLabel } from '@/lib/workout-split-label';
 
 const formatDate = (date: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(date);
 const formatVolume = (volume: number) => volume >= 10_000 ? `${Math.round(volume / 1000)}k` : volume >= 1_000 ? `${(volume / 1000).toFixed(1)}k` : String(volume);
@@ -26,7 +27,7 @@ export default function HistoryDetailScreen() {
   const date = visit.workout.endedAt ?? visit.workout.createdAt;
   const duration = visit.workout.endedAt ? formatDuration(date.getTime() - visit.workout.createdAt.getTime()) : null;
   const hasRequiredWeight = exercises.some((exercise) => requiresWeight.get(exercise.id) ?? true);
-  const split = visit.workout.split[0].toUpperCase() + visit.workout.split.slice(1);
+  const split = workoutSplitLabel(visit.workout.split);
 
   return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
     <View style={styles.header}><Pressable onPress={back} hitSlop={10} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Back to workout history"><ArrowLeft width={22} height={22} color={colors.text} strokeWidth={2.5} /></Pressable></View>

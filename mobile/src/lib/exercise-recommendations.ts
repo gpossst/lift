@@ -1,21 +1,23 @@
 import type { Exercise } from '@/db/exercise-catalog';
 
 export type RecommendationSet = { exerciseId: string; workoutId: string; completedAt: Date; weight?: number; reps?: number };
-export type MuscleExhaustionRating = { workoutId: string; split: keyof typeof musclesBySplit; muscle: string; exhaustion: number; completedAt: Date };
-export type WorkoutFocusHistory = { split: keyof typeof musclesBySplit; completedAt: Date; sets: number; exhaustion?: number };
+export type MuscleExhaustionRating = { workoutId: string; split: string; muscle: string; exhaustion: number; completedAt: Date };
+export type WorkoutFocusHistory = { split: string; completedAt: Date; sets: number; exhaustion?: number };
+export type WorkoutSplitDefinition = { id: string; name: string; muscles: readonly string[] };
 export type RecommendationFeedbackAction = 'accepted' | 'completed' | 'impression' | 'replaced' | 'removed' | 'skipped' | 'manual';
 export type RecommendationFeedback = {
   workoutId: string; exerciseId: string; action: RecommendationFeedbackAction; createdAt: Date; rank?: number;
 };
 /** Optional preferences; callers can add these independently as they become available. */
 export type RecommendationContext = {
-  goals?: readonly string[]; experience?: 'new' | 'some' | 'experienced'; trainingDays?: number; sessionMinutes?: number;
+  goals?: readonly string[]; experience?: 'new' | 'some' | 'experienced'; trainingDays?: number; sessionMinutes?: number; weightLb?: number;
   favoriteExerciseIds?: readonly string[]; excludedExerciseIds?: readonly string[];
   cohortHints?: { optIn?: boolean; peerCount?: number; muscleCoverage?: Readonly<Record<string, number>> };
 };
 export type ExerciseRecommendation = {
   exercise: Exercise; reason: string; score: number;
   sets: number; reps: { min: number; max: number }; restSeconds: number; estimatedMinutes: number;
+  relativeLoadPercent?: number;
 };
 export type ProgressiveOverloadRecommendation = {
   weight?: number; reps: number; sets: number;
@@ -29,6 +31,7 @@ const musclesBySplit = {
   pull: ['lats', 'middle back', 'lower back', 'traps', 'biceps', 'forearms'],
   legs: ['quadriceps', 'hamstrings', 'glutes', 'calves', 'abductors', 'adductors'],
 } as const;
+export const defaultWorkoutSplits: readonly WorkoutSplitDefinition[] = Object.entries(musclesBySplit).map(([id, muscles]) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), muscles }));
 const day = 86_400_000;
 const moderateFatigue = .75;
 const severeFatigue = 2.5;
@@ -52,14 +55,14 @@ function fatigueSignal(rating: MuscleExhaustionRating | undefined, now: Date) {
   return rating ? getEffectiveExhaustion(rating.exhaustion, rating.completedAt, now) - 1 : 0;
 }
 
-export function getRecommendedWorkoutSplit(history: readonly WorkoutFocusHistory[], now = new Date(), muscleRatings: readonly MuscleExhaustionRating[] = []): keyof typeof musclesBySplit {
+export function getRecommendedWorkoutSplit(history: readonly WorkoutFocusHistory[], now = new Date(), muscleRatings: readonly MuscleExhaustionRating[] = [], definitions: readonly WorkoutSplitDefinition[] = defaultWorkoutSplits): string {
   const ratings = latestRatings(muscleRatings, now);
-  return (Object.keys(musclesBySplit) as (keyof typeof musclesBySplit)[]).map((split, order) => {
+  return definitions.map(({ id: split, muscles }, order) => {
     const visits = history.filter((visit) => visit.split === split && visit.completedAt <= now);
     const latest = visits.reduce<WorkoutFocusHistory | null>((result, visit) => !result || visit.completedAt > result.completedAt ? visit : result, null);
     const ageDays = latest ? Math.max(0, (now.getTime() - latest.completedAt.getTime()) / day) : 7;
     const weeklySets = visits.filter((visit) => now.getTime() - visit.completedAt.getTime() <= 7 * day).reduce((total, visit) => total + visit.sets, 0);
-    const fatigue = musclesBySplit[split].reduce((total, muscle) => total + fatigueSignal(ratings.get(muscle), now) * 8, 0);
+    const fatigue = muscles.reduce((total, muscle) => total + fatigueSignal(ratings.get(muscle), now) * 8, 0);
     return { split, order, score: Math.min(ageDays, 7) * 2 - weeklySets - fatigue };
   }).sort((a, b) => b.score - a.score || a.order - b.order)[0]!.split;
 }
@@ -77,7 +80,7 @@ function isResistance(exercise: Exercise) {
   const category = detailsFor(exercise).category;
   return category !== 'stretching' && category !== 'cardio';
 }
-function isEligibleForSplit(exercise: Exercise, split: keyof typeof musclesBySplit, context: RecommendationContext = {}) {
+function isEligibleForSplit(exercise: Exercise, muscles: readonly string[], context: RecommendationContext = {}) {
   const details = detailsFor(exercise);
   const category = details.category;
   const level = details.level;
@@ -85,12 +88,12 @@ function isEligibleForSplit(exercise: Exercise, split: keyof typeof musclesBySpl
   if (level === 'expert' && context.experience !== 'experienced') return false;
   if (category === 'strongman' && context.experience !== 'experienced') return false;
   if (category === 'plyometrics' && !conditioningGoal && context.experience !== 'experienced') return false;
-  return isResistance(exercise) && musclesFor(exercise, 'primaryMuscles').some((muscle) => muscle === 'abdominals' || musclesBySplit[split].includes(muscle as never));
+  return isResistance(exercise) && musclesFor(exercise, 'primaryMuscles').some((muscle) => muscle === 'abdominals' || muscles.includes(muscle));
 }
-function doseFor(exercise: Exercise, split: keyof typeof musclesBySplit) {
-  const target = [...musclesBySplit[split], 'abdominals']; const dose = new Map<string, number>();
-  for (const muscle of musclesFor(exercise, 'primaryMuscles')) if (target.includes(muscle as never)) dose.set(muscle, 1);
-  for (const muscle of musclesFor(exercise, 'secondaryMuscles')) if (target.includes(muscle as never)) dose.set(muscle, Math.max(dose.get(muscle) ?? 0, .15));
+function doseFor(exercise: Exercise, muscles: readonly string[]) {
+  const target = [...muscles, 'abdominals']; const dose = new Map<string, number>();
+  for (const muscle of musclesFor(exercise, 'primaryMuscles')) if (target.includes(muscle)) dose.set(muscle, 1);
+  for (const muscle of musclesFor(exercise, 'secondaryMuscles')) if (target.includes(muscle)) dose.set(muscle, Math.max(dose.get(muscle) ?? 0, .15));
   return dose;
 }
 function recoveryFatigueFor(exercise: Exercise, ratings: ReadonlyMap<string, MuscleExhaustionRating>, now: Date) {
@@ -122,12 +125,13 @@ function isProgressing(sets: readonly RecommendationSet[]) {
   const midpoint = Math.floor(values.length / 2); const average = (items: number[]) => items.reduce((sum, value) => sum + value, 0) / items.length;
   return average(values.slice(midpoint)) > average(values.slice(0, midpoint)) * 1.02;
 }
-function movementPattern(exercise: Exercise, split: keyof typeof musclesBySplit) {
+function movementPattern(exercise: Exercise, split: string) {
   const name = exercise.name.toLowerCase();
   if (musclesFor(exercise, 'primaryMuscles').includes('abdominals')) return 'core';
   if (split === 'legs') return /deadlift|good morning|hip thrust|pull through|swing/.test(name) ? 'hinge' : /squat|lunge|step.?up|leg press/.test(name) ? 'squat' : 'accessory';
   if (split === 'push') return /overhead|military|shoulder press/.test(name) ? 'vertical press' : /press|push.?up/.test(name) ? 'horizontal press' : 'accessory';
-  return /pull.?up|pulldown/.test(name) ? 'vertical pull' : /row/.test(name) ? 'row' : 'accessory';
+  if (split === 'pull') return /pull.?up|pulldown/.test(name) ? 'vertical pull' : /row/.test(name) ? 'row' : 'accessory';
+  return /squat|lunge|leg press/.test(name) ? 'squat' : /deadlift|hip thrust/.test(name) ? 'hinge' : /overhead|military/.test(name) ? 'vertical press' : /press|push.?up/.test(name) ? 'horizontal press' : /pull.?up|pulldown/.test(name) ? 'vertical pull' : /row/.test(name) ? 'row' : 'accessory';
 }
 
 function prescriptionFor(exercise: Exercise, context: RecommendationContext) {
@@ -189,15 +193,17 @@ export function getProgressiveOverloadRecommendation(
 /** A small, local planner: it balances logged dose and reserves enough time for each suggestion. */
 export function getExerciseRecommendations(
   exercises: readonly Exercise[], sets: readonly RecommendationSet[], muscleRatings: readonly MuscleExhaustionRating[],
-  workoutId: string, split: keyof typeof musclesBySplit, limit = 3, now = new Date(), context: RecommendationContext = {},
-  feedback: readonly RecommendationFeedback[] = [],
+  workoutId: string, split: string, limit = 3, now = new Date(), context: RecommendationContext = {},
+  feedback: readonly RecommendationFeedback[] = [], definition?: WorkoutSplitDefinition,
 ): ExerciseRecommendation[] {
-  const mainTarget = musclesBySplit[split]; const target = [...mainTarget, 'abdominals']; const currentSets = sets.filter((set) => set.workoutId === workoutId && set.completedAt <= now);
+  const mainTarget: readonly string[] = definition?.muscles ?? musclesBySplit[split as keyof typeof musclesBySplit];
+  if (!mainTarget?.length) return [];
+  const target = [...mainTarget, 'abdominals']; const currentSets = sets.filter((set) => set.workoutId === workoutId && set.completedAt <= now);
   const currentIds = new Set(currentSets.map((set) => set.exerciseId)); const byId = new Map(exercises.map((exercise) => [exercise.id, exercise]));
   const sessionDose = new Map<string, number>(target.map((muscle) => [muscle, 0])); const weeklyDose = new Map<string, number>(target.map((muscle) => [muscle, 0])); const recentDose = new Map<string, number>(target.map((muscle) => [muscle, 0])); const sessionPatterns = new Set<string>();
   const weekAgo = now.getTime() - 7 * day;
-  const addDose = (destination: Map<string, number>, exercise: Exercise) => doseFor(exercise, split).forEach((amount, muscle) => destination.set(muscle, (destination.get(muscle) ?? 0) + amount));
-  for (const set of currentSets) { const exercise = byId.get(set.exerciseId); if (exercise && isEligibleForSplit(exercise, split, context)) { addDose(sessionDose, exercise); sessionPatterns.add(movementPattern(exercise, split)); } }
+  const addDose = (destination: Map<string, number>, exercise: Exercise) => doseFor(exercise, mainTarget).forEach((amount, muscle) => destination.set(muscle, (destination.get(muscle) ?? 0) + amount));
+  for (const set of currentSets) { const exercise = byId.get(set.exerciseId); if (exercise && isEligibleForSplit(exercise, mainTarget, context)) { addDose(sessionDose, exercise); sessionPatterns.add(movementPattern(exercise, split)); } }
   for (const set of sets) {
     const exercise = byId.get(set.exerciseId);
     if (!exercise || set.completedAt > now || set.completedAt.getTime() < weekAgo || !isResistance(exercise)) continue;
@@ -205,8 +211,11 @@ export function getExerciseRecommendations(
     if (set.workoutId !== workoutId && now.getTime() - set.completedAt.getTime() <= 2 * day) addDose(recentDose, exercise);
   }
   const sessionMinutes = Math.max(15, Math.min(context.sessionMinutes ?? 45, 120));
-  const desiredSessionDose = sessionMinutes <= 30 ? 3 : sessionMinutes < 60 ? 5 : sessionMinutes < 90 ? 6 : 8;
-  const desiredWeeklyDose = desiredSessionDose * Math.max(2, Math.min(context.trainingDays ?? 3, 5));
+  const baseSessionDose = sessionMinutes <= 30 ? 3 : sessionMinutes < 60 ? 5 : sessionMinutes < 90 ? 6 : 8;
+  const trainingDays = Math.max(1, Math.min(context.trainingDays ?? 3, 5));
+  // Infrequent training needs more work per visit; frequent training can spread the same work across visits.
+  const desiredSessionDose = Math.max(2, baseSessionDose + 3 - trainingDays);
+  const desiredWeeklyDose = desiredSessionDose * trainingDays;
   if (mainTarget.every((muscle) => (sessionDose.get(muscle) ?? 0) >= desiredSessionDose) && (sessionDose.get('abdominals') ?? 0) >= 1) return [];
   const excluded = new Set(context.excludedExerciseIds);
   const recentRatings = latestRatings(muscleRatings, now, workoutId);
@@ -221,7 +230,7 @@ export function getExerciseRecommendations(
   }
   const candidates = exercises.filter((exercise) => {
     const details = detailsFor(exercise); const level = typeof details.level === 'string' ? details.level : '';
-    return isEligibleForSplit(exercise, split, context) && !currentIds.has(exercise.id) && !excluded.has(exercise.id)
+    return isEligibleForSplit(exercise, mainTarget, context) && !currentIds.has(exercise.id) && !excluded.has(exercise.id)
       && !((!context.experience || context.experience === 'new') && !exercise.isFeatured && /intermediate|expert|advanced/.test(level))
       && recoveryFatigueFor(exercise, recentRatings, now) < severeFatigue;
   });
@@ -240,9 +249,15 @@ export function getExerciseRecommendations(
   let remainingMinutes = Math.max(0, sessionMinutes - currentSets.length * 2.5 - currentIds.size * 1.5);
   while (suggested.length < limit && candidates.length) {
     const ranked = candidates.map((exercise) => {
-      const dose = doseFor(exercise, split); const primary = musclesFor(exercise, 'primaryMuscles').filter((muscle) => target.includes(muscle as never));
+      const dose = doseFor(exercise, mainTarget); const primary = musclesFor(exercise, 'primaryMuscles').filter((muscle) => target.includes(muscle));
       const fatigue = recoveryFatigueFor(exercise, recentRatings, now);
-      const basePrescription = prescriptionFor(exercise, context);
+      const defaultPrescription = prescriptionFor(exercise, context);
+      const frequencySetAdjustment = trainingDays <= 2 ? 1 : trainingDays >= 4 ? -1 : 0;
+      const basePrescription = {
+        ...defaultPrescription,
+        sets: Math.max(1, defaultPrescription.sets + frequencySetAdjustment),
+        estimatedMinutes: Math.ceil(1.5 + Math.max(1, defaultPrescription.sets + frequencySetAdjustment) * (defaultPrescription.restSeconds + 45) / 60),
+      };
       const prescription = fatigue >= moderateFatigue ? {
         ...basePrescription,
         sets: Math.max(1, basePrescription.sets - 1),
@@ -251,6 +266,9 @@ export function getExerciseRecommendations(
       const sessionNeed = [...dose].reduce((sum, [muscle, amount]) => sum + Math.max(0, (muscle === 'abdominals' ? 1 : desiredSessionDose) - (sessionDose.get(muscle) ?? 0)) * amount, 0);
       const weeklyNeed = [...dose].reduce((sum, [muscle, amount]) => sum + Math.max(0, (muscle === 'abdominals' ? Math.max(2, context.trainingDays ?? 3) : desiredWeeklyDose) - (weeklyDose.get(muscle) ?? 0)) * amount, 0);
       const history = histories.get(exercise.id)!;
+      const latestWeightedSet = history.filter((set) => typeof set.weight === 'number' && set.weight > 0).at(-1);
+      const relativeLoadPercent = latestWeightedSet && Number.isFinite(context.weightLb) && context.weightLb! > 0
+        ? Math.round(latestWeightedSet.weight! / context.weightLb! * 100) : undefined;
       const hoursSinceUse = history.at(-1) ? (now.getTime() - history.at(-1)!.completedAt.getTime()) / 3_600_000 : Infinity;
       const recoveryPenalty = (fatigue >= moderateFatigue ? fatigue * 25 : 0) + [...dose].reduce((sum, [muscle, amount]) => sum + (recentDose.get(muscle) ?? 0) * amount * 6, 0)
         + (hoursSinceUse < 48 ? (48 - hoursSinceUse) / 8 : 0);
@@ -291,10 +309,10 @@ export function getExerciseRecommendations(
       const preference = sessionPreference + progressionPreference + manualPreference + favoritePrior + rejectionPreference;
       const score = sessionNeed * 18 + weeklyNeed * 2 + patternBonus + preference + skipPenalty + togetherBonus + goalBonus + cohortBonus + equipmentBonus + featuredBonus - recoveryPenalty - redundantExercises * 5;
       const mostNeeded = primary.sort((a, b) => (sessionDose.get(a) ?? 0) - (sessionDose.get(b) ?? 0))[0] ?? split;
-      return { exercise, dose, pattern, score, prescription, reason: fatigue >= moderateFatigue ? `Lower volume while your ${labelMuscle(mostNeeded)} recovers` : favoritePrior ? 'One of your favorites' : sessionNeed > 0 ? `Build your ${labelMuscle(mostNeeded)} work` : weeklyNeed > 0 ? `Support this week's ${labelMuscle(mostNeeded)} work` : 'Continue your recent training pattern' };
+      return { exercise, dose, pattern, score, prescription, relativeLoadPercent, reason: fatigue >= moderateFatigue ? `Lower volume while your ${labelMuscle(mostNeeded)} recovers` : favoritePrior ? 'One of your favorites' : sessionNeed > 0 ? `Build your ${labelMuscle(mostNeeded)} work` : weeklyNeed > 0 ? `Support this week's ${labelMuscle(mostNeeded)} work` : 'Continue your recent training pattern' };
     }).sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name));
     const winner = ranked.find((item) => item.score > 0 && item.prescription.estimatedMinutes <= remainingMinutes); if (!winner) break;
-    suggested.push({ exercise: winner.exercise, reason: winner.reason, score: winner.score, ...winner.prescription });
+    suggested.push({ exercise: winner.exercise, reason: winner.reason, score: winner.score, relativeLoadPercent: winner.relativeLoadPercent, ...winner.prescription });
     winner.dose.forEach((amount, muscle) => { const plannedDose = amount * winner.prescription.sets; sessionDose.set(muscle, (sessionDose.get(muscle) ?? 0) + plannedDose); weeklyDose.set(muscle, (weeklyDose.get(muscle) ?? 0) + plannedDose); });
     remainingMinutes -= winner.prescription.estimatedMinutes;
     sessionPatterns.add(winner.pattern); candidates.splice(candidates.indexOf(winner.exercise), 1);

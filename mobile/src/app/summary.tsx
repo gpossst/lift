@@ -1,16 +1,19 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft } from 'react-native-feather';
 import LottieView from 'lottie-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineGraph } from 'react-native-graph';
 import Svg, { Circle as SvgCircle, Line, Polyline, Rect as SvgRect } from 'react-native-svg';
-import { getExercises, getWorkoutAchievements, getWorkoutHistory, getWorkoutMuscles, getWorkoutMuscleRatings, getWorkoutVisitExercises, getWorkoutVisitSummary, saveWorkoutMuscleRatings, type WorkoutMuscle } from '@/db';
+import { getExercises, getWorkoutAchievements, getWorkoutHistory, getWorkoutMuscles, getWorkoutMuscleRatings, getWorkoutVisitExercises, getWorkoutVisitSummary, getWorkoutVisits, saveWorkoutMuscleRatings, type WorkoutMuscle } from '@/db';
 import { exerciseRequiresWeight } from '@/db/exercise-catalog';
 import { MuscleBodyGraphic } from '@/components/muscle-body-graphic';
 import { useAppearance } from '@/components/appearance-provider';
 import { syncWorkoutData } from '@/lib/cloud-sync';
+import { workoutSplitLabel } from '@/lib/workout-split-label';
+import { hasAskedReturnPlan } from '@/lib/return-plan';
+import { authClient } from '@/lib/auth-client';
 
 type Page = 'rating' | 'celebration' | 'complete';
 const exhaustionLabels: Record<number, string> = { 1: 'Fresh', 2: 'Worked', 3: 'Tired', 4: 'Spent' };
@@ -23,8 +26,10 @@ const formatDuration = (ms: number) => {
 
 export default function WorkoutSummaryScreen() {
   const { colors } = useAppearance();
+  const { data: session } = authClient.useSession();
   const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
   const visit = workoutId ? getWorkoutVisitSummary(workoutId) : null;
+  const isFirstCompletedWorkout = getWorkoutVisits().length === 1 && !!session?.user.id && !hasAskedReturnPlan(session.user.id);
   const muscles = useMemo(() => workoutId ? getWorkoutMuscles(workoutId) : [], [workoutId]);
   const stored = useMemo(() => workoutId ? getWorkoutMuscleRatings(workoutId) : [], [workoutId]);
   const achievements = useMemo(() => workoutId ? getWorkoutAchievements(workoutId) : [], [workoutId]);
@@ -33,7 +38,7 @@ export default function WorkoutSummaryScreen() {
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>(() => Object.fromEntries(stored.map((rating) => [rating.id, rating.exhaustion])));
   const ratings = useMemo(() => muscles.flatMap((item) => answers[item.id] === undefined ? [] : [{ ...item, exhaustion: answers[item.id] }]), [muscles, answers]);
-  const finish = () => router.replace('/');
+  const finish = () => router.replace(visit && isFirstCompletedWorkout ? '/return-plan' : '/');
   if (!visit) return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}><View style={styles.empty}><Text style={[styles.emptyTitle, { color: colors.text }]}>Workout unavailable</Text><Pressable onPress={finish} style={[styles.primaryButton, { backgroundColor: colors.accent }]}><Text style={[styles.primaryButtonText, { color: colors.accentText }]}>Back home</Text></Pressable></View></SafeAreaView>;
   const duration = formatDuration((visit.workout.endedAt ?? visit.workout.createdAt).getTime() - visit.workout.createdAt.getTime());
   const muscle = muscles[index];
@@ -48,20 +53,16 @@ export default function WorkoutSummaryScreen() {
     setPage('celebration');
   };
   return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-    {page === 'rating' && muscle && <Rating muscle={muscle} index={index} count={muscles.length} value={selected} onBack={() => index ? setIndex((value) => value - 1) : finish()} onSelect={(value) => setAnswers((current) => ({ ...current, [muscle.id]: value }))} onContinue={continueRating} onSkip={() => setPage('complete')} />}
+    {page === 'rating' && muscle && <Rating muscle={muscle} index={index} count={muscles.length} value={selected} onBack={() => index ? setIndex((value) => value - 1) : finish()} onSelect={(value) => setAnswers((current) => ({ ...current, [muscle.id]: value }))} onContinue={continueRating} onSkip={() => setPage('celebration')} />}
     {page === 'celebration' && <FlexCelebration onFinish={() => setPage('complete')} />}
-    {page === 'complete' && <Complete split={visit.workout.split} duration={duration} sets={visit.sets} volume={visit.volume} reps={visit.reps} achievements={achievements} exercises={exercises} ratings={ratings} onFinish={finish} />}
+    {page === 'complete' && <Complete split={workoutSplitLabel(visit.workout.split)} duration={duration} sets={visit.sets} volume={visit.volume} reps={visit.reps} achievements={achievements} exercises={exercises} ratings={ratings} onFinish={finish} />}
   </SafeAreaView>;
 }
 
 function FlexCelebration({ onFinish }: { onFinish: () => void }) {
   const { colors } = useAppearance();
-  const animation = useRef<LottieView>(null);
-  useEffect(() => {
-    animation.current?.play(0, 75);
-  }, []);
   return <View style={styles.celebration} accessibilityLabel="Workout complete" accessibilityRole="progressbar">
-    <LottieView ref={animation} autoPlay={false} loop={false} speed={1.5} resizeMode="contain" source={require('../../assets/flex.json')} colorFilters={[{ keypath: 'SVG Layer', color: colors.accent }]} style={styles.celebrationAnimation} onAnimationFinish={(isCancelled) => { if (!isCancelled) onFinish(); }} />
+    <LottieView autoPlay loop={false} resizeMode="contain" source={require('../../assets/workout-complete.json')} colorFilters={[{ keypath: 'Accent', color: colors.accent }, { keypath: 'Speed Lines', color: colors.accent }, { keypath: 'Accent Text', color: colors.accentText }]} style={styles.celebrationAnimation} webStyle={styles.celebrationAnimation} onAnimationFinish={(isCancelled) => { if (!isCancelled) onFinish(); }} onAnimationFailure={onFinish} />
   </View>;
 }
 
@@ -69,7 +70,7 @@ function Rating({ muscle, index, count, value, onBack, onSelect, onContinue, onS
   const last = index === count - 1;
   const { colors } = useAppearance();
   const isReady = value !== undefined;
-  return <View style={styles.page}><View style={styles.ratingHeader}><Pressable onPress={onBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Previous muscle"><ArrowLeft width={21} height={21} color={colors.text} strokeWidth={2.5} /></Pressable><Text style={[styles.stepText, { color: colors.mutedText }]}>{index + 1} OF {count}</Text><Pressable onPress={onSkip} hitSlop={10}><Text style={[styles.skipText, { color: colors.mutedText }]}>Skip</Text></Pressable></View><View style={styles.progressTrack}>{Array.from({ length: count }, (_, itemIndex) => <View key={itemIndex} style={[styles.progressSegment, { backgroundColor: itemIndex <= index ? colors.accent : colors.surfaceStrong }]} />)}</View><View style={styles.ratingCopy}><Text style={[styles.ratingEyebrow, { color: colors.mutedText }]}>HOW DOES IT FEEL?</Text><Text style={[styles.ratingTitle, { color: colors.text }]}>{muscle.name}</Text><MuscleBodyGraphic muscle={muscle.id} /></View><View style={styles.ratingOptions}>{[{ label: 'Fresh', value: 1 }, { label: 'Worked', value: 2 }, { label: 'Tired', value: 3 }, { label: 'Spent', value: 4 }].map((option) => { const selected = value === option.value; return <Pressable key={option.value} onPress={() => onSelect(option.value)} style={[styles.ratingOption, { backgroundColor: selected ? colors.accent : colors.surface }]} accessibilityRole="button" accessibilityLabel={`${option.label} exhaustion`}><Text style={[styles.ratingOptionText, { color: selected ? colors.accentText : colors.text }]}>{option.label}</Text></Pressable>; })}</View><View style={[styles.bottomActions, styles.ratingActions]}><Pressable disabled={!isReady} onPress={onContinue} style={[styles.primaryButton, { backgroundColor: isReady ? colors.accent : colors.surfaceStrong }]}><Text style={[styles.primaryButtonText, { color: isReady ? colors.accentText : colors.subtleText }]}>{last ? 'Save check-in' : 'Continue'}</Text></Pressable></View></View>;
+  return <View style={styles.page}><View style={styles.ratingHeader}><Pressable onPress={onBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Previous muscle"><ArrowLeft width={21} height={21} color={colors.text} strokeWidth={2.5} /></Pressable><Text style={[styles.stepText, { color: colors.mutedText }]}>{index + 1} OF {count}</Text><Pressable onPress={onSkip} hitSlop={10} accessibilityRole="button" accessibilityLabel="Skip muscle check-in"><Text style={[styles.skipText, { color: colors.mutedText }]}>Skip</Text></Pressable></View><View style={styles.progressTrack}>{Array.from({ length: count }, (_, itemIndex) => <View key={itemIndex} style={[styles.progressSegment, { backgroundColor: itemIndex <= index ? colors.accent : colors.surfaceStrong }]} />)}</View><View style={styles.ratingCopy}><Text style={[styles.ratingEyebrow, { color: colors.mutedText }]}>HOW DOES IT FEEL?</Text><Text style={[styles.ratingTitle, { color: colors.text }]}>{muscle.name}</Text><MuscleBodyGraphic muscle={muscle.id} /></View><View style={styles.ratingOptions}>{[{ label: 'Fresh', value: 1 }, { label: 'Worked', value: 2 }, { label: 'Tired', value: 3 }, { label: 'Spent', value: 4 }].map((option) => { const selected = value === option.value; return <Pressable key={option.value} onPress={() => onSelect(option.value)} style={[styles.ratingOption, { backgroundColor: selected ? colors.accent : colors.surface }]} accessibilityRole="button" accessibilityLabel={`${option.label} exhaustion`}><Text style={[styles.ratingOptionText, { color: selected ? colors.accentText : colors.text }]}>{option.label}</Text></Pressable>; })}</View><View style={[styles.bottomActions, styles.ratingActions]}><Pressable disabled={!isReady} onPress={onContinue} style={[styles.primaryButton, { backgroundColor: isReady ? colors.accent : colors.surfaceStrong }]} accessibilityRole="button" accessibilityLabel={last ? 'Save muscle check-in' : 'Continue to next muscle'}><Text style={[styles.primaryButtonText, { color: isReady ? colors.accentText : colors.subtleText }]}>{last ? 'Save check-in' : 'Continue'}</Text></Pressable></View></View>;
 }
 
 function Complete({ split, duration, sets, volume, reps, achievements, exercises, ratings, onFinish }: { split: string; duration: string; sets: number; volume: number; reps: number; achievements: ReturnType<typeof getWorkoutAchievements>; exercises: ReturnType<typeof getWorkoutVisitExercises>; ratings: ReturnType<typeof getWorkoutMuscleRatings>; onFinish: () => void }) {
@@ -209,6 +210,6 @@ function cubicValue(start: number, controlOne: number, controlTwo: number, end: 
 
 const styles: Record<string, any> = StyleSheet.create({
   celebration: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  celebrationAnimation: { width: '100%', aspectRatio: 16 / 9 },
+  celebrationAnimation: { width: 320, height: 320 },
   safeArea: { flex: 1, backgroundColor: '#F9F9F7' }, page: { flex: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 18 }, summaryPage: { flex: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 18 }, summaryContent: { paddingBottom: 16 }, summaryHero: { alignItems: 'center', paddingTop: 14, paddingBottom: 26 }, completeMark: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }, completeMarkText: { fontSize: 29, fontWeight: '900' }, summaryKicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, summaryMetaText: { marginTop: 8, fontSize: 14, fontWeight: '700', letterSpacing: -.15, textTransform: 'capitalize' }, summaryTitle: { marginTop: 5, fontSize: 38, lineHeight: 42, fontWeight: '900', letterSpacing: -1.8 }, sessionStats: { flexDirection: 'row', gap: 8 }, sessionStat: { flex: 1, minHeight: 82, alignItems: 'center', justifyContent: 'center', borderRadius: 16, paddingHorizontal: 4 }, sessionStatValue: { fontSize: 18, lineHeight: 22, fontWeight: '900', letterSpacing: -.7 }, sessionStatLabel: { marginTop: 3, fontSize: 10, fontWeight: '800' }, ratingHeader: { height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, backButton: { width: 38, height: 38, marginLeft: -9, alignItems: 'center', justifyContent: 'center' }, stepText: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: '#73786E' }, skipText: { fontSize: 13, fontWeight: '800', color: '#73786E' }, progressTrack: { flexDirection: 'row', gap: 4, marginTop: 18 }, progressSegment: { flex: 1, height: 4, borderRadius: 4, backgroundColor: '#E0E3DD' }, progressSegmentActive: { backgroundColor: '#171914' }, ratingCopy: { alignItems: 'center', paddingTop: 28 }, ratingEyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 1, color: '#747970' }, ratingTitle: { marginTop: 8, fontSize: 38, lineHeight: 41, fontWeight: '900', letterSpacing: -1.9, color: '#161813' }, ratingOptions: { marginTop: 'auto', flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, ratingOption: { width: '48.5%', height: 66, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECEEE8' }, ratingOptionText: { fontSize: 17, fontWeight: '900', letterSpacing: -.45, color: '#252722' }, bottomActions: { paddingTop: 16 }, ratingActions: { marginTop: 0, paddingTop: 12 }, primaryButton: { minHeight: 60, borderRadius: 18, backgroundColor: '#171914', alignItems: 'center', justifyContent: 'center' }, primaryButtonDisabled: { backgroundColor: '#CDD0C9' }, primaryButtonText: { fontSize: 17, fontWeight: '900', letterSpacing: -.45, color: '#FFFFFF' }, personalBestSection: { marginTop: 28 }, personalBestTitle: { marginBottom: 8, fontSize: 10, fontWeight: '900', letterSpacing: .8, textTransform: 'uppercase' }, achievement: { minHeight: 58, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1 }, achievementCopy: { flex: 1, minWidth: 0, marginLeft: 10 }, achievementName: { fontSize: 15, fontWeight: '900', letterSpacing: -.45 }, achievementDetail: { marginTop: 2, fontSize: 12, fontWeight: '700' }, bestMedal: { width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, bestMedalText: { fontSize: 13 }, achievementLevelText: { fontSize: 11, fontWeight: '900', letterSpacing: -.1 }, exerciseListSection: { marginTop: 28 }, exerciseRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1 }, exerciseIndex: { width: 31, fontSize: 11, fontWeight: '900', letterSpacing: .5 }, exerciseCopy: { flex: 1, minWidth: 0 }, exerciseName: { fontSize: 15, fontWeight: '800', letterSpacing: -.35 }, exerciseDetail: { marginTop: 2, fontSize: 12, fontWeight: '700' }, progressListSection: { marginTop: 28 }, exerciseProgress: { paddingBottom: 18, marginBottom: 18, borderBottomWidth: 1 }, progressHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }, progressExerciseName: { flex: 1, paddingRight: 12, fontSize: 15, fontWeight: '800', letterSpacing: -.35 }, progressLegend: { flexDirection: 'row', alignItems: 'center', gap: 4 }, legendDot: { width: 6, height: 6, borderRadius: 3 }, progressLegendText: { fontSize: 9, fontWeight: '800', marginRight: 5 }, chart: { height: 112, position: 'relative', overflow: 'hidden' }, chartEmpty: { alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderBottomWidth: 1 }, chartEmptyText: { maxWidth: 250, fontSize: 12, lineHeight: 18, fontWeight: '700', textAlign: 'center' }, lineGraph: { ...StyleSheet.absoluteFill }, chartScrubber: { ...StyleSheet.absoluteFill, backgroundColor: 'transparent' }, muscleRecapSection: { marginTop: 28 }, muscleRecapHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }, recoveryBadgeText: { fontSize: 12, fontWeight: '900', letterSpacing: -.1 }, muscleChips: { gap: 0 }, muscleChip: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1 }, muscleChipName: { fontSize: 14, fontWeight: '800', letterSpacing: -.3 }, muscleChipLevel: { fontSize: 12, fontWeight: '800' }, empty: { flex: 1, padding: 24, justifyContent: 'center', gap: 18 }, emptyTitle: { fontSize: 26, fontWeight: '900', color: '#191B16' },
 });

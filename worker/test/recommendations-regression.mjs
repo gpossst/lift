@@ -68,7 +68,7 @@ if (__testValidPayload({ ...syncPayload, recommendationFeedback: [{ ...syncPaylo
 if (__testValidPayload({ ...syncPayload, recommendationFeedback: [{ ...syncPayload.recommendationFeedback[0], action: 'clicked' }] })) throw new Error('Unknown recommendation feedback action was accepted.');
 if (__testValidPayload({ ...syncPayload, recommendationFeedback: [...syncPayload.recommendationFeedback, syncPayload.recommendationFeedback[0]] })) throw new Error('Duplicate recommendation feedback was accepted.');
 const onboarding = { goals: ['Build muscle'], weightLb: 180, heightInches: 70, experience: 'experienced', favoriteExerciseIds: ['bench'], trainingLocation: 'gym', trainingDays: 3 };
-if (!__testValidOnboarding(onboarding) || !__testValidOnboarding({ ...onboarding, favoriteExerciseIds: undefined }) || __testValidOnboarding({ ...onboarding, favoriteExerciseIds: Array(6).fill('bench') })) throw new Error('Favorite exercise onboarding validation regressed.');
+if (!__testValidOnboarding(onboarding) || !__testValidOnboarding({ goals: ['Build muscle'], experience: 'new', trainingDays: 3 }) || __testValidOnboarding({ ...onboarding, favoriteExerciseIds: Array(6).fill('bench') })) throw new Error('Onboarding validation regressed.');
 const profileRow = { userId: 'own', displayName: 'Own', imageUrl: null, goals, weightLb: 180, heightInches: 70, experience: 'some', favoriteExerciseIds: null, trainingLocation: 'gym', trainingDays: 3, gymId: 'home-gym', availableEquipment: '["barbell"]', sessionMinutes: 45, optInSimilarUsers: 1 };
 const database = {
   prepare(sql) {
@@ -91,6 +91,6 @@ if (updated.status !== 200 || profileRow.goals !== goals || profileRow.gymId !==
 if ((await patch({ recommendationPreferences: { gymId: '' } })).status !== 400) throw new Error('Invalid optional preference accepted.');
 const favorites = await patch({ recommendationPreferences: { favoriteExerciseIds: ['bench', 'squat'] } });
 if (favorites.status !== 200 || profileRow.favoriteExerciseIds !== '["bench","squat"]') throw new Error('Favorite exercises were not persisted.');
-if ((await patch({ recommendationPreferences: { favoriteExerciseIds: Array(6).fill('bench') } })).status !== 400) throw new Error('Too many favorite exercises were accepted.');
+if ((await patch({ recommendationPreferences: { favoriteExerciseIds: Array(21).fill('bench') } })).status !== 400) throw new Error('Too many favorite exercises were accepted.');
 
 console.log('Worker recommendation and profile preference regressions passed.');

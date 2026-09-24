@@ -14,7 +14,7 @@ export type RecommendationPreferences = {
   sessionMinutes?: number | null;
   optInSimilarUsers?: boolean;
 };
-export type Profile = { displayName: string; imageUrl: string | null; recommendationPreferences?: RecommendationPreferences };
+export type Profile = { displayName: string; hasChosenDisplayName: boolean; imageUrl: string | null; recommendationPreferences?: RecommendationPreferences };
 export type ProfileUpdate = { displayName?: string; recommendationPreferences?: RecommendationPreferences };
 
 async function request<T>(init?: RequestInit): Promise<T> {

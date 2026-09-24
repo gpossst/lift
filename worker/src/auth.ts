@@ -60,7 +60,6 @@ export function createAuth(env: AuthEnv, ctx?: BackgroundContext) {
     trustedOrigins,
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
       minPasswordLength: 12,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: ({ user, url }) => sendEmail(env, user.email, 'Reset your Lift password', 'Use the secure link below to choose a new Lift password. This link expires in one hour.', { label: 'Reset password', url }),

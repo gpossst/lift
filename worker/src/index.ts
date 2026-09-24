@@ -2,18 +2,20 @@ import { createAuth, type AuthEnv } from './auth';
 
 export interface Env extends AuthEnv {
   DB: D1Database;
+  DELETION_RATE_LIMITER: RateLimit;
   /** Address shown on the public support and privacy pages. */
   SUPPORT_EMAIL?: string;
 }
 
 type SyncSet = { exerciseId: string; workoutId: string; setNumber: number; weight: number; reps: number; completedAt: number; muscles: string[]; updatedAt?: number };
-type SyncWorkout = { id: string; split: 'push' | 'pull' | 'legs'; createdAt: number; endedAt: number | null; updatedAt?: number };
+type SyncWorkout = { id: string; split: string; createdAt: number; endedAt: number | null; updatedAt?: number };
+type SyncSplit = { id: string; name: string; muscles: string[]; updatedAt?: number };
 type SyncRating = { workoutId: string; muscle: string; exhaustion: number; createdAt: number; updatedAt?: number };
 type FeedbackAction = 'accepted' | 'completed' | 'impression' | 'replaced' | 'removed' | 'skipped' | 'manual';
 type SyncFeedback = { workoutId: string; exerciseId: string; action: FeedbackAction; relatedExerciseId?: string | null; rank?: number | null; createdAt: number; updatedAt?: number };
-type Tombstone = { entity: 'workout' | 'set' | 'rating'; key: string; deletedAt: number };
-type SyncPayload = { workouts: SyncWorkout[]; sets: SyncSet[]; muscleRatings: SyncRating[]; recommendationFeedback?: SyncFeedback[]; tombstones?: Tombstone[] };
-type SyncEntity = 'workout' | 'set' | 'rating' | 'feedback';
+type Tombstone = { entity: 'workout' | 'set' | 'rating' | 'split'; key: string; deletedAt: number };
+type SyncPayload = { workouts: SyncWorkout[]; sets: SyncSet[]; muscleRatings: SyncRating[]; splits?: SyncSplit[]; recommendationFeedback?: SyncFeedback[]; tombstones?: Tombstone[] };
+type SyncEntity = 'workout' | 'set' | 'rating' | 'feedback' | 'split';
 type SyncMutation = { entity: SyncEntity; key: string; operation: 'upsert' | 'delete'; baseRevision: number; record?: Record<string, unknown> };
 type SyncChunk = { batchId: string; changes: SyncMutation[] };
 type AuthenticatedUser = { id: string; displayName: string; imageUrl: string | null };
@@ -21,9 +23,9 @@ type PreferenceGoal = 'Build muscle' | 'Get stronger' | 'Lose fat' | 'Feel healt
 type Experience = 'new' | 'some' | 'experienced';
 type TrainingLocation = 'gym' | 'home' | 'both';
 type RecommendationPreferences = { goals: PreferenceGoal[] | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string[] | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string[] | null; sessionMinutes: number | null; optInSimilarUsers: boolean };
-type UserProfile = { userId: string; displayName: string; imageUrl: string | null; recommendationPreferences: RecommendationPreferences };
-type ProfileRow = Omit<UserProfile, 'recommendationPreferences'> & { goals: string | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string | null; sessionMinutes: number | null; optInSimilarUsers: number };
-type Onboarding = { displayName?: string; goals: string[]; weightLb: number; heightInches: number; experience: 'new' | 'some' | 'experienced'; favoriteExerciseIds?: string[]; trainingLocation: 'gym' | 'home' | 'both'; trainingDays: number };
+type UserProfile = { userId: string; displayName: string; hasChosenDisplayName: boolean; imageUrl: string | null; recommendationPreferences: RecommendationPreferences };
+type ProfileRow = Omit<UserProfile, 'recommendationPreferences' | 'hasChosenDisplayName'> & { hasChosenDisplayName: number; goals: string | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string | null; sessionMinutes: number | null; optInSimilarUsers: number };
+type Onboarding = { displayName?: string; goals: string[]; weightLb?: number; heightInches?: number; experience: 'new' | 'some' | 'experienced'; favoriteExerciseIds?: string[]; trainingLocation?: 'gym' | 'home' | 'both'; trainingDays: number };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const encoder = new TextEncoder();
@@ -33,6 +35,8 @@ const splitKey = (key: string) => key.split('\u001f');
 const setKey = (set: Pick<SyncSet, 'workoutId' | 'exerciseId' | 'setNumber'>) => `${set.workoutId}\u001f${set.exerciseId}\u001f${set.setNumber}`;
 const ratingKey = (rating: Pick<SyncRating, 'workoutId' | 'muscle'>) => `${rating.workoutId}\u001f${rating.muscle}`;
 const feedbackKey = (feedback: Pick<SyncFeedback, 'workoutId' | 'exerciseId' | 'action'>) => `${feedback.workoutId}\u001f${feedback.exerciseId}\u001f${feedback.action}`;
+const customSplitId = (id: string) => /^custom:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+const splitMuscles = new Set(['abdominals', 'abductors', 'adductors', 'biceps', 'calves', 'chest', 'forearms', 'glutes', 'hamstrings', 'lats', 'lower back', 'middle back', 'neck', 'quadriceps', 'shoulders', 'traps', 'triceps']);
 const maxSyncChunk = 3; // Three eight-muscle sets use 40 batch statements (42 for the request with user setup).
 const supportEmail = (env: Env) => env.SUPPORT_EMAIL?.trim() || 'support@liftfitness.app';
 
@@ -68,15 +72,18 @@ function validTombstoneKey(tombstone: Tombstone) {
   const pieces = splitKey(tombstone.key);
   return (tombstone.entity === 'workout' && pieces.length === 1 && isString(pieces[0]))
     || (tombstone.entity === 'set' && pieces.length === 3 && isString(pieces[0]) && isString(pieces[1]) && /^\d+$/.test(pieces[2]!))
-    || (tombstone.entity === 'rating' && pieces.length === 2 && isString(pieces[0]) && isString(pieces[1], 80));
+    || (tombstone.entity === 'rating' && pieces.length === 2 && isString(pieces[0]) && isString(pieces[1], 80))
+    || (tombstone.entity === 'split' && customSplitId(tombstone.key));
 }
 
 function validPayload(value: unknown): value is SyncPayload {
   if (!value || typeof value !== 'object') return false;
   const payload = value as Partial<SyncPayload>;
-  if (!Array.isArray(payload.workouts) || !Array.isArray(payload.sets) || !Array.isArray(payload.muscleRatings) || (payload.recommendationFeedback !== undefined && !Array.isArray(payload.recommendationFeedback)) || (payload.tombstones !== undefined && !Array.isArray(payload.tombstones))) return false;
-  if (payload.workouts.length > 2_000 || payload.sets.length > 10_000 || payload.muscleRatings.length > 10_000 || (payload.recommendationFeedback?.length ?? 0) > 10_000 || (payload.tombstones?.length ?? 0) > 10_000) return false;
-  if (!payload.workouts.every((workout) => workout && typeof workout === 'object' && isString(workout.id) && ['push', 'pull', 'legs'].includes(workout.split) && isTimestamp(workout.createdAt) && (workout.endedAt === null || isTimestamp(workout.endedAt)) && (workout.endedAt === null || workout.endedAt >= workout.createdAt) && isVersion(workout.updatedAt, Math.max(workout.createdAt, workout.endedAt ?? 0)))) return false;
+  if (!Array.isArray(payload.workouts) || !Array.isArray(payload.sets) || !Array.isArray(payload.muscleRatings) || (payload.splits !== undefined && !Array.isArray(payload.splits)) || (payload.recommendationFeedback !== undefined && !Array.isArray(payload.recommendationFeedback)) || (payload.tombstones !== undefined && !Array.isArray(payload.tombstones))) return false;
+  if (payload.workouts.length > 2_000 || payload.sets.length > 10_000 || payload.muscleRatings.length > 10_000 || (payload.splits?.length ?? 0) > 100 || (payload.recommendationFeedback?.length ?? 0) > 10_000 || (payload.tombstones?.length ?? 0) > 10_000) return false;
+  if (!payload.workouts.every((workout) => workout && typeof workout === 'object' && isString(workout.id) && (['push', 'pull', 'legs'].includes(workout.split) || customSplitId(workout.split)) && isTimestamp(workout.createdAt) && (workout.endedAt === null || isTimestamp(workout.endedAt)) && (workout.endedAt === null || workout.endedAt >= workout.createdAt) && isVersion(workout.updatedAt, Math.max(workout.createdAt, workout.endedAt ?? 0)))) return false;
+  if (!(payload.splits ?? []).every((split) => split && typeof split === 'object' && customSplitId(split.id) && isString(split.name, 40) && Array.isArray(split.muscles) && split.muscles.length > 0 && split.muscles.length <= 12 && split.muscles.every((muscle) => splitMuscles.has(muscle)) && new Set(split.muscles).size === split.muscles.length && isVersion(split.updatedAt, 0))) return false;
+  if (new Set((payload.splits ?? []).map((split) => split.id)).size !== (payload.splits ?? []).length) return false;
   const workoutIds = new Set(payload.workouts.map((workout) => workout.id));
   if (workoutIds.size !== payload.workouts.length) return false;
   const seenSets = new Set<string>();
@@ -102,13 +109,13 @@ function validPayload(value: unknown): value is SyncPayload {
       && isVersion(item.updatedAt, item.createdAt) && !seenFeedback.has(key);
     seenFeedback.add(key); return okay;
   })) return false;
-  return (payload.tombstones ?? []).every((tombstone) => tombstone && typeof tombstone === 'object' && ['workout', 'set', 'rating'].includes(tombstone.entity) && isString(tombstone.key, 500) && !tombstone.key.includes('\u0000') && isTimestamp(tombstone.deletedAt) && validTombstoneKey(tombstone));
+  return (payload.tombstones ?? []).every((tombstone) => tombstone && typeof tombstone === 'object' && ['workout', 'set', 'rating', 'split'].includes(tombstone.entity) && isString(tombstone.key, 500) && !tombstone.key.includes('\u0000') && isTimestamp(tombstone.deletedAt) && validTombstoneKey(tombstone));
 }
 
 function validMutation(value: unknown): value is SyncMutation {
   if (!value || typeof value !== 'object') return false;
   const mutation = value as Partial<SyncMutation>;
-  if (!['workout', 'set', 'rating', 'feedback'].includes(mutation.entity ?? '') || !isString(mutation.key, 500)
+  if (!['workout', 'set', 'rating', 'feedback', 'split'].includes(mutation.entity ?? '') || !isString(mutation.key, 500)
     || mutation.key!.includes('\u0000') || !['upsert', 'delete'].includes(mutation.operation ?? '')
     || !Number.isInteger(mutation.baseRevision) || mutation.baseRevision! < 0) return false;
   if (mutation.operation === 'delete') return mutation.entity !== 'feedback' && mutation.record === undefined
@@ -116,6 +123,7 @@ function validMutation(value: unknown): value is SyncMutation {
   const record = mutation.record as Record<string, unknown> | undefined;
   if (!record) return false;
   if (mutation.entity === 'workout') return validPayload({ workouts: [record], sets: [], muscleRatings: [], tombstones: [] }) && mutation.key === record.id;
+  if (mutation.entity === 'split') return validPayload({ workouts: [], sets: [], muscleRatings: [], splits: [record as unknown as SyncSplit] }) && mutation.key === record.id;
   if (mutation.entity === 'set') {
     const workout = { id: record.workoutId, split: 'push', createdAt: 0, endedAt: null };
     return validPayload({ workouts: [workout], sets: [record], muscleRatings: [], tombstones: [] }) && mutation.key === setKey(record as SyncSet);
@@ -207,10 +215,12 @@ function mutationStatements(env: Env, userId: string, batchId: string, hash: str
       ? `(SELECT sync_revision FROM workouts WHERE user_id = ? AND local_id = ?)`
       : change.entity === 'set'
         ? `(SELECT sync_revision FROM workout_sets WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND set_number = ?)`
-        : `(SELECT sync_revision FROM workout_muscle_ratings WHERE user_id = ? AND workout_local_id = ? AND muscle = ?)`;
+        : change.entity === 'rating'
+          ? `(SELECT sync_revision FROM workout_muscle_ratings WHERE user_id = ? AND workout_local_id = ? AND muscle = ?)`
+          : `(SELECT sync_revision FROM user_splits WHERE user_id = ? AND id = ?)`;
     const liveArgs = change.entity === 'workout' ? [userId, pieces[0]]
       : change.entity === 'set' ? [userId, pieces[0], pieces[1], Number(pieces[2])]
-        : [userId, pieces[0], pieces[1]];
+        : change.entity === 'rating' ? [userId, pieces[0], pieces[1]] : [userId, change.key];
     statements.push(env.DB.prepare(`
       INSERT INTO sync_tombstones (user_id, entity, record_key, deleted_at, sync_revision)
       SELECT ?, ?, ?, unixepoch(), ${batchRevision}
@@ -223,12 +233,26 @@ function mutationStatements(env: Env, userId: string, batchId: string, hash: str
     if (change.entity === 'workout') statements.push(env.DB.prepare(`DELETE FROM workouts WHERE user_id = ? AND local_id = ? AND sync_revision <= ? AND ${accepted}`).bind(userId, pieces[0], change.baseRevision, ...acceptedArgs));
     if (change.entity === 'set') statements.push(env.DB.prepare(`DELETE FROM workout_sets WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND set_number = ? AND sync_revision <= ? AND ${accepted}`).bind(userId, pieces[0], pieces[1], Number(pieces[2]), change.baseRevision, ...acceptedArgs));
     if (change.entity === 'rating') statements.push(env.DB.prepare(`DELETE FROM workout_muscle_ratings WHERE user_id = ? AND workout_local_id = ? AND muscle = ? AND sync_revision <= ? AND ${accepted}`).bind(userId, pieces[0], pieces[1], change.baseRevision, ...acceptedArgs));
+    if (change.entity === 'split') statements.push(env.DB.prepare(`DELETE FROM user_splits WHERE user_id = ? AND id = ? AND sync_revision <= ? AND ${accepted}`).bind(userId, change.key, change.baseRevision, ...acceptedArgs));
     statements.push(env.DB.prepare(`INSERT OR IGNORE INTO sync_changes (user_id, revision, entity, record_key, deleted, payload)
       SELECT ?, ${batchRevision}, ?, ?, 1, NULL WHERE ${accepted}`).bind(userId, ...revisionArgs, change.entity, change.key, ...acceptedArgs));
     return statements;
   }
 
   const record = change.record!;
+  if (change.entity === 'split') {
+    const split = record as unknown as SyncSplit;
+    statements.push(env.DB.prepare(`INSERT INTO user_splits (user_id, id, name, muscles, updated_at, sync_revision)
+      SELECT ?, ?, ?, ?, ?, ${batchRevision} WHERE ${batchMatches}
+        AND (MAX(COALESCE((SELECT sync_revision FROM user_splits WHERE user_id = ? AND id = ?), 0), COALESCE((SELECT sync_revision FROM sync_tombstones WHERE user_id = ? AND entity = 'split' AND record_key = ?), 0)) = ?
+          OR COALESCE((SELECT sync_revision FROM user_splits WHERE user_id = ? AND id = ?), 0) = ${batchRevision})
+      ON CONFLICT(user_id, id) DO UPDATE SET name = excluded.name, muscles = excluded.muscles, updated_at = excluded.updated_at, sync_revision = excluded.sync_revision
+    `).bind(userId, split.id, split.name, JSON.stringify(split.muscles), now(), ...revisionArgs, ...gateArgs, userId, change.key, userId, change.key, change.baseRevision, userId, change.key, ...revisionArgs));
+    statements.push(env.DB.prepare(`DELETE FROM sync_tombstones WHERE user_id = ? AND entity = 'split' AND record_key = ? AND sync_revision <= ? AND EXISTS (SELECT 1 FROM user_splits WHERE user_id = ? AND id = ? AND sync_revision = ${batchRevision})`).bind(userId, change.key, change.baseRevision, userId, change.key, ...revisionArgs));
+    statements.push(env.DB.prepare(`INSERT OR IGNORE INTO sync_changes (user_id, revision, entity, record_key, deleted, payload)
+      SELECT ?, ${batchRevision}, 'split', ?, 0, ? WHERE EXISTS (SELECT 1 FROM user_splits WHERE user_id = ? AND id = ? AND sync_revision = ${batchRevision})`).bind(userId, ...revisionArgs, change.key, payload, userId, change.key, ...revisionArgs));
+    return statements;
+  }
   if (change.entity === 'workout') {
     statements.push(env.DB.prepare(`INSERT INTO workouts (user_id, local_id, split, created_at, ended_at, updated_at, sync_revision)
       SELECT ?, ?, ?, ?, ?, ?, ${batchRevision} WHERE ${batchMatches}
@@ -321,6 +345,7 @@ async function pullSyncChanges(env: Env, userId: string, url: URL) {
 function friendCode() { return crypto.getRandomValues(new Uint32Array(1))[0]!.toString(36).slice(-6).padStart(6, '0').toUpperCase(); }
 
 async function codeFor(env: Env, userId: string) {
+  if (!await hasChosenDisplayName(env, userId)) return null;
   const existing = await env.DB.prepare('SELECT friend_code AS code FROM users WHERE id = ?').bind(userId).first<{ code: string | null }>();
   if (existing?.code) return existing.code;
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -333,20 +358,25 @@ async function codeFor(env: Env, userId: string) {
   throw new Error('Could not create friend code.');
 }
 
+async function hasChosenDisplayName(env: Env, userId: string) {
+  const row = await env.DB.prepare('SELECT has_chosen_display_name AS chosen FROM user_info WHERE user_id = ?').bind(userId).first<{ chosen: number }>();
+  return row?.chosen === 1;
+}
+
 async function friends(env: Env, userId: string) {
   const rows = await env.DB.prepare(`SELECT u.id, i.display_name AS displayName, i.image_url AS imageUrl FROM friendships f JOIN users u ON u.id = f.friend_id JOIN user_info i ON i.user_id = u.id WHERE f.user_id = ? ORDER BY f.created_at DESC`).bind(userId).all<{ id: string; displayName: string; imageUrl: string | null }>();
   return { count: rows.results.length, users: rows.results };
 }
 
 async function profile(env: Env, userId: string) {
-  const row = await env.DB.prepare(`SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl,
+  const row = await env.DB.prepare(`SELECT auth_user_id AS userId, display_name AS displayName, has_chosen_display_name AS hasChosenDisplayName, image_url AS imageUrl,
     goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation,
     training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment,
     session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers
     FROM user_info WHERE user_id = ?`).bind(userId).first<ProfileRow>();
   if (!row) throw new Error('Profile not found.');
   const { goals, favoriteExerciseIds, availableEquipment, optInSimilarUsers } = row;
-  return { userId: row.userId, displayName: row.displayName, imageUrl: row.imageUrl, recommendationPreferences: {
+  return { userId: row.userId, displayName: row.displayName, hasChosenDisplayName: row.hasChosenDisplayName === 1, imageUrl: row.imageUrl, recommendationPreferences: {
     goals: parseStringArray(goals), weightLb: row.weightLb, heightInches: row.heightInches, experience: row.experience, favoriteExerciseIds: parseStringArray(favoriteExerciseIds),
     trainingLocation: row.trainingLocation, trainingDays: row.trainingDays, gymId: row.gymId,
     availableEquipment: parseStringArray(availableEquipment), sessionMinutes: row.sessionMinutes, optInSimilarUsers: optInSimilarUsers === 1,
@@ -375,7 +405,7 @@ async function updateProfile(request: Request, env: Env, userId: string) {
   const validPreferences = !data || (optionalStringArray(data.goals, goalValues)
     && optionalNumber(data.weightLb, 50, 1_000)
     && optionalNumber(data.heightInches, 36, 108, true)
-    && validExperience && optionalStringArray(data.favoriteExerciseIds, undefined, 5) && validLocation
+    && validExperience && optionalStringArray(data.favoriteExerciseIds, undefined, 20) && validLocation
     && optionalNumber(data.trainingDays, 1, 7, true)
     && validGym && optionalStringArray(data.availableEquipment)
     && optionalNumber(data.sessionMinutes, 5, 300, true) && validOptIn);
@@ -383,7 +413,7 @@ async function updateProfile(request: Request, env: Env, userId: string) {
   const columns: Record<string, string> = { goals: 'goals', weightLb: 'weight_lb', heightInches: 'height_inches', experience: 'experience', favoriteExerciseIds: 'favorite_exercise_ids', trainingLocation: 'training_location', trainingDays: 'training_days', gymId: 'gym_id', availableEquipment: 'available_equipment', sessionMinutes: 'session_minutes', optInSimilarUsers: 'similar_users_opt_in' };
   const assignments: string[] = [];
   const values: unknown[] = [];
-  if (displayName !== undefined) { assignments.push('display_name = ?'); values.push(displayName); }
+  if (displayName !== undefined) { assignments.push('display_name = ?', 'has_chosen_display_name = 1'); values.push(displayName); }
   for (const key of keys) if (data?.[key] !== undefined) {
     assignments.push(`${columns[key]} = ?`);
     const value = data[key];
@@ -406,17 +436,17 @@ function validOnboarding(value: unknown): value is Onboarding {
   const { weightLb, heightInches, trainingDays } = data;
   return (data.displayName === undefined || (typeof data.displayName === 'string' && isString(data.displayName.trim().replace(/\s+/g, ' '), 40)))
     && Array.isArray(data.goals) && data.goals.length > 0 && data.goals.length <= 4 && data.goals.every((goal) => ['Build muscle', 'Get stronger', 'Lose fat', 'Feel healthier'].includes(goal))
-    && typeof weightLb === 'number' && Number.isFinite(weightLb) && weightLb >= 50 && weightLb <= 1_000
-    && typeof heightInches === 'number' && Number.isInteger(heightInches) && heightInches >= 36 && heightInches <= 108
+    && (weightLb === undefined || (typeof weightLb === 'number' && Number.isFinite(weightLb) && weightLb >= 50 && weightLb <= 1_000))
+    && (heightInches === undefined || (typeof heightInches === 'number' && Number.isInteger(heightInches) && heightInches >= 36 && heightInches <= 108))
     && (data.favoriteExerciseIds === undefined || (Array.isArray(data.favoriteExerciseIds) && data.favoriteExerciseIds.length <= 5 && data.favoriteExerciseIds.every((id) => isString(id, 80))))
-    && ['new', 'some', 'experienced'].includes(data.experience ?? '') && ['gym', 'home', 'both'].includes(data.trainingLocation ?? '')
+    && ['new', 'some', 'experienced'].includes(data.experience ?? '') && (data.trainingLocation === undefined || ['gym', 'home', 'both'].includes(data.trainingLocation))
     && typeof trainingDays === 'number' && Number.isInteger(trainingDays) && trainingDays >= 1 && trainingDays <= 7;
 }
 
 async function saveOnboarding(request: Request, env: Env, userId: string) {
   const body: unknown = await request.json().catch(() => null);
   if (!validOnboarding(body)) return json({ error: 'Invalid onboarding data.' }, 400);
-  await env.DB.prepare('UPDATE user_info SET display_name = COALESCE(?, display_name), goals = ?, weight_lb = ?, height_inches = ?, experience = ?, favorite_exercise_ids = ?, training_location = ?, training_days = ?, onboarded_at = ?, updated_at = ? WHERE user_id = ?').bind(body.displayName?.trim().replace(/\s+/g, ' ') ?? null, JSON.stringify(body.goals), body.weightLb, body.heightInches, body.experience, JSON.stringify(body.favoriteExerciseIds ?? []), body.trainingLocation, body.trainingDays, now(), now(), userId).run();
+  await env.DB.prepare('UPDATE user_info SET display_name = COALESCE(?, display_name), has_chosen_display_name = CASE WHEN ? IS NULL THEN has_chosen_display_name ELSE 1 END, goals = ?, weight_lb = ?, height_inches = ?, experience = ?, favorite_exercise_ids = ?, training_location = ?, training_days = ?, onboarded_at = ?, updated_at = ? WHERE user_id = ?').bind(body.displayName?.trim().replace(/\s+/g, ' ') ?? null, body.displayName ?? null, JSON.stringify(body.goals), body.weightLb ?? null, body.heightInches ?? null, body.experience, JSON.stringify(body.favoriteExerciseIds ?? []), body.trainingLocation ?? null, body.trainingDays, now(), now(), userId).run();
   return json({ ok: true }, 201);
 }
 
@@ -446,6 +476,7 @@ async function friendPersonalRecords(env: Env, userId: string) {
 }
 
 async function addFriend(request: Request, env: Env, userId: string) {
+  if (!await hasChosenDisplayName(env, userId)) return json({ error: 'Set a display name before adding friends.' }, 409);
   const body = await request.json().catch(() => null) as { code?: unknown } | null;
   const code = typeof body?.code === 'string' ? body.code.trim().toUpperCase() : '';
   if (!/^[A-Z0-9]{6}$/.test(code)) return json({ error: 'Enter a six-character friend code.' }, 400);
@@ -458,6 +489,8 @@ async function addFriend(request: Request, env: Env, userId: string) {
 }
 
 async function requestAccountDeletion(request: Request, env: Env) {
+  const rateLimit = await env.DELETION_RATE_LIMITER.limit({ key: request.headers.get('CF-Connecting-IP') || 'unknown' });
+  if (!rateLimit.success) return json({ error: 'Too many deletion requests. Try again later.' }, 429);
   const body = await request.json().catch(() => null) as { email?: unknown; confirm?: unknown } | null;
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
   if (body?.confirm !== true || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return json({ error: 'Enter your account email and confirm deletion.' }, 400);
@@ -475,16 +508,17 @@ async function deleteAccount(env: Env, userId: string) {
 }
 
 async function exportAccount(env: Env, userId: string) {
-  const [profileRow, workouts, sets, muscles, ratings, feedback, connections] = await Promise.all([
+  const [profileRow, workouts, sets, muscles, ratings, feedback, splits, connections] = await Promise.all([
     env.DB.prepare('SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
     env.DB.prepare('SELECT local_id AS id, split, created_at AS createdAt, ended_at AS endedAt FROM workouts WHERE user_id = ? ORDER BY created_at, local_id').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE user_id = ? ORDER BY completed_at, workout_local_id, exercise_id, set_number').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, muscle FROM set_muscles WHERE user_id = ? ORDER BY workout_local_id, exercise_id, set_number, muscle').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, muscle, exhaustion, created_at AS createdAt FROM workout_muscle_ratings WHERE user_id = ? ORDER BY created_at, workout_local_id, muscle').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, action, related_exercise_id AS relatedExerciseId, rank, created_at AS createdAt FROM recommendation_feedback WHERE user_id = ? ORDER BY created_at, workout_local_id, exercise_id, action').bind(userId).all(),
+    env.DB.prepare('SELECT id, name, json(muscles) AS muscles, updated_at AS updatedAt FROM user_splits WHERE user_id = ? ORDER BY name, id').bind(userId).all(),
     env.DB.prepare('SELECT friend_id AS friendId, created_at AS createdAt FROM friendships WHERE user_id = ? ORDER BY created_at').bind(userId).all(),
   ]);
-  return json({ exportedAt: new Date().toISOString(), profile: profileRow, workouts: workouts.results, sets: sets.results, setMuscles: muscles.results, muscleRatings: ratings.results, recommendationFeedback: feedback.results, friendConnections: connections.results });
+  return json({ exportedAt: new Date().toISOString(), profile: profileRow, workouts: workouts.results, sets: sets.results, setMuscles: muscles.results, muscleRatings: ratings.results, recommendationFeedback: feedback.results, splits: splits.results.map((split) => ({ ...split, muscles: JSON.parse(split.muscles as string) })), friendConnections: connections.results });
 }
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -563,6 +597,7 @@ export {
   pullSyncChanges as __testPullSyncChanges,
   pushSyncChunk as __testPushSyncChunk,
   deleteAccount as __testDeleteAccount,
+  exportAccount as __testExportAccount,
   updateProfile as __testUpdateProfile,
   validChunk as __testValidChunk,
   validOnboarding as __testValidOnboarding,

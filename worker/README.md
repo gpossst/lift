@@ -45,8 +45,9 @@ app uses `VITE_API_URL=https://api.lift.garrett.one`.
 
 ## Authentication
 
-Better Auth is mounted at `/api/auth/*`. Email/password accounts must verify
-their email before signing in. TOTP is the recommended second factor; Resend
+Better Auth is mounted at `/api/auth/*`. Email/password accounts sign in on
+signup and receive a verification email; clients prompt until it is verified.
+TOTP is the recommended second factor; Resend
 email OTP and single-use backup codes are supported fallbacks. Protected
 `/v1/*` routes accept only a valid Better Auth session cookie. Browser requests
 must come from a configured trusted origin; the Worker never uses wildcard

@@ -7,7 +7,7 @@ import { useAppearance } from '@/components/appearance-provider';
 const groups = [
   { title: 'Profile', description: 'Manage your account.', path: '/settings/profile', Icon: User },
   { title: 'Appearance', description: 'Set your background and primary color.', path: '/settings/appearance', Icon: Sliders },
-  { title: 'Workouts', description: 'Choose how workout suggestions appear.', path: '/settings/workouts', Icon: Activity },
+  { title: 'Workouts', description: 'Build splits and adjust workout suggestions.', path: '/settings/workouts', Icon: Activity },
   { title: 'Legal & Support', description: 'Privacy, terms, support, and data deletion.', path: '/settings/legal', Icon: Info },
 ] as const;
 

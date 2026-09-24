@@ -15,6 +15,13 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  "ratelimits": [
+    {
+      "name": "DELETION_RATE_LIMITER",
+      "namespace_id": "1183602647",
+      "simple": { "limit": 5, "period": 60 }
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

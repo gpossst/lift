@@ -11,6 +11,9 @@ import { useAppearance } from '@/components/appearance-provider';
 import { syncWorkoutData } from '@/lib/cloud-sync';
 import { getFriendPersonalRecords, getFriends, type FriendPersonalRecord } from '@/lib/friends';
 import { getExercises } from '@/db';
+import { workoutSplitLabel } from '@/lib/workout-split-label';
+import { getReturnPlan } from '@/lib/return-plan';
+import { authClient } from '@/lib/auth-client';
 
 function formatVolume(volume: number) {
 	if (volume >= 10_000) return `${Math.round(volume / 1000)}k`;
@@ -25,6 +28,7 @@ type VolumePoint = { volume: number; date: Date };
 
 export default function HomeScreen() {
 	const { colors } = useAppearance();
+	const { data: session } = authClient.useSession();
 	const [expiredWorkoutCount] = useState(() => closeExpiredWorkouts());
 	const [now] = useState(() => Date.now());
 	const activeWorkout = getActiveWorkout();
@@ -34,6 +38,8 @@ export default function HomeScreen() {
 	const [selectedPoint, setSelectedPoint] = useState<VolumePoint | null>(null);
 	const [friendRecords, setFriendRecords] = useState<FriendPersonalRecord[]>([]);
 	const [friendCount, setFriendCount] = useState<number | null>(null);
+	const [returnPlan, setReturnPlan] = useState<string | null>(null);
+	useFocusEffect(useCallback(() => { setReturnPlan(session?.user.id ? getReturnPlan(session.user.id) : null); }, [session]));
 	useFocusEffect(useCallback(() => {
     void Promise.all([getFriendPersonalRecords(), getFriends()])
 			.then(([records, friends]) => { setFriendRecords(records); setFriendCount(friends.count); })
@@ -65,6 +71,7 @@ export default function HomeScreen() {
 	return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
 		<View style={styles.header}><Text style={[styles.title, { color: colors.text }]}>Home</Text></View>
 		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} scrollEnabled={friendCount !== 0}>
+			{returnPlan && <Pressable onPress={() => router.push('/start')} style={({ pressed }) => [styles.returnPlanCard, { backgroundColor: colors.accent }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Planned next workout ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}`}><Text style={[styles.returnPlanKicker, { color: colors.accentText }]}>YOUR NEXT WORKOUT</Text><Text style={[styles.returnPlanText, { color: colors.accentText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}</Text></Pressable>}
 			<View style={styles.section}>
 				{activeTrend ? <>
 					<View style={styles.trendSummary}><View style={styles.trendRow}><Text style={[styles.trendValue, { color: colors.text }]}>{formatVolume(displayedPoint?.volume ?? 0)} <Text style={styles.unit}>LB</Text></Text>{trendChange && <Text style={[styles.trendChange, { color: colors.mutedText }]}>{trendChange}</Text>}</View><Text style={[styles.trendContext, { color: colors.mutedText }]}>{trendContext}</Text></View>
@@ -174,8 +181,8 @@ function MonthActivity({ visits, colors }: { visits: WorkoutVisitSummary[]; colo
 					<View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
 					<Text style={[styles.sheetTitle, { color: colors.text }]}>Choose a workout</Text>
 					{workoutPicker && <><Text style={[styles.sheetDate, { color: colors.mutedText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(workoutPicker.date)}</Text>
-						{workoutPicker.visits.map((visit) => <Pressable key={visit.workout.id} onPress={() => { setWorkoutPicker(null); router.push({ pathname: '/history-detail', params: { workoutId: visit.workout.id } }); }} style={({ pressed }) => [styles.workoutOption, { borderColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View ${visit.workout.split} workout`}>
-							<View><Text style={[styles.workoutOptionTitle, { color: colors.text }]}>{visit.workout.split[0].toUpperCase() + visit.workout.split.slice(1)} workout</Text><Text style={[styles.workoutOptionMeta, { color: colors.mutedText }]}>{visit.exercises} exercises  ·  {visit.sets} sets  ·  {visit.volume ? `${formatVolume(visit.volume)} lb` : `${visit.reps} reps`}</Text></View>
+						{workoutPicker.visits.map((visit) => <Pressable key={visit.workout.id} onPress={() => { setWorkoutPicker(null); router.push({ pathname: '/history-detail', params: { workoutId: visit.workout.id } }); }} style={({ pressed }) => [styles.workoutOption, { borderColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View ${workoutSplitLabel(visit.workout.split)} workout`}>
+							<View><Text style={[styles.workoutOptionTitle, { color: colors.text }]}>{workoutSplitLabel(visit.workout.split)} workout</Text><Text style={[styles.workoutOptionMeta, { color: colors.mutedText }]}>{visit.exercises} exercises  ·  {visit.sets} sets  ·  {visit.volume ? `${formatVolume(visit.volume)} lb` : `${visit.reps} reps`}</Text></View>
 						</Pressable>)}</>}
 				</Animated.View>
 			</View>
@@ -215,7 +222,7 @@ const styles = StyleSheet.create({
 	safeArea: { flex: 1, backgroundColor: '#F9F9F7' },
 	header: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, title: { fontSize: 28, fontWeight: '900', letterSpacing: -1.2 },
 	content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 },
-	section: { paddingBottom: 21 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }, sectionNote: { fontSize: 9, fontWeight: '800', letterSpacing: .7, color: '#95998F' },
+	section: { paddingBottom: 21 }, returnPlanCard: { padding: 18, borderRadius: 18, marginBottom: 22 }, returnPlanKicker: { fontSize: 9, fontWeight: '900', letterSpacing: .9 }, returnPlanText: { marginTop: 5, fontSize: 19, fontWeight: '900', letterSpacing: -.5 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }, sectionNote: { fontSize: 9, fontWeight: '800', letterSpacing: .7, color: '#95998F' },
 	splitTabs: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 3, paddingHorizontal: 4 }, splitTab: { minWidth: 55, alignItems: 'center', paddingVertical: 8 }, splitTabText: { fontSize: 12, fontWeight: '900', letterSpacing: .1, color: '#858980' }, splitTabTextActive: { color: '#1A1B16', textDecorationLine: 'underline', textDecorationColor: '#FFCC4A', textDecorationStyle: 'solid' }, trendSummary: { marginBottom: 5 }, trendRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }, trendValue: { fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -1.45, color: '#1B1C17' }, trendChange: { flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1, textAlign: 'right' }, trendContext: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1 }, activityTitle: { fontSize: 25, lineHeight: 29, fontWeight: '900', letterSpacing: -1.2, color: '#1B1C17' }, emptyTrend: { fontSize: 10, fontWeight: '900', letterSpacing: .8, color: '#969A91', paddingVertical: 38, textAlign: 'center' }, chart: { height: 88 }, graphArea: { height: 88, position: 'relative', backgroundColor: '#F9F9F7' }, lineGraph: { ...StyleSheet.absoluteFill }, unit: { fontSize: 10, letterSpacing: 0 },
 	weekdayLabels: { flexDirection: 'row', gap: 6, marginBottom: 6 }, weekdayLabel: { flex: 1, textAlign: 'center', fontSize: 8, fontWeight: '900', letterSpacing: .35, color: '#969A91' }, calendarGrid: { gap: 6 }, calendarRow: { flexDirection: 'row', gap: 6 }, calendarCell: { flex: 1, aspectRatio: 1, borderRadius: 4 }, calendarCellOutside: { opacity: 0 }, calendarCellPressed: { opacity: .72, transform: [{ scale: .93 }] },
 	sheetOverlay: { flex: 1, justifyContent: 'flex-end' }, sheetBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,.38)' }, workoutSheet: { minHeight: 250, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 28, borderTopLeftRadius: 25, borderTopRightRadius: 25 }, sheetHandle: { width: 37, height: 4, borderRadius: 2, alignSelf: 'center' }, sheetTitle: { marginTop: 22, fontSize: 22, fontWeight: '900', letterSpacing: -.8 }, sheetDate: { marginTop: 3, marginBottom: 13, fontSize: 13, fontWeight: '700' }, workoutOption: { minHeight: 68, borderTopWidth: 1, justifyContent: 'center' }, workoutOptionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 }, workoutOptionMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', letterSpacing: -.1 },

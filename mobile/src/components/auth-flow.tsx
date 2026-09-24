@@ -121,6 +121,30 @@ export function AuthFlow({ mode, onBack, onModeChange }: { mode: AuthMode; onBac
   </AuthShell>;
 }
 
+export function VerificationPrompt({ email, onContinue }: { email: string; onContinue: () => void }) {
+  const { colors } = useAppearance();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const resend = async () => {
+    setBusy(true); setMessage(null);
+    try {
+      const result = await authClient.sendVerificationEmail({ email, callbackURL: ExpoLinking.createURL('/auth/verified') });
+      if (result.error) throw result.error;
+      setMessage('Verification email sent.');
+    } catch (reason) { setMessage(messageFrom(reason)); }
+    finally { setBusy(false); }
+  };
+
+  return <AuthShell title="Check your email." styles={styles}>
+    <Text style={styles.subtitle}>You’re signed in. Open the verification link we sent to {email} to verify your address.</Text>
+    {message && <Text accessibilityRole="alert" style={styles.subtitle}>{message}</Text>}
+    <ActionButton label={busy ? 'Sending…' : 'Resend verification email'} disabled={busy} onPress={() => { void resend(); }} styles={styles} />
+    <Pressable accessibilityRole="button" onPress={onContinue} style={styles.switchAction}><Text style={styles.switchTextStrong}>Continue to Lift</Text></Pressable>
+  </AuthShell>;
+}
+
 export function AccountTaskFlow({ onDone }: { onDone: () => void }) { return <MfaSetupFlow onDone={onDone} />; }
 
 export function PasswordResetFlow() {
@@ -163,6 +187,10 @@ export function MfaSetupFlow({ onDone }: { onDone: () => void }) {
   const start = () => run(async () => {
     const result = await authClient.twoFactor.enable({ password, method, issuer: 'Lift' });
     if (result.error) throw result.error;
+    if (method === 'otp') {
+      await finish();
+      return;
+    }
     const data = result.data as { totpURI?: string; backupCodes?: string[] };
     setUri(data.totpURI ?? '');
     setSecret(data.totpURI ? new URL(data.totpURI).searchParams.get('secret') ?? '' : '');
@@ -171,9 +199,7 @@ export function MfaSetupFlow({ onDone }: { onDone: () => void }) {
   });
 
   const verify = () => run(async () => {
-    const result = method === 'totp'
-      ? await authClient.twoFactor.verifyTotp({ code })
-      : await authClient.twoFactor.verifyOtp({ code });
+    const result = await authClient.twoFactor.verifyTotp({ code });
     if (result.error) throw result.error;
     if (!backupCodes.length) {
       const backup = await authClient.twoFactor.generateBackupCodes({ password });
@@ -205,8 +231,7 @@ export function MfaSetupFlow({ onDone }: { onDone: () => void }) {
     {stage === 'setup' && <>
       {!!uri && <ActionButton label="Open authenticator app" onPress={() => { void Linking.openURL(uri).catch((reason: unknown) => setError(messageFrom(reason))); }} styles={styles} />}
       {!!secret && <View style={styles.secretBox}><Text style={styles.secretLabel}>Manual setup code</Text><Text selectable style={styles.secret}>{secret}</Text></View>}
-      {method === 'otp' && <Text style={styles.subtitle}>Enter the verification code sent to your email.</Text>}
-      <Field label={method === 'totp' ? 'Authenticator code' : 'Email code'} value={code} onChangeText={setCode} autoComplete="one-time-code" keyboardType="number-pad" maxLength={6} styles={styles} colors={colors} />
+      <Field label="Authenticator code" value={code} onChangeText={setCode} autoComplete="one-time-code" keyboardType="number-pad" maxLength={6} styles={styles} colors={colors} />
       <ErrorMessage message={error} styles={styles} />
       <ActionButton label={busy ? 'Verifying…' : 'Verify code'} disabled={busy || code.length < 6} onPress={() => { void verify(); }} styles={styles} />
     </>}

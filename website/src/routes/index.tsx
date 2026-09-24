@@ -34,7 +34,7 @@ function Home() {
       const result = await action() as { error?: { message?: string }; data?: unknown }
       if (result.error) throw new Error(result.error.message || 'That request could not be completed.')
       setMessage(success)
-      if (view === 'signup') setView('signin')
+      if (view === 'signup') setView('account')
       if (view === 'forgot') setView('signin')
       if (view === 'reset') { setView('signin'); window.history.replaceState(null, '', '/') }
     } catch (error) {
@@ -100,7 +100,7 @@ function Home() {
             <p className="intro">Your account</p><h2 id="auth-title">{session?.user.name || session?.user.email}</h2>
             <p className="auth-note">{session?.user.email}</p>
             {message && <p className="auth-message" role="status">{message}</p>}
-            {!session?.user.emailVerified && <div className="auth-feature"><p>Verify your email to secure your account.</p><button type="button" className="text-button" onClick={() => void submit(undefined, () => authClient.sendVerificationEmail({ email: session?.user.email || '', callbackURL: window.location.origin }))}>Resend verification email</button></div>}
+            {session?.user && !session.user.emailVerified && <div className="auth-feature"><p>Check your inbox and open the verification link sent to {session.user.email}.</p><button type="button" className="text-button" onClick={() => void submit(undefined, () => authClient.sendVerificationEmail({ email: session.user.email, callbackURL: window.location.origin }), 'Verification email sent.')}>Resend verification email</button></div>}
             <form onSubmit={(e) => void submit(e, async () => {
               const result = await authClient.twoFactor.enable({ password, method: 'totp', issuer: 'Lift' })
               if (result.data?.method === 'totp') {

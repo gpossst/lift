@@ -19,6 +19,12 @@ export const workouts = sqliteTable('workouts', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
 
+export const customSplits = sqliteTable('custom_splits', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  musclesJson: text('muscles_json').notNull(),
+});
+
 export const workoutSets = sqliteTable('workout_sets', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   exerciseId: text('exercise_id').notNull().references(() => exercises.id),

@@ -40,6 +40,10 @@ equal(getRecommendedWorkoutSplit([
 ], now), 'legs');
 const crossSplitFatigue = [{ workoutId: 'legs', split: 'legs' as const, muscle: 'shoulders', exhaustion: 4, completedAt: now }];
 equal(getRecommendedWorkoutSplit([], now, crossSplitFatigue), 'pull');
+const customUpper = { id: 'custom:upper', name: 'Upper', muscles: ['chest', 'lats'] };
+const customLower = { id: 'custom:lower', name: 'Lower', muscles: ['quadriceps', 'hamstrings'] };
+equal(getRecommendedWorkoutSplit([{ split: customUpper.id, completedAt: now, sets: 8 }], now, [], [customUpper, customLower]), customLower.id);
+deepEqual(getExerciseRecommendations([bench, squat, deadlift], [], [], 'today', customUpper.id, 3, now, {}, [], customUpper).map((item) => item.exercise.id), ['bench']);
 
 const freshLegs = getExerciseRecommendations([squat, deadlift, stretch], [], [], 'today', 'legs', 3, now);
 deepEqual(freshLegs.map((item) => item.exercise.id).sort(), ['deadlift', 'squat']);
@@ -156,6 +160,11 @@ assert(shortWorkout.every((item) => item.sets > 0 && item.reps.min <= item.reps.
 const plannedChestDose = getExerciseRecommendations([bench, fly], [], [], 'today', 'push', 2, now, { sessionMinutes: 60 });
 equal(plannedChestDose.length, 2);
 assert(plannedChestDose.reduce((total, item) => total + item.sets, 0) >= 6, 'multiple chest exercises should reserve their planned sets');
+const lowFrequencyDose = getExerciseRecommendations([bench, shoulderPress, pushdown, fly], [], [], 'today', 'push', 3, now, { sessionMinutes: 60, trainingDays: 1 });
+const highFrequencyDose = getExerciseRecommendations([bench, shoulderPress, pushdown, fly], [], [], 'today', 'push', 3, now, { sessionMinutes: 60, trainingDays: 5 });
+assert(JSON.stringify(lowFrequencyDose.map(({ exercise, sets }) => [exercise.id, sets])) !== JSON.stringify(highFrequencyDose.map(({ exercise, sets }) => [exercise.id, sets])), 'training frequency should change the per-session recommendation plan');
+equal(getExerciseRecommendations([bench], [set('bench', 'previous')], [], 'today', 'push', 1, now, { weightLb: 160 })[0]!.relativeLoadPercent, 63);
+equal(getExerciseRecommendations([bench], [set('bench', 'previous')], [], 'today', 'push', 1, now)[0]!.relativeLoadPercent, undefined);
 
 const defaultPrescription = { sets: 3, reps: { min: 6, max: 10 } };
 deepEqual(getProgressiveOverloadRecommendation([], defaultPrescription), {

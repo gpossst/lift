@@ -57,9 +57,12 @@ const graphics: Record<SplitId, SplitGraphic> = {
   },
 };
 
-export function SplitBodyGraphic({ split, large = false }: { split: SplitId; large?: boolean }) {
+export function SplitBodyGraphic({ split, muscles, large = false }: { split: string; muscles?: readonly string[]; large?: boolean }) {
 	const { colors } = useAppearance();
-  const { primary, secondary } = graphics[split];
+  const { primary, secondary } = graphics[split as SplitId] ?? {
+    primary: { front: muscles?.flatMap((muscle) => muscleParts[muscle]?.front ?? []) ?? [], back: muscles?.flatMap((muscle) => muscleParts[muscle]?.back ?? []) ?? [] },
+    secondary: { front: [], back: [] },
+  };
   const highlight = (primaryParts: readonly ExtendedBodyPart[], secondaryParts: readonly ExtendedBodyPart[]) => {
     const primarySlugs = new Set(primaryParts.map(({ slug }) => slug));
     return [
@@ -88,7 +91,7 @@ export function SplitBodyGraphic({ split, large = false }: { split: SplitId; lar
  * use the full accent; assisting muscles retain the same hue at lower opacity.
  * Everything else stays neutral, making gaps in the session easy to spot.
  */
-export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split }: { primaryMuscles: readonly string[]; secondaryMuscles: readonly string[]; split: SplitId }) {
+export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split, targetMuscles }: { primaryMuscles: readonly string[]; secondaryMuscles: readonly string[]; split: string; targetMuscles?: readonly string[] }) {
 	const { colors, mode } = useAppearance();
 	const missedColor = mode === 'dark' ? '#B34842' : 'rgba(255, 117, 101, 0.58)';
   // react-native-body-highlighter snapshots highlight data on mount, so use the
@@ -100,7 +103,7 @@ export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split 
   });
   const primary = { front: musclesToParts(primaryMuscles, 'front'), back: musclesToParts(primaryMuscles, 'back') };
   const secondary = { front: musclesToParts(secondaryMuscles, 'front'), back: musclesToParts(secondaryMuscles, 'back') };
-  const targets = { front: musclesToParts(splitTargets[split], 'front'), back: musclesToParts(splitTargets[split], 'back') };
+  const targets = { front: musclesToParts(targetMuscles ?? splitTargets[split as SplitId] ?? [], 'front'), back: musclesToParts(targetMuscles ?? splitTargets[split as SplitId] ?? [], 'back') };
   const coverage = (primaryParts: readonly ExtendedBodyPart[], secondaryParts: readonly ExtendedBodyPart[], targetParts: readonly ExtendedBodyPart[]) => {
     const primarySlugs = new Set(primaryParts.map(({ slug }) => slug));
     const secondarySlugs = new Set(secondaryParts.map(({ slug }) => slug));

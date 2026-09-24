@@ -45,6 +45,8 @@ const cookieFrom = (response) => {
 const createUser = async (email, name, environment = env) => {
   const signup = await call('/api/auth/sign-up/email', { method: 'POST', body: JSON.stringify({ email, name, password: 'correct horse battery staple' }) }, environment);
   if (signup.status !== 200) throw new Error(`Sign-up failed: ${signup.status} ${await signup.text()}`);
+  const signupCookie = cookieFrom(signup);
+  if ((await call('/v1/profile', { headers: { Cookie: signupCookie } }, environment)).status !== 200) throw new Error('Sign-up did not create a usable session.');
   const verificationEmail = sentEmails.findLast((item) => item.to?.includes(email));
   const verificationURL = verificationEmail?.text?.match(/https:\/\/[^\s]+/)?.[0];
   if (!verificationURL) throw new Error('Verification email did not contain a link.');
@@ -72,6 +74,15 @@ const untrusted = await call('/api/auth/sign-up/email', { method: 'POST', header
 if (untrusted.status < 400) throw new Error('Better Auth accepted an untrusted origin.');
 
 let oneCookie = await createUser('one@lift.test', 'One');
+const freshProfile = await (await call('/v1/profile', { headers: { Cookie: oneCookie } })).json();
+if (freshProfile.profile.hasChosenDisplayName !== false) throw new Error('A new account was treated as having chosen a display name.');
+const unnamedCode = await (await call('/v1/friends/code', { headers: { Cookie: oneCookie } })).json();
+if (unnamedCode.code !== null || (await call('/v1/friends', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ code: 'ABC123' }) })).status !== 409) throw new Error('Friends were available before choosing a display name.');
+const namedProfile = await (await call('/v1/profile', { method: 'PATCH', headers: { Cookie: oneCookie }, body: JSON.stringify({ displayName: 'One Lifter' }) })).json();
+if (namedProfile.profile.hasChosenDisplayName !== true || !(await (await call('/v1/friends/code', { headers: { Cookie: oneCookie } })).json()).code) throw new Error('Choosing a display name did not unlock friends.');
+const minimalOnboarding = await call('/v1/onboarding', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ goals: ['Get stronger'], experience: 'new', trainingDays: 3 }) });
+const minimalProfile = await (await call('/v1/profile', { headers: { Cookie: oneCookie } })).json();
+if (minimalOnboarding.status !== 201 || minimalProfile.profile.recommendationPreferences.weightLb !== null || minimalProfile.profile.recommendationPreferences.heightInches !== null || minimalProfile.profile.hasChosenDisplayName !== true) throw new Error('Minimal onboarding did not preserve optional measurements and name choice.');
 if (!sentEmails.some((email) => email.to?.includes('one@lift.test'))) throw new Error('Sign-up did not send verification email through Resend.');
 const enableMfa = await call('/api/auth/two-factor/enable', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ password: 'correct horse battery staple', method: 'totp' }) });
 const enrollment = await enableMfa.json();
@@ -83,7 +94,12 @@ if ((await call('/v1/sync', { headers: { Cookie: 'better-auth.session_token=forg
 if ((await call('/v1/sync', { headers: { Cookie: oneCookie } })).status !== 200) throw new Error('Valid Better Auth session was rejected.');
 if ((await call('/v1/sync', { method: 'POST', headers: { Cookie: oneCookie, Origin: 'https://evil.test' }, body: '{}' })).status !== 403) throw new Error('Custom API mutation accepted an untrusted origin.');
 
-const twoCookie = await createUser('two@lift.test', 'Two');
+let twoCookie = await createUser('two@lift.test', 'Two');
+const emailCount = sentEmails.length;
+const enableEmailMfa = await call('/api/auth/two-factor/enable', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ password: 'correct horse battery staple', method: 'otp' }) });
+const emailEnrollment = await enableEmailMfa.json();
+if (enableEmailMfa.status !== 200 || emailEnrollment.method !== 'otp' || !(await DB.prepare("SELECT twoFactorEnabled FROM user WHERE email = 'two@lift.test'").first()).twoFactorEnabled || sentEmails.length !== emailCount) throw new Error('Email MFA should enable without sending or verifying an enrollment code.');
+twoCookie = cookieFrom(enableEmailMfa);
 const pushed = await call('/v1/sync', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ batchId: 'account-isolation', changes: [{ entity: 'workout', key: 'private', operation: 'upsert', baseRevision: 0, record: { id: 'private', split: 'push', createdAt: 1, endedAt: null } }] }) });
 if (pushed.status !== 200) throw new Error(`Authenticated account could not write sync data: ${await pushed.text()}`);
 const own = await (await call('/v1/sync', { headers: { Cookie: oneCookie } })).json();

@@ -1,14 +1,18 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
 import { Check, ChevronDown, Search, X } from 'react-native-feather';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, FlatList, LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { endWorkout, getExerciseRecommendations, getExercises, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type RecommendationContext, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
+import { endWorkout, getExerciseRecommendations, getExercises, getWorkoutSplitDefinition, getWorkoutVisits, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type RecommendationContext, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
 import { syncWorkoutData } from '@/lib/cloud-sync';
-import { getProfile } from '@/lib/profile';
+import { getProfile, updateProfile } from '@/lib/profile';
+import { takePendingOnboarding, type Onboarding } from '@/lib/onboarding';
+import { authClient } from '@/lib/auth-client';
 import { MuscleCoverageGraphic } from '@/components/split-body-graphic';
+import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { useAppearance } from '@/components/appearance-provider';
 
 const exercises = getExercises();
@@ -18,9 +22,22 @@ const meaningfulExposureMs = 10_000;
 
 const sortLabels: Record<Sort, string> = { ranked: 'For you', az: 'Name', area: 'Muscle group', equipment: 'Equipment' };
 
+function contextFromOnboarding(value: unknown): RecommendationContext {
+  if (!value || typeof value !== 'object') return {};
+  const onboarding = value as Partial<Onboarding>;
+  return {
+    goals: Array.isArray(onboarding.goals) ? onboarding.goals.filter((goal): goal is string => typeof goal === 'string') : undefined,
+    experience: onboarding.experience === 'new' || onboarding.experience === 'some' || onboarding.experience === 'experienced' ? onboarding.experience : undefined,
+    favoriteExerciseIds: Array.isArray(onboarding.favoriteExerciseIds) ? onboarding.favoriteExerciseIds.filter((id): id is string => typeof id === 'string') : undefined,
+    trainingDays: typeof onboarding.trainingDays === 'number' && Number.isFinite(onboarding.trainingDays) ? onboarding.trainingDays : undefined,
+    weightLb: typeof onboarding.weightLb === 'number' && Number.isFinite(onboarding.weightLb) ? onboarding.weightLb : undefined,
+  };
+}
+
 export default function ExerciseLibraryScreen() {
 	const { colors, showWorkoutRecommendations } = useAppearance();
-  const { split, workoutId } = useLocalSearchParams<{ split?: string; workoutId?: string }>();
+	const { data: session } = authClient.useSession();
+	const { split, workoutId } = useLocalSearchParams<{ split?: string; workoutId?: string }>();
   const [visit, setVisit] = useState<WorkoutVisitSummary | null>(() => workoutId ? getWorkoutVisitSummary(workoutId) : null);
   const [workoutExercises, setWorkoutExercises] = useState<WorkoutVisitExercise[]>(() => workoutId ? getWorkoutVisitExercises(workoutId) : []);
   const [query, setQuery] = useState('');
@@ -34,6 +51,10 @@ export default function ExerciseLibraryScreen() {
   const [replacements, setReplacements] = useState<{ workoutId?: string; ids: string[] }>({ workoutId, ids: [] });
   const [fallbackWorkoutId] = useState(() => `workout-${Date.now()}`);
   const [recommendationContext, setRecommendationContext] = useState<RecommendationContext>({});
+  const [favoritePrompt, setFavoritePrompt] = useState<{ ids: string[]; selected: string[] } | null>(null);
+  const [favoriteQuery, setFavoriteQuery] = useState('');
+  const [favoriteError, setFavoriteError] = useState('');
+  const [favoriteSaving, setFavoriteSaving] = useState(false);
   const recommendationExposure = useRef<{
     workoutId?: string; impressions: Map<string, number>; timers: Map<string, { rank: number; timeout: ReturnType<typeof setTimeout> }>;
   }>({ workoutId, impressions: new Map(), timers: new Map() });
@@ -109,20 +130,74 @@ export default function ExerciseLibraryScreen() {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let active = true;
-    void getProfile().then(({ recommendationPreferences: preferences }) => {
-      if (!active || !preferences) return;
+    void (async () => {
+      const onboardingContext = contextFromOnboarding(await takePendingOnboarding().catch(() => null));
+      if (!active) return;
+      setRecommendationContext(onboardingContext);
+      const profile = await getProfile().catch(() => null);
+      if (!active || !profile) return;
+      const preferences = profile.recommendationPreferences ?? {};
       setRecommendationContext({
-        goals: preferences.goals ?? undefined,
-        experience: preferences.experience ?? undefined,
-        favoriteExerciseIds: preferences.favoriteExerciseIds ?? undefined,
-        trainingDays: preferences.trainingDays ?? undefined,
-        sessionMinutes: preferences.sessionMinutes ?? undefined,
+        goals: preferences.goals ?? onboardingContext.goals,
+        experience: preferences.experience ?? onboardingContext.experience,
+        favoriteExerciseIds: preferences.favoriteExerciseIds ?? onboardingContext.favoriteExerciseIds,
+        trainingDays: preferences.trainingDays ?? onboardingContext.trainingDays,
+        sessionMinutes: preferences.sessionMinutes ?? onboardingContext.sessionMinutes,
+        weightLb: preferences.weightLb ?? onboardingContext.weightLb,
       });
-    }).catch(() => { /* Recommendations keep their local defaults offline. */ });
+    })().catch(() => { /* Recommendations keep their local defaults offline. */ });
     return () => { active = false; };
-  }, []);
+  }, []));
+
+  useFocusEffect(useCallback(() => {
+    const userId = session?.user.id;
+    if (!userId || !isWorkoutSplit(split) || !screenFocused) return;
+    let active = true;
+    void (async () => {
+      try {
+        const key = `lift-split-favorites:${userId}:${split}`;
+        const asked = Platform.OS === 'web' ? globalThis.localStorage?.getItem(key) === 'true' : await SecureStore.getItemAsync(key) === 'true';
+        if (asked || !active || getWorkoutVisits().some(({ workout }) => workout.split === split)) return;
+        const profile = await getProfile().catch(() => null);
+        const experience = profile?.recommendationPreferences?.experience ?? recommendationContext.experience;
+        if (!active || (experience !== 'some' && experience !== 'experienced')) return;
+        const ids = exercises.filter((exercise) => matchesSplit(exercise, split)).sort((a, b) => b.isFeatured - a.isFeatured || a.name.localeCompare(b.name)).map(({ id }) => id);
+        const current = profile?.recommendationPreferences?.favoriteExerciseIds ?? [];
+        setFavoritePrompt({ ids, selected: current.filter((id) => ids.includes(id)).slice(0, 5) });
+        setFavoriteQuery('');
+        setFavoriteError('');
+      } catch { /* Profile or local storage failures never interrupt a workout. */ }
+    })();
+    return () => { active = false; };
+  }, [recommendationContext.experience, screenFocused, session?.user.id, split]));
+
+  const finishFavoritePrompt = async (save: boolean) => {
+    if (!favoritePrompt) return;
+    const prompt = favoritePrompt;
+    const userId = session?.user.id;
+    if (!userId || !isWorkoutSplit(split)) return;
+    setFavoriteSaving(true);
+    setFavoriteError('');
+    try {
+      if (save) {
+        const latest = await getProfile();
+        const existing = latest.recommendationPreferences?.favoriteExerciseIds ?? [];
+        const keep = existing.filter((id) => !prompt.ids.includes(id));
+        const favorites = [...prompt.selected, ...keep].slice(0, 20);
+        await updateProfile({ recommendationPreferences: { favoriteExerciseIds: favorites } });
+        setRecommendationContext((current) => ({ ...current, favoriteExerciseIds: favorites }));
+      }
+      const key = `lift-split-favorites:${userId}:${split}`;
+      if (Platform.OS === 'web') globalThis.localStorage?.setItem(key, 'true');
+      else await SecureStore.setItemAsync(key, 'true');
+      setFavoritePrompt(null);
+    } catch {
+      if (save) setFavoriteError('Could not save your favorites. Check your connection and try again.');
+      else setFavoritePrompt(null);
+    } finally { setFavoriteSaving(false); }
+  };
 
   useEffect(() => {
     const exposure = recommendationExposure.current;
@@ -201,6 +276,7 @@ export default function ExerciseLibraryScreen() {
           : <Text style={[styles.completedEmpty, { color: colors.mutedText }]}>Complete an exercise to see it here.</Text>}
       </View>
     </ScrollView>
+    {favoritePrompt && <Modal visible transparent animationType="fade" onRequestClose={() => { void finishFavoritePrompt(false); }}><View style={styles.favoriteOverlay}><View style={[styles.favoriteSheet, { backgroundColor: colors.background }]}><Text style={[styles.favoriteTitle, { color: colors.text }]}>What do you usually enjoy on {getWorkoutSplitDefinition(split as WorkoutSplit)?.name ?? 'this'} day?</Text><Text style={[styles.favoriteSubtitle, { color: colors.mutedText }]}>Choose exercises that should shape your recommendations.</Text><Text style={[styles.favoriteCount, { color: colors.mutedText }]}>{favoritePrompt.selected.length} of 5 selected</Text><View style={[styles.favoriteSearch, { backgroundColor: colors.surface }]}><Search width={17} height={17} color={colors.mutedText} /><TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} placeholder="Search exercises" placeholderTextColor={colors.subtleText} autoCapitalize="none" autoCorrect={false} style={[styles.favoriteSearchInput, { color: colors.text }]} accessibilityLabel="Search split exercises" /></View><ScrollView style={styles.favoriteChoices}>{favoritePrompt.ids.filter((id) => { const exercise = exercises.find((item) => item.id === id); return exercise && (!favoriteQuery.trim() ? favoritePrompt.ids.indexOf(id) < 12 : exercise.name.toLowerCase().includes(favoriteQuery.trim().toLowerCase())); }).map((id) => { const exercise = exercises.find((item) => item.id === id); if (!exercise) return null; const selected = favoritePrompt.selected.includes(id); const atLimit = favoritePrompt.selected.length >= 5; return <Pressable key={id} disabled={!selected && atLimit || favoriteSaving} onPress={() => setFavoritePrompt((current) => current && ({ ...current, selected: selected ? current.selected.filter((value) => value !== id) : [...current.selected, id] }))} style={[styles.favoriteChoice, { borderColor: colors.surfaceStrong }, !selected && atLimit && styles.favoriteChoiceDisabled]} accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled: !selected && atLimit }}><Text style={[styles.favoriteChoiceText, { color: colors.text }]}>{exercise.name}</Text>{selected && <Check width={18} height={18} color={colors.accent} strokeWidth={3} />}</Pressable>; })}</ScrollView>{favoriteError ? <Text style={[styles.favoriteError, { color: '#C43F36' }]}>{favoriteError}</Text> : null}<Pressable disabled={favoriteSaving} onPress={() => { void finishFavoritePrompt(true); }} style={[styles.favoriteSave, { backgroundColor: colors.accent }, favoriteSaving && styles.favoriteChoiceDisabled]}><Text style={[styles.favoriteSaveText, { color: colors.accentText }]}>{favoriteSaving ? 'Saving…' : 'Save favorites'}</Text></Pressable><Pressable disabled={favoriteSaving} onPress={() => { void finishFavoritePrompt(false); }} style={styles.favoriteSkip}><Text style={[styles.favoriteSkipText, { color: colors.mutedText }]}>Skip</Text></Pressable></View></View></Modal>}
     <ExerciseCatalog visible={catalogOpen} query={query} onQueryChange={setQuery} muscleOptions={muscleOptions} muscleFilters={muscleFilters} onMuscleFiltersChange={setMuscleFilters} equipmentOptions={equipmentOptions} equipmentFilters={equipmentFilters} onEquipmentFiltersChange={setEquipmentFilters} results={results} hasActiveFilters={hasActiveFilters} sort={sort} showSorts={showSorts} onToggleSorts={() => setShowSorts((visible) => !visible)} onSort={(next) => { setSort(next); setShowSorts(false); }} onClear={() => { setQuery(''); setMuscleFilters([]); setEquipmentFilters([]); }} onChoose={(exercise) => openExercise(exercise, 'manual')} onClose={() => { setShowSorts(false); setCatalogOpen(false); }} />
     <CurrentVisit visit={visit} coverage={coverage} onEnd={finishVisit} onRefresh={refreshVisit} />
   </SafeAreaView>;
@@ -232,6 +308,7 @@ function RecommendationCard({ recommendation, featured, onOpen, onReplace }: { r
       >
         <Text style={[styles.recommendationName, { color: colors.text }]}>{exercise.name}</Text>
         <Text numberOfLines={1} style={[styles.recommendationMeta, { color: colors.mutedText }, featured && styles.recommendationMetaWithBadge]}>{exerciseMuscleLabel(exercise)} · {exercise.equipment}</Text>
+        {recommendation.relativeLoadPercent !== undefined && <Text style={[styles.recommendationMeta, { color: colors.mutedText }]}>Last logged load: {recommendation.relativeLoadPercent}% of your bodyweight</Text>}
         {featured && <View style={[styles.nextBadge, { backgroundColor: colors.accent }]}><Text style={[styles.nextBadgeText, { color: colors.accentText }]}>Up next</Text></View>}
       </Pressable>
     </Swipeable>
@@ -271,9 +348,9 @@ function CurrentVisit({ visit, coverage, onEnd, onRefresh }: { visit: WorkoutVis
     LayoutAnimation.configureNext({ duration: 240, update: { type: LayoutAnimation.Types.easeInEaseOut }, create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity }, delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity } });
     setExpanded((value) => !value);
   };
-  return <View style={[styles.visitCard, { backgroundColor: colors.inverse }]} accessibilityLabel={`Current ${visit.workout.split} workout, duration ${duration}`}>
-    <Pressable onPress={toggleExpanded} style={styles.visitHeading} accessibilityRole="button" accessibilityLabel="Show workout muscle coverage" accessibilityState={{ expanded }}><Text style={[styles.visitTitle, { color: colors.inverseText }]}>{visit.workout.split} day</Text><View style={styles.visitTime}><Text style={[styles.visitTimeText, { color: colors.inverseText }]}>{duration}</Text><ChevronDown width={17} height={17} color={colors.accent} strokeWidth={2.7} style={[styles.visitChevron, expanded && styles.visitChevronExpanded]} /></View></Pressable>
-    {expanded && <View style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: mode === 'dark' ? '#B34842' : '#FF7565' }]} /><Text style={[styles.missedLegendText, { color: colors.inverseText }]}>Not trained yet</Text></View></View>}
+  return <View style={[styles.visitCard, { backgroundColor: colors.inverse }]} accessibilityLabel={`Current ${workoutSplitLabel(visit.workout.split)} workout, duration ${duration}`}>
+    <Pressable onPress={toggleExpanded} style={styles.visitHeading} accessibilityRole="button" accessibilityLabel="Show workout muscle coverage" accessibilityState={{ expanded }}><Text style={[styles.visitTitle, { color: colors.inverseText }]}>{workoutSplitLabel(visit.workout.split)} day</Text><View style={styles.visitTime}><Text style={[styles.visitTimeText, { color: colors.inverseText }]}>{duration}</Text><ChevronDown width={17} height={17} color={colors.accent} strokeWidth={2.7} style={[styles.visitChevron, expanded && styles.visitChevronExpanded]} /></View></Pressable>
+    {expanded && <View style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} targetMuscles={getWorkoutSplitDefinition(visit.workout.split)?.muscles} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: mode === 'dark' ? '#B34842' : '#FF7565' }]} /><Text style={[styles.missedLegendText, { color: colors.inverseText }]}>Not trained yet</Text></View></View>}
     <Pressable onPress={onEnd} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.accent }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel="End workout"><Text style={styles.endVisitText}>End workout</Text></Pressable>
   </View>;
 }
@@ -307,7 +384,7 @@ function uniqueSorted(values: string[]) { return [...new Set(values.filter(Boole
 
 function formatLabel(value: string) { return value === staticFilter ? 'Static' : value.replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 
-function isWorkoutSplit(value?: string): value is WorkoutSplit { return value === 'push' || value === 'pull' || value === 'legs'; }
+function isWorkoutSplit(value?: string): value is WorkoutSplit { return !!value && !!getWorkoutSplitDefinition(value as WorkoutSplit); }
 
 function getPrimaryMuscles(exercise: Exercise): string[] {
   try { return JSON.parse(exercise.detailsJson ?? '{}').primaryMuscles ?? []; } catch { return []; }
@@ -327,6 +404,7 @@ function matchesSplit(exercise: Exercise, split?: string) {
   let primaryMuscles: string[] = [];
   try { primaryMuscles = JSON.parse(exercise.detailsJson ?? '{}').primaryMuscles ?? []; } catch { /* Catalog rows remain usable without details. */ }
   const hasPrimary = (muscle: string) => primaryMuscles.includes(muscle);
+  if (split?.startsWith('custom:')) return hasPrimary('abdominals') || (getWorkoutSplitDefinition(split as WorkoutSplit)?.muscles.some(hasPrimary) ?? true);
   // Core work is a shared accessory across lifting splits.
   if (isWorkoutSplit(split) && hasPrimary('abdominals')) return true;
   if (split === 'chest') return exercise.area === 'CHEST';
@@ -411,6 +489,22 @@ const styles = StyleSheet.create({
   endVisitButton: { height: 48, marginTop: 12, marginHorizontal: -16, borderTopLeftRadius: 14, borderTopRightRadius: 14, alignItems: 'center', justifyContent: 'center' },
   endVisitButtonPressed: { opacity: .78 },
   endVisitText: { fontSize: 13, fontWeight: '900', letterSpacing: -.15, color: '#151612' },
+  favoriteOverlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,.48)' },
+  favoriteSheet: { maxHeight: '82%', borderRadius: 24, padding: 22 },
+  favoriteTitle: { fontSize: 23, lineHeight: 28, fontWeight: '900', letterSpacing: -.5 },
+  favoriteSubtitle: { marginTop: 7, fontSize: 14, lineHeight: 20 },
+  favoriteCount: { marginTop: 12, fontSize: 12, fontWeight: '800' },
+  favoriteSearch: { height: 42, marginTop: 12, paddingHorizontal: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  favoriteSearchInput: { flex: 1, height: '100%', fontSize: 14 },
+  favoriteError: { marginTop: 10, fontSize: 12, fontWeight: '700' },
+  favoriteChoices: { marginTop: 16, flexGrow: 0 },
+  favoriteChoice: { minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  favoriteChoiceText: { fontSize: 14, fontWeight: '700' },
+  favoriteChoiceDisabled: { opacity: .45 },
+  favoriteSave: { minHeight: 52, marginTop: 16, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  favoriteSaveText: { fontSize: 15, fontWeight: '900' },
+  favoriteSkip: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  favoriteSkipText: { fontSize: 14, fontWeight: '700' },
   pressed: { opacity: .78, transform: [{ scale: .985 }] },
   empty: { paddingTop: 43, alignItems: 'center' },
   emptyTitle: { fontSize: 18, fontWeight: '900', color: '#1B1C17' },
