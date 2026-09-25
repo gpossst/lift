@@ -16,6 +16,7 @@ export type AppearancePreferences = {
   mode: AppearanceMode;
   accent: AccentId;
   showWorkoutRecommendations: boolean;
+  useCustomSplits: boolean;
   restTimerEnabled: boolean;
   useRecommendedRestTimer: boolean;
   restTimerSeconds: number;
@@ -25,6 +26,7 @@ export const defaultAppearance: AppearancePreferences = {
   mode: 'light',
   accent: 'yellow',
   showWorkoutRecommendations: true,
+  useCustomSplits: false,
   restTimerEnabled: true,
   useRecommendedRestTimer: false,
   restTimerSeconds: 90,

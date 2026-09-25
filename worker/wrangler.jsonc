@@ -9,7 +9,7 @@
   ],
   "vars": {
     "BETTER_AUTH_URL": "https://api.lift.garrett.one",
-    "TRUSTED_ORIGINS": "https://lift.garrett.one,mobile://"
+    "TRUSTED_ORIGINS": "https://lift.garrett.one,lift://"
   },
   "observability": {
     "enabled": true,

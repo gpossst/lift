@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useGlobalSearchParams } from 'expo-router';
 import * as ExpoLinking from 'expo-linking';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
 import { Wordmark } from '@/components/wordmark';
-import { authClient } from '@/lib/auth-client';
+import { apiUrl, authClient } from '@/lib/auth-client';
 import type { AppearanceColors } from '@/lib/appearance';
 
 type AuthMode = 'signIn' | 'signUp';
@@ -65,7 +65,7 @@ export function AuthFlow({ mode, onBack, onModeChange }: { mode: AuthMode; onBac
 
   const requestReset = () => run(async () => {
     if (!email.trim()) throw new Error('Enter the email on your account.');
-    const result = await authClient.requestPasswordReset({ email: email.trim(), redirectTo: ExpoLinking.createURL('/reset-password') });
+    const result = await authClient.requestPasswordReset({ email: email.trim(), redirectTo: `${apiUrl}/reset-password` });
     if (result.error) throw result.error;
     setError('If the account exists, a password reset link is on its way.');
   });
@@ -103,7 +103,7 @@ export function AuthFlow({ mode, onBack, onModeChange }: { mode: AuthMode; onBac
       <Pressable accessibilityRole="button" onPress={() => onModeChange(mode === 'signIn' ? 'signUp' : 'signIn')} style={styles.switchAction}><Text style={styles.switchTextStrong}>{mode === 'signIn' ? 'Create account' : 'Sign in'}</Text></Pressable>
     </>}
     {step === 'verifyEmail' && <>
-      <Text style={styles.subtitle}>Open the verification link we sent to {email} to finish creating your account.</Text>
+      <Text style={styles.subtitle}>Open the verification link we sent to {email} to finish creating your account. Check your Spam folder if you do not see it.</Text>
       <ErrorMessage message={error} styles={styles} />
       <ActionButton label={busy ? 'Sending…' : 'Resend verification email'} disabled={busy} onPress={() => { void resendVerification(); }} styles={styles} />
     </>}
@@ -138,7 +138,7 @@ export function VerificationPrompt({ email, onContinue }: { email: string; onCon
   };
 
   return <AuthShell title="Check your email." styles={styles}>
-    <Text style={styles.subtitle}>You’re signed in. Open the verification link we sent to {email} to verify your address.</Text>
+    <Text style={styles.subtitle}>You’re signed in. Open the verification link we sent to {email} to verify your address. Check your Spam folder if you do not see it.</Text>
     {message && <Text accessibilityRole="alert" style={styles.subtitle}>{message}</Text>}
     <ActionButton label={busy ? 'Sending…' : 'Resend verification email'} disabled={busy} onPress={() => { void resend(); }} styles={styles} />
     <Pressable accessibilityRole="button" onPress={onContinue} style={styles.switchAction}><Text style={styles.switchTextStrong}>Continue to Lift</Text></Pressable>
@@ -148,7 +148,7 @@ export function VerificationPrompt({ email, onContinue }: { email: string; onCon
 export function AccountTaskFlow({ onDone }: { onDone: () => void }) { return <MfaSetupFlow onDone={onDone} />; }
 
 export function PasswordResetFlow() {
-  const { token } = useLocalSearchParams<{ token?: string }>();
+  const { token } = useGlobalSearchParams<{ token?: string }>();
   const { colors } = useAppearance();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [password, setPassword] = useState('');

@@ -1,20 +1,24 @@
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Circle } from '@shopify/react-native-skia';
 import { LineGraph, type SelectionDotProps } from 'react-native-graph';
-import Animated, { FadeIn, SlideInDown, useDerivedValue } from 'react-native-reanimated';
-import Svg, { Defs, Line, LinearGradient, Polyline, Rect, Stop } from 'react-native-svg';
-import { closeExpiredWorkouts, getActiveWorkout, getWorkoutSplitTrends, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
+import Animated, { FadeIn, SlideInDown, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
+import Svg, { Line, Polyline } from 'react-native-svg';
+import { closeExpiredWorkouts, getActiveWorkout, getExercises, getWorkoutHistory, getWorkoutSplitTrends, getWorkoutVisitExerciseDetails, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
 import { syncWorkoutData } from '@/lib/cloud-sync';
 import { getFriendPersonalRecords, getFriends, type FriendPersonalRecord } from '@/lib/friends';
-import { getExercises } from '@/db';
+import { demoWorkoutIdPrefix } from '@/db/demo-data';
+import { recentPersonalRecords, type PersonalRecord } from '@/lib/home-notifications';
 import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { getReturnPlan } from '@/lib/return-plan';
+import { getProfile } from '@/lib/profile';
 import { authClient } from '@/lib/auth-client';
+
+const goalGold = '#FFD700';
 
 function formatVolume(volume: number) {
 	if (volume >= 10_000) return `${Math.round(volume / 1000)}k`;
@@ -38,9 +42,48 @@ export default function HomeScreen() {
 	const [selectedSplit, setSelectedSplit] = useState<'ALL' | 'PUSH' | 'PULL' | 'LEGS'>('ALL');
 	const [selectedPoint, setSelectedPoint] = useState<VolumePoint | null>(null);
 	const [friendRecords, setFriendRecords] = useState<FriendPersonalRecord[]>([]);
+	const [ownRecords, setOwnRecords] = useState<PersonalRecord[]>([]);
 	const [friendCount, setFriendCount] = useState<number | null>(null);
 	const [returnPlan, setReturnPlan] = useState<string | null>(null);
+	const [trainingDays, setTrainingDays] = useState<number | null>(null);
+	const [notificationIndex, setNotificationIndex] = useState(0);
+	const [contentHeight, setContentHeight] = useState(0);
+	const exerciseNames = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
+	const recentEvents = [
+		...ownRecords.map((record) => ({ key: `own:${record.exerciseId}:${record.completedAt.getTime()}`, kicker: 'NEW PERSONAL RECORD', title: `You hit ${record.weight} lb on ${record.name}`, time: record.completedAt.getTime(), onPress: () => router.push({ pathname: '/history', params: { exerciseId: record.exerciseId } }) })),
+		...friendRecords.filter((record) => record.completedAt * 1000 >= now - 14 * 86_400_000).map((record) => ({ key: `friend:${record.id}:${record.exerciseId}:${record.completedAt}`, kicker: 'FRIEND PERSONAL RECORD', title: `${record.displayName} hit ${record.weight} lb on ${exerciseNames.get(record.exerciseId) ?? 'an exercise'}`, time: record.completedAt * 1000, onPress: () => router.push('/friends') })),
+	].sort((a, b) => b.time - a.time).slice(0, 3);
+	const notifications = [
+		...(returnPlan ? [{ key: 'plan', kicker: 'YOUR NEXT WORKOUT', title: new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`)), onPress: () => router.push('/start'), accent: true }] : []),
+		...recentEvents.map((event) => ({ ...event, accent: false })),
+		...(friendCount === 0 ? [{ key: 'friends', kicker: 'FRIENDS', title: 'Add friends to see updates', onPress: () => router.push('/friends'), accent: false }] : []),
+	];
+	const notificationCount = notifications.length;
+	const activeNotificationIndex = notificationCount > 1 ? notificationIndex % notificationCount : 0;
+	const notificationProgress = useSharedValue(0);
+	const notificationWidth = useSharedValue(0);
+	useEffect(() => { notificationProgress.value = withTiming(activeNotificationIndex, { duration: 220 }); }, [activeNotificationIndex, notificationProgress]);
+	const notificationTrackStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -notificationProgress.value * notificationWidth.value }] }));
+	useFocusEffect(useCallback(() => {
+		if (notificationCount < 2) return;
+		const timer = setInterval(() => setNotificationIndex((index) => index + 1), 5000);
+		return () => clearInterval(timer);
+	}, [notificationCount]));
 	useFocusEffect(useCallback(() => { setReturnPlan(session?.user.id ? getReturnPlan(session.user.id) : null); }, [session]));
+	useFocusEffect(useCallback(() => {
+		if (!session?.user.id) return;
+		let active = true;
+		void getProfile()
+			.then((profile) => { const days = profile.recommendationPreferences?.trainingDays; if (active && typeof days === 'number' && Number.isFinite(days)) setTrainingDays(days); })
+			.catch(() => undefined);
+		return () => { active = false; };
+	}, [session?.user.id]));
+	useFocusEffect(useCallback(() => {
+		const since = Date.now() - 14 * 86_400_000;
+		const exerciseIds = new Set(getWorkoutVisits().filter(({ workout }) => !workout.id.startsWith(demoWorkoutIdPrefix) && (workout.endedAt ?? workout.createdAt).getTime() >= since).flatMap(({ workout }) => getWorkoutVisitExerciseDetails(workout.id).map((exercise) => exercise.id)));
+		const names = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
+		setOwnRecords(recentPersonalRecords([...exerciseIds].map((exerciseId) => ({ exerciseId, name: names.get(exerciseId) ?? 'Exercise', sets: getWorkoutHistory(exerciseId).filter((set) => !set.workoutId.startsWith(demoWorkoutIdPrefix)) })), since));
+	}, []));
 	useFocusEffect(useCallback(() => {
     void Promise.all([getFriendPersonalRecords(), getFriends()])
 			.then(([records, friends]) => { setFriendRecords(records); setFriendCount(friends.count); })
@@ -68,12 +111,15 @@ export default function HomeScreen() {
 	const volumeLabel = selectedSplit === 'ALL' ? 'Weekly volume' : 'Average volume';
 	const trendContext = selectedPoint ? formatWeekOf(selectedPoint.date) : volumeLabel;
 	const trendChange = !selectedPoint && volumeChange !== null ? `${volumeChange >= 0 ? '+' : ''}${volumeChange}% from last week` : null;
-
 	return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
 		<View style={[ui.header, { backgroundColor: colors.background }]}><Text style={[ui.title, { color: colors.text }]}>Home</Text></View>
-		<View style={styles.scrollArea}>
-			<ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-				{returnPlan && <Pressable onPress={() => router.push('/start')} style={({ pressed }) => [styles.returnPlanCard, { backgroundColor: colors.accent }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Planned next workout ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}`}><Text style={[styles.returnPlanKicker, { color: colors.accentText }]}>YOUR NEXT WORKOUT</Text><Text style={[styles.returnPlanText, { color: colors.accentText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`))}</Text></Pressable>}
+		<View style={styles.content} onLayout={({ nativeEvent: { layout } }) => setContentHeight(layout.height)}>
+			{notificationCount > 0 && <View style={styles.notificationArea}>
+				<View style={styles.notificationFrame} onLayout={({ nativeEvent: { layout } }) => { notificationWidth.value = layout.width; }}><Animated.View style={[styles.notificationTrack, { width: `${notificationCount * 100}%` }, notificationTrackStyle]}>
+					{notifications.map((notification, index) => <View key={notification.key} style={[styles.notificationPage, { width: `${100 / notificationCount}%` }]} pointerEvents={activeNotificationIndex === index ? 'auto' : 'none'} accessibilityElementsHidden={activeNotificationIndex !== index} importantForAccessibility={activeNotificationIndex === index ? 'auto' : 'no-hide-descendants'}><Pressable onPress={notification.onPress} style={({ pressed }) => [styles.notification, { backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}><View style={styles.notificationCopy}><Text style={[styles.notificationKicker, { color: notification.accent ? colors.accentText : colors.mutedText }]}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={1}>{notification.title}</Text></View><Text style={[styles.notificationArrow, { color: notification.accent ? colors.accentText : colors.text }]}>›</Text></Pressable></View>)}
+				</Animated.View></View>
+				{notificationCount > 1 && <View style={styles.notificationDots}>{notifications.map((notification, index) => <Pressable key={notification.key} onPress={() => setNotificationIndex(index)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Show ${notification.kicker.toLowerCase()} notification`} accessibilityState={{ selected: activeNotificationIndex === index }}><View style={[styles.notificationDot, { width: activeNotificationIndex === index ? 12 : 6, backgroundColor: activeNotificationIndex === index ? colors.accent : colors.subtleText }]} /></Pressable>)}</View>}
+			</View>}
 				<View style={styles.section}>
 					{activeTrend ? <>
 						<View style={styles.trendSummary}><View style={styles.trendRow}><Text style={[styles.trendValue, { color: colors.text }]}>{formatVolume(displayedPoint?.volume ?? 0)} <Text style={styles.unit}>LB</Text></Text>{trendChange && <Text style={[styles.trendChange, { color: colors.mutedText }]}>{trendChange}</Text>}</View><Text style={[styles.trendContext, { color: colors.mutedText }]}>{trendContext}</Text></View>
@@ -84,13 +130,8 @@ export default function HomeScreen() {
 					</> : <Text style={[styles.emptyTrend, { color: colors.subtleText }]}>LOG A WORKOUT TO SEE YOUR TREND</Text>}
 				</View>
 
-				<MonthActivity visits={visits} colors={colors} />
-				<FriendPersonalRecords records={friendRecords} friendCount={friendCount} />
-			</ScrollView>
-			<Svg width="100%" height={24} style={styles.topFade} pointerEvents="none">
-				<Defs><LinearGradient id="home-top-fade" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={colors.background} stopOpacity="1" /><Stop offset="1" stopColor={colors.background} stopOpacity="0" /></LinearGradient></Defs>
-				<Rect width="100%" height="100%" fill="url(#home-top-fade)" />
-			</Svg>
+				<MonthActivity visits={visits} colors={colors} trainingDays={trainingDays} />
+				{contentHeight >= 550 && <FriendPersonalRecords records={friendRecords} />}
 		</View>
 	</SafeAreaView>;
 }
@@ -123,7 +164,7 @@ function NativeLineGraph({ points, onSelect, onInteractionEnd, colors }: VolumeC
 }
 
 function WebLineGraph({ points, onSelect, onInteractionEnd, colors }: VolumeChartProps) {
-	const [size, setSize] = useState({ width: 0, height: 88 });
+	const [size, setSize] = useState({ width: 0, height: 72 });
 	const max = Math.max(...points.map((point) => point.volume), 1);
 	const padding = 10;
 	const x = (index: number) => padding + index * ((size.width - padding * 2) / Math.max(points.length - 1, 1));
@@ -136,13 +177,13 @@ function WebLineGraph({ points, onSelect, onInteractionEnd, colors }: VolumeChar
 	}
 	return <Pressable style={[styles.graphArea, { backgroundColor: colors.background }]} delayLongPress={300} onLongPress={(event) => selectAtPosition(event.nativeEvent.locationX)} onPressOut={onInteractionEnd} onLayout={({ nativeEvent: { layout } }) => setSize({ width: layout.width, height: layout.height })}>
 		{size.width > 0 && <Svg viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="xMinYMin meet" style={styles.lineGraph}>
-			{[18, 47, 76].map((lineY) => <Line key={lineY} x1="0" x2={size.width} y1={lineY} y2={lineY} stroke={colors.surfaceStrong} strokeWidth="1" />)}
+			{[14, 36, 58].map((lineY) => <Line key={lineY} x1="0" x2={size.width} y1={lineY} y2={lineY} stroke={colors.surfaceStrong} strokeWidth="1" />)}
 			<Polyline points={linePoints} fill="none" stroke={colors.text} strokeWidth="2" strokeLinejoin="round" />
 		</Svg>}
 	</Pressable>;
 }
 
-function MonthActivity({ visits, colors }: { visits: WorkoutVisitSummary[]; colors: AppColors }) {
+function MonthActivity({ visits, colors, trainingDays }: { visits: WorkoutVisitSummary[]; colors: AppColors; trainingDays: number | null }) {
 	const [workoutPicker, setWorkoutPicker] = useState<{ date: Date; visits: WorkoutVisitSummary[] } | null>(null);
 	const month = new Date();
 	const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -165,20 +206,23 @@ function MonthActivity({ visits, colors }: { visits: WorkoutVisitSummary[]; colo
 	const rows = Array.from({ length: dates.length / 7 }, (_, index) => dates.slice(index * 7, index * 7 + 7));
 	const activeCount = dates.filter((day) => day.getMonth() === month.getMonth() && (visitsByDate.get(dateKey(day))?.sets ?? 0) > 0).length;
 	const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(month);
-	return <View style={styles.section}>
+	return <View style={[styles.section, styles.monthSection]}>
 		<View style={styles.sectionHeader}><Text style={[styles.activityTitle, { color: colors.text }]}>{monthLabel} activity</Text><Text style={[styles.sectionNote, { color: colors.subtleText }]}>{activeCount} DAYS</Text></View>
 		<View style={styles.weekdayLabels}>{['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((label, index) => <Text key={`${label}-${index}`} style={[styles.weekdayLabel, { color: colors.subtleText }]}>{label}</Text>)}</View>
-		<View style={styles.calendarGrid}>{rows.map((week, rowIndex) => <View key={rowIndex} style={styles.calendarRow}>{week.map((day) => {
-			const isThisMonth = day.getMonth() === month.getMonth();
-			const dayVisits = visitsByDate.get(dateKey(day));
-			const sets = dayVisits?.sets ?? 0;
-			const selectDay = () => {
-				if (!dayVisits) return;
-				if (dayVisits.visits.length === 1) router.push({ pathname: '/history-detail', params: { workoutId: dayVisits.visits[0].workout.id } });
-				else setWorkoutPicker({ date: day, visits: dayVisits.visits });
-			};
-			return <Pressable key={dateKey(day)} disabled={!isThisMonth || !dayVisits} onPress={selectDay} style={({ pressed }) => [styles.calendarCell, !isThisMonth && styles.calendarCellOutside, { backgroundColor: activityColor(sets, colors) }, pressed && styles.calendarCellPressed]} accessibilityRole={isThisMonth && dayVisits ? 'button' : undefined} accessibilityLabel={isThisMonth && dayVisits ? `${dayVisits.visits.length} workout${dayVisits.visits.length === 1 ? '' : 's'} on ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(day)}` : undefined} />;
-		})}</View>)}</View>
+		<View style={styles.calendarGrid}>{rows.map((week, rowIndex) => {
+			const goalMet = trainingDays != null && trainingDays > 0 && week.filter((day) => (visitsByDate.get(dateKey(day))?.sets ?? 0) > 0).length >= trainingDays;
+			return <View key={rowIndex} style={styles.calendarRow}>{week.map((day) => {
+				const isThisMonth = day.getMonth() === month.getMonth();
+				const dayVisits = visitsByDate.get(dateKey(day));
+				const sets = dayVisits?.sets ?? 0;
+				const selectDay = () => {
+					if (!dayVisits) return;
+					if (dayVisits.visits.length === 1) router.push({ pathname: '/history-detail', params: { workoutId: dayVisits.visits[0].workout.id } });
+					else setWorkoutPicker({ date: day, visits: dayVisits.visits });
+				};
+				return <Pressable key={dateKey(day)} disabled={!isThisMonth || !dayVisits} onPress={selectDay} style={({ pressed }) => [styles.calendarCell, !isThisMonth && styles.calendarCellOutside, { backgroundColor: goalMet && sets > 0 ? goalGold : activityColor(sets, colors) }, pressed && styles.calendarCellPressed]} accessibilityRole={isThisMonth && dayVisits ? 'button' : undefined} accessibilityLabel={isThisMonth && dayVisits ? `${dayVisits.visits.length} workout${dayVisits.visits.length === 1 ? '' : 's'} on ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(day)}${goalMet ? ', weekly goal met' : ''}` : undefined} />;
+			})}</View>;
+		})}</View>
 		<Modal visible={workoutPicker !== null} transparent animationType="none" onRequestClose={() => setWorkoutPicker(null)}>
 			<View style={styles.sheetOverlay}>
 				<Animated.View entering={FadeIn.duration(180)} style={styles.sheetBackdrop}>
@@ -197,16 +241,13 @@ function MonthActivity({ visits, colors }: { visits: WorkoutVisitSummary[]; colo
 	</View>;
 }
 
-function FriendPersonalRecords({ records, friendCount }: { records: FriendPersonalRecord[]; friendCount: number | null }) {
+function FriendPersonalRecords({ records }: { records: FriendPersonalRecord[] }) {
 	const { colors } = useAppearance();
 	const exercises = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
-	if (!records.length && friendCount !== 0) return null;
-	if (friendCount === 0) return <Pressable onPress={() => router.push('/friends')} style={({ pressed }) => [styles.addFriendsCard, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Add friends to see updates">
-		<Text style={[styles.addFriendsText, { color: colors.text }]}>Add friends to see updates</Text>
-	</Pressable>;
+	if (!records.length) return null;
 	return <View style={styles.friendRecords}>
 		<Text style={[styles.friendRecordsLabel, { color: colors.mutedText }]}>FRIENDS’ RECENT PRS</Text>
-		<View style={[styles.friendRecordList, { borderColor: colors.surfaceStrong }]}>{records.slice(0, 3).map((record) => {
+		<View style={[styles.friendRecordList, { borderColor: colors.surfaceStrong }]}>{records.slice(0, 1).map((record) => {
 			const initials = record.displayName.trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'L';
 			return <View key={`${record.id}:${record.exerciseId}:${record.completedAt}`} style={[styles.friendRecord, { borderColor: colors.surfaceStrong }]}>
 				{record.imageUrl ? <Image source={{ uri: record.imageUrl }} style={styles.friendAvatar} accessibilityLabel={`${record.displayName}'s profile photo`} /> : <View style={[styles.friendAvatar, styles.friendInitials, { backgroundColor: colors.surfaceStrong }]}><Text style={[styles.friendInitialsText, { color: colors.text }]}>{initials}</Text></View>}
@@ -226,12 +267,10 @@ function activityColor(sets: number, colors: AppColors) {
 }
 
 const styles = StyleSheet.create({
-	scrollArea: { flex: 1 }, scrollView: { flex: 1 }, topFade: { position: 'absolute', top: 0, left: 0 },
-	content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 },
-	section: { paddingBottom: 21 }, returnPlanCard: { padding: 18, borderRadius: 18, marginBottom: 22 }, returnPlanKicker: { fontSize: 9, fontWeight: '900', letterSpacing: .9 }, returnPlanText: { marginTop: 5, fontSize: 19, fontWeight: '900', letterSpacing: -.5 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }, sectionNote: { fontSize: 9, fontWeight: '800', letterSpacing: .7, color: '#95998F' },
-	splitTabs: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 3, paddingHorizontal: 4 }, splitTab: { minWidth: 55, alignItems: 'center', paddingVertical: 8 }, splitTabText: { fontSize: 12, fontWeight: '900', letterSpacing: .1, color: '#858980' }, splitTabTextActive: { color: '#1A1B16', textDecorationLine: 'underline', textDecorationColor: '#FFCC4A', textDecorationStyle: 'solid' }, trendSummary: { marginBottom: 5 }, trendRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }, trendValue: { fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -1.45, color: '#1B1C17' }, trendChange: { flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1, textAlign: 'right' }, trendContext: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1 }, activityTitle: { fontSize: 25, lineHeight: 29, fontWeight: '900', letterSpacing: -1.2, color: '#1B1C17' }, emptyTrend: { fontSize: 10, fontWeight: '900', letterSpacing: .8, color: '#969A91', paddingVertical: 38, textAlign: 'center' }, chart: { height: 88 }, graphArea: { height: 88, position: 'relative', backgroundColor: '#F9F9F7' }, lineGraph: { ...StyleSheet.absoluteFill }, unit: { fontSize: 10, letterSpacing: 0 },
-	weekdayLabels: { flexDirection: 'row', gap: 6, marginBottom: 6 }, weekdayLabel: { flex: 1, textAlign: 'center', fontSize: 8, fontWeight: '900', letterSpacing: .35, color: '#969A91' }, calendarGrid: { gap: 6 }, calendarRow: { flexDirection: 'row', gap: 6 }, calendarCell: { flex: 1, aspectRatio: 1, borderRadius: 4 }, calendarCellOutside: { opacity: 0 }, calendarCellPressed: { opacity: .72, transform: [{ scale: .93 }] },
+	content: { flex: 1, paddingHorizontal: 24, paddingTop: 8, paddingBottom: 12 },
+	section: { paddingBottom: 12 }, monthSection: { flex: 1, minHeight: 0 }, notificationArea: { marginBottom: 10 }, notificationFrame: { height: 60, borderRadius: 18, overflow: 'hidden' }, notificationTrack: { height: 60, flexDirection: 'row' }, notificationPage: { height: 60 }, notification: { height: 60, paddingHorizontal: 18, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, notificationCopy: { flex: 1, minWidth: 0 }, notificationKicker: { fontSize: 9, fontWeight: '900', letterSpacing: .9 }, notificationText: { marginTop: 3, fontSize: 17, fontWeight: '900', letterSpacing: -.5 }, notificationArrow: { fontSize: 28, fontWeight: '500', marginLeft: 8 }, notificationDots: { flexDirection: 'row', alignSelf: 'center', gap: 5, marginTop: 10 }, notificationDot: { width: 6, height: 6, borderRadius: 3 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }, sectionNote: { fontSize: 9, fontWeight: '800', letterSpacing: .7, color: '#95998F' },
+	splitTabs: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 3, paddingHorizontal: 4 }, splitTab: { minWidth: 55, alignItems: 'center', paddingVertical: 8 }, splitTabText: { fontSize: 12, fontWeight: '900', letterSpacing: .1, color: '#858980' }, splitTabTextActive: { color: '#1A1B16', textDecorationLine: 'underline', textDecorationColor: '#FFCC4A', textDecorationStyle: 'solid' }, trendSummary: { marginBottom: 5 }, trendRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }, trendValue: { fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -1.45, color: '#1B1C17' }, trendChange: { flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1, textAlign: 'right' }, trendContext: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: -.1 }, activityTitle: { fontSize: 25, lineHeight: 29, fontWeight: '900', letterSpacing: -1.2, color: '#1B1C17' }, emptyTrend: { fontSize: 10, fontWeight: '900', letterSpacing: .8, color: '#969A91', paddingVertical: 26, textAlign: 'center' }, chart: { height: 72 }, graphArea: { height: 72, position: 'relative', backgroundColor: '#F9F9F7' }, lineGraph: { ...StyleSheet.absoluteFill }, unit: { fontSize: 10, letterSpacing: 0 },
+	weekdayLabels: { flexDirection: 'row', gap: 6, marginBottom: 6 }, weekdayLabel: { flex: 1, textAlign: 'center', fontSize: 8, fontWeight: '900', letterSpacing: .35, color: '#969A91' }, calendarGrid: { flex: 1, minHeight: 0, gap: 6 }, calendarRow: { flex: 1, minHeight: 0, flexDirection: 'row', gap: 6 }, calendarCell: { flex: 1, borderRadius: 4 }, calendarCellOutside: { opacity: 0 }, calendarCellPressed: { opacity: .72, transform: [{ scale: .93 }] },
 	sheetOverlay: { flex: 1, justifyContent: 'flex-end' }, sheetBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,.38)' }, workoutSheet: { minHeight: 250, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 28, borderTopLeftRadius: 25, borderTopRightRadius: 25 }, sheetHandle: { width: 37, height: 4, borderRadius: 2, alignSelf: 'center' }, sheetTitle: { marginTop: 22, fontSize: 22, fontWeight: '900', letterSpacing: -.8 }, sheetDate: { marginTop: 3, marginBottom: 13, fontSize: 13, fontWeight: '700' }, workoutOption: { minHeight: 68, borderTopWidth: 1, justifyContent: 'center' }, workoutOptionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 }, workoutOptionMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', letterSpacing: -.1 },
 	friendRecords: { marginTop: 4 }, friendRecordsLabel: { marginBottom: 10, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, friendRecordList: { borderTopWidth: 1 }, friendRecord: { minHeight: 62, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 11 }, friendAvatar: { width: 36, height: 36, borderRadius: 12 }, friendInitials: { alignItems: 'center', justifyContent: 'center' }, friendInitialsText: { fontSize: 12, fontWeight: '900' }, friendRecordCopy: { flex: 1, minWidth: 0 }, friendName: { fontSize: 15, fontWeight: '900', letterSpacing: -.3 }, friendExercise: { marginTop: 1, fontSize: 11, fontWeight: '700' }, friendWeight: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 }, friendWeightUnit: { fontSize: 9, letterSpacing: 0 },
-	addFriendsCard: { marginTop: 4, minHeight: 72, paddingHorizontal: 18, borderRadius: 18, justifyContent: 'center' }, addFriendsText: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 },
 });

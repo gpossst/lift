@@ -10,6 +10,8 @@ const check = (condition: unknown) => { if (!condition) throw new Error('Custom 
 check(db.getRecommendedWorkoutSplit() === 'push');
 const split = db.saveCustomSplit({ name: 'Upper', muscles: ['chest', 'lats'] });
 check(db.getCustomSplits()[0]?.id === split.id && db.getWorkoutSplitDefinition(split.id)?.name === 'Upper');
+check(db.getRecommendedWorkoutSplit(new Date(), true) === split.id);
+check(db.getRecommendedWorkoutSplit(new Date(), false) === 'push');
 const created = db.getCloudSyncBatch();
 check(created?.changes.some((change) => change.entity === 'split' && change.record?.name === 'Upper'));
 db.acknowledgeCloudSyncBatch(created!.batchId, 1);

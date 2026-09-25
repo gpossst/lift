@@ -24,22 +24,39 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => (
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[character]!);
 
+const emailHtml = (logoUrl: string, text: string, action?: { label: string; url: string }) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Lift</title>
+</head>
+<body style="margin:0;padding:32px 16px;background:#F9F9F7">
+<div style="max-width:480px;margin:0 auto;padding:32px 28px;border-radius:24px;background:#FFFFFF;font:16px/1.55 Spline Sans,Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#11120F">
+<img src="${escapeHtml(logoUrl)}" width="130" height="50" alt="Lift" style="display:block;width:130px;height:50px;border:0;margin:0 0 24px">
+<p style="margin:0 0 24px">${escapeHtml(text).replace(/\n/g, '<br>')}</p>
+${action ? `<p style="margin:0 0 24px"><a href="${escapeHtml(action.url)}" style="display:inline-block;padding:14px 22px;border-radius:16px;background:#FFCC4A;color:#17180F;font-weight:900;text-decoration:none">${escapeHtml(action.label)}</a></p>` : ''}
+<p style="margin:0;color:#72776D;font-size:13px">If you did not request this, you can ignore this email.</p>
+</div>
+</body>
+</html>`;
+
 export async function sendEmail(env: AuthEnv, to: string, subject: string, text: string, action?: { label: string; url: string }) {
   const apiKey = required(env.RESEND_API_KEY, 'RESEND_API_KEY');
   const from = required(env.RESEND_FROM_EMAIL, 'RESEND_FROM_EMAIL');
-  const safeText = escapeHtml(text).replace(/\n/g, '<br>');
-  const actionHtml = action ? `<p><a href="${escapeHtml(action.url)}" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#171915;color:#fff;text-decoration:none">${escapeHtml(action.label)}</a></p>` : '';
+  const logoUrl = `${env.BETTER_AUTH_URL?.trim() || 'https://api.lift.garrett.one'}/email-logo.png`;
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: [to], subject, text: action ? `${text}\n\n${action.label}: ${action.url}` : text, html: `<div style="font:16px/1.5 system-ui,sans-serif;color:#171915"><p>${safeText}</p>${actionHtml}<p style="color:#6b7067">If you did not request this, you can ignore this email.</p></div>` }),
+    body: JSON.stringify({ from, to: [to], subject, text: action ? `${text}\n\n${action.label}: ${action.url}` : text, html: emailHtml(logoUrl, text, action) }),
   });
   if (!response.ok) throw new Error(`Resend rejected email (${response.status}).`);
 }
 
 export function createAuth(env: AuthEnv, ctx?: BackgroundContext) {
   const baseURL = env.BETTER_AUTH_URL?.trim() || 'https://api.lift.garrett.one';
-  const trustedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,mobile://')
+  const trustedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,lift://')
     .split(',').map((origin) => origin.trim()).filter(Boolean);
   const secrets = env.BETTER_AUTH_SECRETS?.split(',').map((entry) => {
     const separator = entry.indexOf(':');
@@ -68,7 +85,11 @@ export function createAuth(env: AuthEnv, ctx?: BackgroundContext) {
       sendOnSignUp: true,
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
-      sendVerificationEmail: ({ user, url }) => sendEmail(env, user.email, 'Verify your Lift email', 'Verify this email address to finish creating your Lift account.', { label: 'Verify email', url }),
+      sendVerificationEmail: ({ user, url }) => {
+        const verificationURL = new URL(url);
+        if (verificationURL.searchParams.get('callbackURL')?.startsWith('lift://')) verificationURL.searchParams.set('callbackURL', `${baseURL}/email-verified`);
+        return sendEmail(env, user.email, 'Verify your Lift email', 'Verify this email address to finish creating your Lift account.', { label: 'Verify email', url: verificationURL.toString() });
+      },
     },
     user: { deleteUser: { enabled: true } },
     rateLimit: { enabled: true, storage: 'database' },

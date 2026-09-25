@@ -57,8 +57,6 @@ function ProfileSettings() {
   const [heightInches, setHeightInches] = useState('');
   const [savingMeasurements, setSavingMeasurements] = useState(false);
   const [measurementError, setMeasurementError] = useState<string | null>(null);
-  const [favoriteExerciseIds, setFavoriteExerciseIds] = useState<string[]>([]);
-  const [favoriteQuery, setFavoriteQuery] = useState('');
   const [cohortOptIn, setCohortOptIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,7 +78,6 @@ function ProfileSettings() {
       setWeightLb(preferences?.weightLb == null ? '' : String(preferences.weightLb));
       setHeightFeet(preferences?.heightInches == null ? '' : String(Math.floor(preferences.heightInches / 12)));
       setHeightInches(preferences?.heightInches == null ? '' : String(preferences.heightInches % 12));
-      setFavoriteExerciseIds(preferences?.favoriteExerciseIds ?? []);
       setCohortOptIn(preferences?.optInSimilarUsers === true);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load profile.')).finally(() => setLoading(false));
   }, []);
@@ -122,14 +119,6 @@ function ProfileSettings() {
     finally { setSaving(false); }
   };
 
-  const saveFavorites = async () => {
-    if (saving) return;
-    setSaving(true); setError(null);
-    try { setFavoriteExerciseIds((await updateProfile({ recommendationPreferences: { favoriteExerciseIds } })).recommendationPreferences?.favoriteExerciseIds ?? []); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save favorite exercises.'); }
-    finally { setSaving(false); }
-  };
-
   const exportData = async () => {
     if (exporting) return;
     setExporting(true); setError(null);
@@ -159,24 +148,13 @@ function ProfileSettings() {
   return <>
     {loading ? <ActivityIndicator color={colors.accent} /> : <><Text style={[styles.sectionLabel, { color: colors.mutedText }]}>DISPLAY NAME</Text><View style={[styles.nameRow, { borderBottomColor: colors.surfaceStrong }]}><TextInput value={displayName} onChangeText={setDisplayName} maxLength={40} placeholder="Display name" placeholderTextColor={colors.subtleText} style={[styles.nameInput, { color: colors.text }]} accessibilityLabel="Display name" />
       <Pressable onPress={() => void save()} disabled={saving || !displayName.trim()} style={({ pressed }) => [styles.saveButton, pressed && ui.pressed, (saving || !displayName.trim()) && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save display name"><Text style={[styles.saveText, { color: colors.accent }]}>{saving ? 'Saving…' : 'Save'}</Text></Pressable></View>
-      <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>FAVORITE EXERCISES</Text>
-      <TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} autoCapitalize="none" autoCorrect={false} placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.favoriteSearch, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Search favorite exercises" />
-      <Text style={[styles.favoriteCount, { color: colors.mutedText }]}>{favoriteExerciseIds.length} of 20 selected</Text>
-      <View>{favoriteChoices(favoriteQuery, favoriteExerciseIds).map((exercise) => {
-        const selected = favoriteExerciseIds.includes(exercise.id);
-        return <Pressable key={exercise.id} disabled={!selected && favoriteExerciseIds.length >= 20} onPress={() => setFavoriteExerciseIds((current) => selected ? current.filter((id) => id !== exercise.id) : [...current, exercise.id])} style={({ pressed }) => [styles.favoriteChoice, { borderBottomColor: colors.surfaceStrong }, !selected && favoriteExerciseIds.length >= 20 && styles.disabled, pressed && ui.pressed]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
-          <View style={styles.favoriteChoiceText}><Text style={[styles.favoriteChoiceName, { color: colors.text }]}>{exercise.name}</Text><Text style={[styles.favoriteChoiceDetail, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View>
-          <Text style={[styles.favoriteMark, { color: selected ? colors.accent : colors.subtleText }]}>{selected ? '✓' : '+'}</Text>
-        </Pressable>;
-      })}</View>
-      <Pressable onPress={() => void saveFavorites()} disabled={saving} style={({ pressed }) => [styles.favoritesSave, { borderBottomColor: colors.surfaceStrong }, pressed && ui.pressed, saving && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save favorite exercises"><Text style={[styles.saveText, { color: colors.accent }]}>{saving ? 'Saving…' : 'Save favorites'}</Text></Pressable>
       {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}</>}
     <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>BODY MEASUREMENTS</Text>
     <Text style={[styles.preferenceDescription, { color: colors.mutedText, maxWidth: 320 }]}>Optional. Add these later to see your lifts in context of your bodyweight.</Text>
     <View style={styles.measurementInputs}>
-      <View style={[styles.measurementInputWrap, { borderColor: colors.surfaceStrong }]}><TextInput value={weightLb} onChangeText={setWeightLb} keyboardType="decimal-pad" maxLength={6} placeholder="Weight" placeholderTextColor={colors.subtleText} style={[styles.measurementInput, { color: colors.text }]} accessibilityLabel="Weight in pounds" /><Text style={[styles.measurementUnit, { color: colors.mutedText }]}>lb</Text></View>
       <View style={[styles.measurementInputWrap, { borderColor: colors.surfaceStrong }]}><TextInput value={heightFeet} onChangeText={(value) => setHeightFeet(value.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={1} placeholder="ft" placeholderTextColor={colors.subtleText} style={[styles.measurementInput, { color: colors.text }]} accessibilityLabel="Height in feet" /><Text style={[styles.measurementUnit, { color: colors.mutedText }]}>ft</Text></View>
       <View style={[styles.measurementInputWrap, { borderColor: colors.surfaceStrong }]}><TextInput value={heightInches} onChangeText={(value) => setHeightInches(value.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={2} placeholder="in" placeholderTextColor={colors.subtleText} style={[styles.measurementInput, { color: colors.text }]} accessibilityLabel="Additional height in inches" /><Text style={[styles.measurementUnit, { color: colors.mutedText }]}>in</Text></View>
+      <View style={[styles.measurementInputWrap, { borderColor: colors.surfaceStrong }]}><TextInput value={weightLb} onChangeText={setWeightLb} keyboardType="decimal-pad" maxLength={6} placeholder="Weight" placeholderTextColor={colors.subtleText} style={[styles.measurementInput, { color: colors.text }]} accessibilityLabel="Weight in pounds" /><Text style={[styles.measurementUnit, { color: colors.mutedText }]}>lb</Text></View>
     </View>
     <Pressable onPress={() => void saveMeasurements()} disabled={savingMeasurements} style={({ pressed }) => [styles.favoritesSave, { borderBottomColor: colors.surfaceStrong }, pressed && ui.pressed, savingMeasurements && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save body measurements"><Text style={[styles.saveText, { color: colors.accent }]}>{savingMeasurements ? 'Saving…' : 'Save measurements'}</Text></Pressable>
     {measurementError && <Text accessibilityRole="alert" style={styles.error}>{measurementError}</Text>}
@@ -193,7 +171,7 @@ function ProfileSettings() {
         <Text style={[styles.modalTitle, { color: colors.text }]}>Delete your account?</Text>
         <Text style={[styles.modalCopy, { color: colors.mutedText }]}>This permanently deletes your identity, measurements, workouts, friend connections, cohort preferences, and local account cache. This cannot be undone.</Text>
         <><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Type DELETE to confirm</Text><TextInput value={deletePhrase} onChangeText={setDeletePhrase} autoCapitalize="characters" autoCorrect={false} editable={!deleting} style={[styles.deleteInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Type DELETE to confirm account deletion" /></>
-        <TextInput value={deletionPassword} onChangeText={setDeletionPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Password" placeholderTextColor={colors.subtleText} editable={!deleting} style={[styles.deleteInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Confirm password to delete account" />
+        <TextInput value={deletionPassword} onChangeText={setDeletionPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Password" placeholderTextColor={colors.subtleText} editable={!deleting} style={[styles.deleteInput, { marginTop: 12, color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Confirm password to delete account" />
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         <Pressable onPress={() => void deleteAccount()} disabled={deleting || deletePhrase !== 'DELETE' || !deletionPassword} style={({ pressed }) => [styles.deleteButton, (deleting || deletePhrase !== 'DELETE' || !deletionPassword) && styles.disabled, pressed && ui.pressed]} accessibilityRole="button"><Text style={styles.deleteButtonText}>{deleting ? 'Deleting…' : 'Permanently delete account'}</Text></Pressable>
         <Pressable onPress={() => setDeleteOpen(false)} disabled={deleting} style={styles.cancelButton} accessibilityRole="button"><Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text></Pressable>
@@ -239,6 +217,29 @@ function AppearanceSettings() {
 function WorkoutSettings() {
   const { colors, showWorkoutRecommendations, restTimerEnabled, useRecommendedRestTimer, restTimerSeconds, setShowWorkoutRecommendations, setRestTimerEnabled, setUseRecommendedRestTimer, setRestTimerSeconds } = useAppearance();
   const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const [favoriteExerciseIds, setFavoriteExerciseIds] = useState<string[]>([]);
+  const [favoriteQuery, setFavoriteQuery] = useState('');
+  const [favoritesLoading, setFavoritesLoading] = useState(true);
+  const [favoritesSaving, setFavoritesSaving] = useState(false);
+  const [favoritesError, setFavoritesError] = useState<string | null>(null);
+  const favoritesLoaded = useRef(false);
+
+  useEffect(() => {
+    if (favoritesLoaded.current) return;
+    favoritesLoaded.current = true;
+    void getProfile().then((profile) => {
+      setFavoriteExerciseIds(profile.recommendationPreferences?.favoriteExerciseIds ?? []);
+    }).catch((reason) => setFavoritesError(reason instanceof Error ? reason.message : 'Could not load favorite exercises.')).finally(() => setFavoritesLoading(false));
+  }, []);
+
+  const saveFavorites = async () => {
+    if (favoritesSaving) return;
+    setFavoritesSaving(true); setFavoritesError(null);
+    try { setFavoriteExerciseIds((await updateProfile({ recommendationPreferences: { favoriteExerciseIds } })).recommendationPreferences?.favoriteExerciseIds ?? []); }
+    catch (reason) { setFavoritesError(reason instanceof Error ? reason.message : 'Could not save favorite exercises.'); }
+    finally { setFavoritesSaving(false); }
+  };
+
   return <>
     <CustomSplitSettings />
     <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>TIMER</Text>
@@ -253,6 +254,20 @@ function WorkoutSettings() {
       </View>
     </View>
     <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>RANKING</Text><View style={[styles.preferenceRow, { borderBottomColor: colors.surfaceStrong }]}><View style={styles.preferenceCopy}><Text style={[styles.preferenceTitle, { color: colors.text }]}>Personalized exercise ranking</Text><Text style={[styles.preferenceDescription, { color: colors.mutedText }]}>Rank matching movements while building a workout.</Text></View><Switch style={styles.preferenceSwitch} value={showWorkoutRecommendations} onValueChange={setShowWorkoutRecommendations} trackColor={{ false: colors.surfaceStrong, true: colors.accent }} thumbColor={colors.background} accessibilityLabel="Use personalized exercise ranking" accessibilityHint="Ranks matching exercises in the workout library" /></View>
+    <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>FAVORITE EXERCISES</Text>
+    {favoritesLoading ? <ActivityIndicator color={colors.accent} /> : <>
+      <TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} autoCapitalize="none" autoCorrect={false} placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.favoriteSearch, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Search favorite exercises" />
+      <Text style={[styles.favoriteCount, { color: colors.mutedText }]}>{favoriteExerciseIds.length} of 20 selected</Text>
+      <View>{favoriteChoices(favoriteQuery, favoriteExerciseIds).map((exercise) => {
+        const selected = favoriteExerciseIds.includes(exercise.id);
+        return <Pressable key={exercise.id} disabled={!selected && favoriteExerciseIds.length >= 20} onPress={() => setFavoriteExerciseIds((current) => selected ? current.filter((id) => id !== exercise.id) : [...current, exercise.id])} style={({ pressed }) => [styles.favoriteChoice, { borderBottomColor: colors.surfaceStrong }, !selected && favoriteExerciseIds.length >= 20 && styles.disabled, pressed && ui.pressed]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
+          <View style={styles.favoriteChoiceText}><Text style={[styles.favoriteChoiceName, { color: colors.text }]}>{exercise.name}</Text><Text style={[styles.favoriteChoiceDetail, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View>
+          <Text style={[styles.favoriteMark, { color: selected ? colors.accent : colors.subtleText }]}>{selected ? '✓' : '+'}</Text>
+        </Pressable>;
+      })}</View>
+      <Pressable onPress={() => void saveFavorites()} disabled={favoritesSaving} style={({ pressed }) => [styles.favoritesSave, { borderBottomColor: colors.surfaceStrong }, pressed && ui.pressed, favoritesSaving && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save favorite exercises"><Text style={[styles.saveText, { color: colors.accent }]}>{favoritesSaving ? 'Saving…' : 'Save favorites'}</Text></Pressable>
+      {favoritesError && <Text accessibilityRole="alert" style={styles.error}>{favoritesError}</Text>}
+    </>}
   </>;
 }
 
@@ -262,7 +277,7 @@ const muscleChoices = [
 ];
 
 function CustomSplitSettings() {
-  const { colors } = useAppearance();
+  const { colors, useCustomSplits, setUseCustomSplits } = useAppearance();
   const [splits, setSplits] = useState(getCustomSplits);
   const [editing, setEditing] = useState<CustomSplit | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -289,7 +304,8 @@ function CustomSplitSettings() {
   };
   return <>
     <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>YOUR SPLITS</Text>
-    <Text style={[styles.preferenceDescription, { color: colors.mutedText, maxWidth: 320 }]}>Build days around the muscles you want to train. After you complete one, Lift rotates through your custom days. Start Push, Pull, or Legs to return to the default rotation.</Text>
+    <Text style={[styles.preferenceDescription, { color: colors.mutedText, maxWidth: 320 }]}>Build days around the muscles you want to train.</Text>
+    <View style={[styles.preferenceRow, { borderBottomColor: colors.surfaceStrong, opacity: splits.length ? 1 : .45 }]}><View style={styles.preferenceCopy}><Text style={[styles.preferenceTitle, { color: colors.text }]}>Use custom splits</Text><Text style={[styles.preferenceDescription, { color: colors.mutedText }]}>Show your splits instead of Push, Pull, and Legs when starting a workout.</Text></View><Switch style={styles.preferenceSwitch} disabled={!splits.length} value={useCustomSplits && splits.length > 0} onValueChange={setUseCustomSplits} trackColor={{ false: colors.surfaceStrong, true: colors.accent }} thumbColor={colors.background} accessibilityLabel="Use custom splits" /></View>
     {splits.map((split) => <View key={split.id} style={[styles.customSplitRow, { borderBottomColor: colors.surfaceStrong }]}><Pressable onPress={() => open(split)} style={styles.customSplitCopy} accessibilityRole="button" accessibilityLabel={`Edit ${split.name} split`}><Text style={[styles.preferenceTitle, { color: colors.text }]}>{split.name}</Text><Text numberOfLines={1} style={[styles.preferenceDescription, { color: colors.mutedText }]}>{split.muscles.join(' · ')}</Text></Pressable><Pressable onPress={() => setDeleteCandidate(split)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Delete ${split.name} split`}><Text style={styles.destructiveText}>Delete</Text></Pressable></View>)}
     <Pressable onPress={() => open()} style={[styles.addSplitButton, { backgroundColor: colors.surface }]} accessibilityRole="button" accessibilityLabel="Create custom split"><Plus width={19} height={19} color={colors.text} strokeWidth={2.5} /><Text style={[styles.preferenceTitle, { color: colors.text }]}>Create custom split</Text></Pressable>
     <Modal visible={formOpen} transparent animationType="slide" onRequestClose={() => setFormOpen(false)}><View style={styles.modalOverlay}><View style={[styles.modalCard, styles.customSplitModal, { backgroundColor: colors.background }]}><Text style={[styles.modalTitle, { color: colors.text }]}>{editing ? 'Edit split' : 'Create split'}</Text><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Name</Text><TextInput value={name} onChangeText={setName} maxLength={40} placeholder="Upper body" placeholderTextColor={colors.subtleText} style={[styles.customSplitInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Split name" /><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Muscles to train</Text><ScrollView style={styles.muscleScroll} contentContainerStyle={styles.muscleChoices}>{muscleChoices.map((muscle) => { const selected = muscles.includes(muscle); return <Pressable key={muscle} onPress={() => { if (!selected && muscles.length >= 12) return setError('Choose up to 12 muscle groups.'); setError(''); setMuscles(selected ? muscles.filter((item) => item !== muscle) : [...muscles, muscle]); }} style={[styles.muscleChoice, { backgroundColor: selected ? colors.accent : colors.surface }]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={muscle}><Text style={[styles.muscleChoiceText, { color: selected ? colors.accentText : colors.text }]}>{muscle}</Text></Pressable>; })}</ScrollView>{!!error && <Text style={styles.error}>{error}</Text>}<Pressable onPress={save} style={[styles.customSplitSave, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Save split"><Text style={[styles.preferenceTitle, { color: colors.accentText }]}>Save split</Text></Pressable><Pressable onPress={() => setFormOpen(false)} style={styles.cancelButton} accessibilityRole="button" accessibilityLabel="Cancel"><Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text></Pressable></View></View></Modal>

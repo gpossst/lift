@@ -115,7 +115,7 @@ export const db: any = {
 export function getExercises(): Exercise[] { return [...exerciseCatalog].sort((a, b) => a.name.localeCompare(b.name)); }
 export function getFeaturedExercises(): Exercise[] { return getExercises().filter((exercise) => exercise.isFeatured === 1); }
 
-export function getRecommendedWorkoutSplit(now = new Date()): WorkoutSplit {
+export function getRecommendedWorkoutSplit(now = new Date(), useCustomSplits = false): WorkoutSplit {
   const ratings = readRatings();
   const muscleRatings: MuscleExhaustionRating[] = [];
   const history = getWorkoutVisits().map((visit) => {
@@ -128,8 +128,7 @@ export function getRecommendedWorkoutSplit(now = new Date()): WorkoutSplit {
     };
   });
   const custom = getCustomSplits();
-  const latestSplit = history[0]?.split;
-  const definitions = custom.some((item) => item.id === latestSplit) ? custom : builtinSplits;
+  const definitions = useCustomSplits && custom.length ? custom : builtinSplits;
   return recommendWorkoutSplit(history, now, muscleRatings, definitions) as WorkoutSplit;
 }
 

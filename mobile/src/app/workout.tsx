@@ -2,8 +2,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ChevronLeft, Delete, Info, Minus, Plus, Trash2, X } from "react-native-feather";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Animated, { cancelAnimation, Easing, FadeIn, SlideInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
-import Svg, { Circle, Polyline } from "react-native-svg";
+import Animated, { cancelAnimation, Easing, FadeIn, FadeInLeft, FadeInRight, FadeOutLeft, FadeOutRight, interpolate, interpolateColor, LinearTransition, SlideInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
+import Svg, { Circle, Defs, LinearGradient, Polyline, Rect, Stop } from "react-native-svg";
 import {
   ActivityIndicator,
   Image,
@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,11 +31,21 @@ import {
 } from "@/db";
 import { exerciseRequiresWeight } from "@/db/exercise-catalog";
 import { useAppearance } from "@/components/appearance-provider";
+import { SwipeWatermark } from "@/components/swipe-watermark";
 import { getProgressiveOverloadRecommendation } from "@/lib/exercise-recommendations";
 import { normalizeRestTimerSeconds } from "@/lib/appearance";
+import { BAR_WEIGHT_LB, formatPlateCounts, MAX_BAR_WEIGHT_LB, PLATE_INCREMENT_LB, platesPerSide } from "@/lib/plate-loading";
 
 type Field = "weight" | "reps";
+type WeightInputMode = "plates" | "keypad";
 const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];
+const plateDialWeights = Array.from(
+  { length: (MAX_BAR_WEIGHT_LB - BAR_WEIGHT_LB) / PLATE_INCREMENT_LB + 1 },
+  (_, index) => BAR_WEIGHT_LB + index * PLATE_INCREMENT_LB,
+);
+const plateTickWidth = 24;
+const rulerHeight = 88;
+const normalizeBarWeight = (value: string) => Math.min(MAX_BAR_WEIGHT_LB, Math.max(BAR_WEIGHT_LB, Math.round(((Number(value) || BAR_WEIGHT_LB) - BAR_WEIGHT_LB) / PLATE_INCREMENT_LB) * PLATE_INCREMENT_LB + BAR_WEIGHT_LB));
 const formatHistoryDate = (date: Date) =>
   `${date.getMonth() + 1}/${date.getDate()}`;
 const exerciseCatalog = getExercises();
@@ -44,6 +55,117 @@ const restRadius = 64;
 const restPieRadius = restRadius / 2;
 const restCircumference = 2 * Math.PI * restPieRadius;
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const plateLayout = LinearTransition.duration(180);
+const leftPlateEnter = FadeInLeft.duration(180);
+const rightPlateEnter = FadeInRight.duration(180);
+const leftPlateExit = FadeOutLeft.duration(120);
+const rightPlateExit = FadeOutRight.duration(120);
+
+function PlateDial({ value, onChange, colors, showSwipeHint, onSwipeStart }: {
+  value: string;
+  onChange: (value: string) => void;
+  colors: ReturnType<typeof useAppearance>["colors"];
+  showSwipeHint: boolean;
+  onSwipeStart: () => void;
+}) {
+  const scrollRef = useRef<ScrollView>(null);
+  const lastEmittedValue = useRef<number | null>(null);
+  const [width, setWidth] = useState(0);
+  const total = Math.min(MAX_BAR_WEIGHT_LB, Math.max(BAR_WEIGHT_LB, Number(value) || BAR_WEIGHT_LB));
+  const plates = platesPerSide(total);
+  const plateWidth = Math.max(4, Math.min(8, 82 / Math.max(plates.length, 1) - 2));
+  const plateStackWidth = plates.length * (plateWidth + 2);
+
+  useEffect(() => {
+    if (!width || lastEmittedValue.current === total) return;
+    const index = Math.round((total - BAR_WEIGHT_LB) / PLATE_INCREMENT_LB);
+    lastEmittedValue.current = total;
+    scrollRef.current?.scrollTo({ x: index * plateTickWidth, animated: false });
+  }, [total, width]);
+
+  return <View style={styles.plateDial}>
+    <View style={styles.barbell} accessibilityElementsHidden>
+      <View style={[styles.barEnd, { backgroundColor: colors.subtleText }]} />
+      <Animated.View layout={plateLayout} style={[styles.plateSide, styles.plateSideLeft, { width: plateStackWidth }]}>
+        {[...plates].reverse().map((plate, index) => <Animated.View key={`left-${plate}-${index}`} entering={leftPlateEnter} exiting={leftPlateExit} layout={plateLayout} style={[styles.barPlate, {
+          width: plateWidth,
+          height: 22 + plate * .78,
+          backgroundColor: colors.text,
+        }]} />)}
+      </Animated.View>
+      <View style={[styles.barCollar, { backgroundColor: colors.accent }]} />
+      <View style={[styles.barGrip, { backgroundColor: colors.subtleText }]} />
+      <View style={[styles.barCollar, { backgroundColor: colors.accent }]} />
+      <Animated.View layout={plateLayout} style={[styles.plateSide, styles.plateSideRight, { width: plateStackWidth }]}>
+        {plates.map((plate, index) => <Animated.View key={`right-${plate}-${index}`} entering={rightPlateEnter} exiting={rightPlateExit} layout={plateLayout} style={[styles.barPlate, {
+          width: plateWidth,
+          height: 22 + plate * .78,
+          backgroundColor: colors.text,
+        }]} />)}
+      </Animated.View>
+      <View style={[styles.barEnd, { backgroundColor: colors.subtleText }]} />
+    </View>
+    <View style={styles.plateSummary} accessible accessibilityRole="text" accessibilityLabel={`Each side: ${formatPlateCounts(plates)}`}>
+      <Text style={[styles.plateSummaryLabel, { color: colors.subtleText }]}>Each side</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.75} style={[styles.plateSummaryValue, { color: colors.text }]}>{formatPlateCounts(plates)}</Text>
+    </View>
+    <View
+      style={styles.rulerFrame}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      accessibilityLabel={`Barbell weight ${total} pounds. Swipe left or right to adjust.`}
+    >
+      {showSwipeHint && <SwipeWatermark colors={colors} height={rulerHeight} />}
+      <ScrollView
+          ref={scrollRef}
+          style={styles.rulerScroll}
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={plateTickWidth}
+          decelerationRate="normal"
+          directionalLockEnabled
+          scrollEventThrottle={16}
+          contentContainerStyle={{ paddingHorizontal: Math.max(0, width / 2 - plateTickWidth / 2) }}
+          onScrollBeginDrag={() => {
+            onSwipeStart();
+          }}
+          onScroll={(event) => {
+            const index = Math.max(0, Math.min(plateDialWeights.length - 1, Math.round(event.nativeEvent.contentOffset.x / plateTickWidth)));
+            const next = plateDialWeights[index];
+            if (next === lastEmittedValue.current) return;
+            lastEmittedValue.current = next;
+            if (showSwipeHint) onSwipeStart();
+            onChange(String(next));
+          }}
+          onMomentumScrollEnd={() => {
+            void Haptics.selectionAsync().catch(() => {});
+          }}
+        >
+          {plateDialWeights.map((tick) => {
+            const major = tick % 25 === 0;
+            return <View key={tick} style={styles.rulerTickSlot}>
+              <View style={[styles.rulerTick, { backgroundColor: major ? colors.mutedText : colors.subtleText, opacity: major ? 1 : .45 }, major && styles.rulerTickMajor]} />
+            </View>;
+          })}
+      </ScrollView>
+      <Svg pointerEvents="none" style={styles.rulerEdgeFade} width="100%" height={rulerHeight} viewBox={`0 0 300 ${rulerHeight}`} preserveAspectRatio="none">
+        <Defs>
+          <LinearGradient id="leftRulerFade" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={colors.background} stopOpacity={1} />
+            <Stop offset="1" stopColor={colors.background} stopOpacity={0} />
+          </LinearGradient>
+          <LinearGradient id="rightRulerFade" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
+            <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={24} height={rulerHeight} fill="url(#leftRulerFade)" />
+        <Rect x={276} y={0} width={24} height={rulerHeight} fill="url(#rightRulerFade)" />
+      </Svg>
+      <View pointerEvents="none" style={[styles.rulerIndicator, { backgroundColor: colors.accent }]} />
+    </View>
+  </View>;
+}
 
 function readSupersetIds(value: string | string[] | undefined, currentExerciseId: string) {
   const serialized = Array.isArray(value) ? value[0] : value;
@@ -59,6 +181,7 @@ function readSupersetIds(value: string | string[] | undefined, currentExerciseId
 export default function WorkoutScreen() {
 	const { colors, restTimerEnabled, useRecommendedRestTimer, restTimerSeconds } = useAppearance();
   const { bottom: bottomInset } = useSafeAreaInsets();
+  const { width: inputAreaWidth } = useWindowDimensions();
   const params = useLocalSearchParams<{
     id: string;
     name: string;
@@ -120,8 +243,11 @@ export default function WorkoutScreen() {
   const [field, setField] = useState<Field>("weight");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
+  const [weightInputMode, setWeightInputMode] = useState<WeightInputMode>("plates");
+  const [plateHintDismissed, setPlateHintDismissed] = useState(false);
   const [includesAddedWeight, setIncludesAddedWeight] = useState(false);
   const usesWeight = requiresWeight || includesAddedWeight;
+  const supportsPlateDial = exercise.equipment === "barbell";
   const [setNumber, setSetNumber] = useState(1);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<WorkoutHistoryPoint[]>([]);
@@ -140,6 +266,10 @@ export default function WorkoutScreen() {
   const restTimeAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: restScale.value }] }));
   const [selectedSetIndex, setSelectedSetIndex] = useState<number | null>(null);
   const [renderedAt] = useState(() => Date.now());
+  const inputPagerRef = useRef<ScrollView>(null);
+  const inputScrollProgress = useSharedValue(0);
+  const plateDotStyle = useAnimatedStyle(() => ({ width: interpolate(inputScrollProgress.value, [0, 1], [12, 6]), backgroundColor: interpolateColor(inputScrollProgress.value, [0, 1], [colors.accent, colors.subtleText]) }));
+  const keypadDotStyle = useAnimatedStyle(() => ({ width: interpolate(inputScrollProgress.value, [0, 1], [6, 12]), backgroundColor: interpolateColor(inputScrollProgress.value, [0, 1], [colors.subtleText, colors.accent]) }));
   const pastSetsScrollRef = useRef<ScrollView>(null);
   const skippingRestRef = useRef(false);
   const supersetIds = useMemo(() => readSupersetIds(params.superset, exerciseId), [exerciseId, params.superset]);
@@ -174,10 +304,22 @@ export default function WorkoutScreen() {
       setWeight(String((requiresWeight || continueAddedWeight ? lastSet : undefined)?.weight ?? ""));
       setReps(lastSet ? String(lastSet.reps) : "");
       setField(requiresWeight || continueAddedWeight ? "weight" : "reps");
+      const lastWeight = (requiresWeight || continueAddedWeight ? lastSet : undefined)?.weight;
+      const canShowLastWeightOnBar = !lastWeight || lastWeight >= BAR_WEIGHT_LB && (lastWeight - BAR_WEIGHT_LB) % PLATE_INCREMENT_LB === 0;
+      setWeightInputMode(exercise.equipment === "barbell" && canShowLastWeightOnBar ? "plates" : "keypad");
+      setPlateHintDismissed(false);
       setSelectedSetIndex(null);
     }, 0);
     return () => clearTimeout(timer);
-  }, [exerciseId, requiresWeight, workoutId]);
+  }, [exercise.equipment, exerciseId, requiresWeight, workoutId]);
+  useEffect(() => {
+    if (supportsPlateDial && weightInputMode === "plates" && field === "weight" && !Number(weight)) {
+      setWeight(String(BAR_WEIGHT_LB));
+    }
+  }, [field, supportsPlateDial, weight, weightInputMode]);
+  useEffect(() => {
+    inputPagerRef.current?.scrollTo({ x: supportsPlateDial && field === "weight" && weightInputMode === "keypad" ? inputAreaWidth : 0, animated: true });
+  }, [field, inputAreaWidth, supportsPlateDial, weightInputMode]);
   const value = field === "weight" ? weight : reps;
   function edit(key: string) {
     const next = (v: string) =>
@@ -390,6 +532,23 @@ export default function WorkoutScreen() {
     if (recommendation.weight !== undefined) setWeight(String(recommendation.weight));
     setReps(String(recommendation.reps));
   }
+  const keypad = <View style={styles.keypad}>
+    {keys.map((key) => (
+      <Pressable
+        key={key}
+        onPress={() => edit(key)}
+        style={({ pressed }) => [styles.key, pressed && { backgroundColor: colors.surface }]}
+        accessibilityRole="button"
+        accessibilityLabel={key === "backspace" ? "Delete" : key === "." ? "Decimal point" : key}
+      >
+        {key === "backspace" ? (
+          <Delete width={25} height={25} color={colors.text} strokeWidth={2.25} />
+        ) : (
+          <Text style={[styles.keyText, { color: colors.text }]}>{key}</Text>
+        )}
+      </Pressable>
+    ))}
+  </View>;
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
@@ -434,10 +593,20 @@ export default function WorkoutScreen() {
       <View style={styles.valueBlock}>
         <View style={styles.valueRow}>
           <Pressable
-            onPress={() => field === "weight" ? setWeight("") : setReps("")}
+            onPress={() => {
+              if (field === "weight" && supportsPlateDial && weightInputMode === "plates") {
+                setWeightInputMode("keypad");
+              }
+              else if (field === "weight" && supportsPlateDial) {
+                setWeight(String(normalizeBarWeight(weight)));
+                setWeightInputMode("plates");
+              }
+              else if (field === "weight") setWeight("");
+              else setReps("");
+            }}
             style={({ pressed }) => [pressed && styles.valuePressed]}
             accessibilityRole="button"
-            accessibilityLabel={`Clear ${field}`}
+            accessibilityLabel={field === "weight" && supportsPlateDial ? weightInputMode === "plates" ? "Show weight keypad" : "Show plate loading" : `Clear ${field}`}
           >
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.value, { color: colors.text }]}>
               {value || "0"}
@@ -468,20 +637,37 @@ export default function WorkoutScreen() {
           <Text style={[styles.recommendationSets, { color: colors.subtleText }]}>{recommendation.sets} sets</Text>
         </Pressable>
       </View>
-      <View style={styles.keypad}>
-        {keys.map((key) => (
-          <Pressable
-            key={key}
-            onPress={() => edit(key)}
-            style={({ pressed }) => [styles.key, pressed && { backgroundColor: colors.surface }]}
+      <View style={styles.inputArea}>
+          {supportsPlateDial && field === "weight" ? <ScrollView
+            ref={inputPagerRef}
+            style={styles.inputPager}
+            horizontal
+            pagingEnabled
+            nestedScrollEnabled
+            bounces={false}
+            decelerationRate="fast"
+            showsHorizontalScrollIndicator={false}
+            onScroll={(event) => { inputScrollProgress.value = Math.max(0, Math.min(1, event.nativeEvent.contentOffset.x / inputAreaWidth)); }}
+            scrollEventThrottle={16}
+            onMomentumScrollEnd={(event) => {
+              const nextMode: WeightInputMode = event.nativeEvent.contentOffset.x >= inputAreaWidth / 2 ? "keypad" : "plates";
+              if (nextMode === weightInputMode) return;
+              if (nextMode === "plates") setWeight(String(normalizeBarWeight(weight)));
+              setWeightInputMode(nextMode);
+              void Haptics.selectionAsync().catch(() => {});
+            }}
           >
-            {key === "backspace" ? (
-              <Delete width={25} height={25} color={colors.text} strokeWidth={2.25} />
-            ) : (
-              <Text style={[styles.keyText, { color: colors.text }]}>{key}</Text>
-            )}
-          </Pressable>
-        ))}
+            <View style={[styles.inputPage, { width: inputAreaWidth }]} accessibilityElementsHidden={weightInputMode !== "plates"} importantForAccessibility={weightInputMode === "plates" ? "auto" : "no-hide-descendants"}>
+              <PlateDial value={weight} onChange={setWeight} colors={colors} showSwipeHint={!plateHintDismissed} onSwipeStart={() => setPlateHintDismissed(true)} />
+            </View>
+            <View style={[styles.inputPage, { width: inputAreaWidth }]} accessibilityElementsHidden={weightInputMode !== "keypad"} importantForAccessibility={weightInputMode === "keypad" ? "auto" : "no-hide-descendants"}>
+              {keypad}
+            </View>
+          </ScrollView> : <View style={[styles.inputPage, styles.inputPageSingle]}>{keypad}</View>}
+          {supportsPlateDial && field === "weight" && <View style={styles.inputPagination} accessibilityRole="text" accessibilityLabel={`${weightInputMode === "plates" ? "Plate loading" : "Keypad"}, 2 input options`}>
+            <Animated.View style={[styles.inputPaginationDot, plateDotStyle]} />
+            <Animated.View style={[styles.inputPaginationDot, keypadDotStyle]} />
+          </View>}
       </View>
       <View style={styles.footer}>
         <Pressable
@@ -799,10 +985,23 @@ const styles = StyleSheet.create({
   recentSet: { paddingVertical: 2, alignItems: "flex-end" },
   recentSetPressed: { opacity: 0.68 },
   recentSetValue: { fontSize: 9, fontWeight: "800", letterSpacing: -0.15 },
+  inputArea: {
+    flex: 1,
+    width: "100%",
+    transform: [{ translateY: -24 }],
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  inputPager: { flex: 1, width: "100%" },
+  inputPagination: { position: "absolute", bottom: 8, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 5 },
+  inputPaginationDot: { width: 6, height: 6, borderRadius: 3 },
+  inputPaginationDotSelected: { width: 12 },
+  inputPage: { height: "100%", paddingTop: 34 },
+  inputPageSingle: { width: "100%" },
   keypad: {
     flex: 1,
-    transform: [{ translateY: -24 }],
-    paddingTop: 22,
+    width: "100%",
+    paddingTop: 10,
     paddingHorizontal: 45,
     flexDirection: "row",
     flexWrap: "wrap",
@@ -817,6 +1016,25 @@ const styles = StyleSheet.create({
   },
   keyPressed: { backgroundColor: "#F0F1ED" },
   keyText: { fontSize: 30, fontWeight: "700", color: "#10110E" },
+  plateDial: { flex: 1, width: "100%", paddingTop: 32, alignItems: "center" },
+  barbell: { height: 144, flexDirection: "row", alignItems: "center", justifyContent: "center" },
+  barEnd: { width: 30, height: 4, borderRadius: 2 },
+  plateSide: { height: 76, flexDirection: "row", alignItems: "center" },
+  plateSideLeft: { justifyContent: "flex-end" },
+  plateSideRight: { justifyContent: "flex-start" },
+  barPlate: { minHeight: 24, maxHeight: 58, marginHorizontal: 1, borderRadius: 3 },
+  barCollar: { width: 7, height: 27, borderRadius: 2, zIndex: 1 },
+  barGrip: { width: 74, height: 7, borderRadius: 2 },
+  plateSummary: { maxWidth: "86%", minHeight: 20, marginTop: 4, flexDirection: "row", alignItems: "baseline", justifyContent: "center", gap: 8 },
+  plateSummaryLabel: { fontSize: 11, fontWeight: "800" },
+  plateSummaryValue: { flexShrink: 1, fontSize: 13, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  rulerFrame: { width: "100%", height: rulerHeight, marginTop: 56, overflow: "hidden" },
+  rulerScroll: { height: rulerHeight, flexGrow: 0 },
+  rulerTickSlot: { width: plateTickWidth, height: rulerHeight, alignItems: "center", justifyContent: "center" },
+  rulerTick: { width: 3, height: 17, borderRadius: 1.5 },
+  rulerTickMajor: { height: 32 },
+  rulerIndicator: { position: "absolute", top: 28, left: "50%", width: 4, height: 32, marginLeft: -2, borderRadius: 2 },
+  rulerEdgeFade: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
   footer: { paddingHorizontal: 24, paddingBottom: 15 },
   saveButton: {
     height: 60,

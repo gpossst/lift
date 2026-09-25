@@ -38,7 +38,7 @@ export function FirstWorkoutPreview({ onboarding, splitName, onStart, onSkip }: 
       <Text style={[styles.title, { color: colors.text }]}>Start with a workout made for you.</Text>
       <Text style={[styles.subtitle, { color: colors.mutedText }]}>Your first session is a simple way to put your {goal ? goal.toLowerCase() : 'training'} goal into motion.</Text>
 
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.surfaceStrong }]}>
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <Text style={[styles.cardLabel, { color: colors.mutedText }]}>FIRST WORKOUT</Text>
         <Text style={[styles.workout, { color: colors.text }]}>{splitName}</Text>
         <View style={styles.details}>
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
   title: { maxWidth: 350, marginTop: 15, fontSize: 38, lineHeight: 41, fontWeight: '900', letterSpacing: -1.7 },
   subtitle: { maxWidth: 340, marginTop: 12, fontSize: 16, lineHeight: 23 },
-  card: { marginTop: 30, padding: 22, borderWidth: 1, borderRadius: 22 },
+  card: { marginTop: 30, padding: 22, borderRadius: 22 },
   cardLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   workout: { marginTop: 8, fontSize: 27, fontWeight: '900', letterSpacing: -.8 },
   details: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },

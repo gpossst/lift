@@ -44,6 +44,7 @@ const customUpper = { id: 'custom:upper', name: 'Upper', muscles: ['chest', 'lat
 const customLower = { id: 'custom:lower', name: 'Lower', muscles: ['quadriceps', 'hamstrings'] };
 equal(getRecommendedWorkoutSplit([{ split: customUpper.id, completedAt: now, sets: 8 }], now, [], [customUpper, customLower]), customLower.id);
 deepEqual(getExerciseRecommendations([bench, squat, deadlift], [], [], 'today', customUpper.id, 3, now, {}, [], customUpper).map((item) => item.exercise.id), ['bench']);
+deepEqual(getExerciseRecommendations([bench, plank], [], [], 'today', customUpper.id, 3, now, {}, [], customUpper).map((item) => item.exercise.id), ['bench']);
 
 const freshLegs = getExerciseRecommendations([squat, deadlift, stretch], [], [], 'today', 'legs', 3, now);
 deepEqual(freshLegs.map((item) => item.exercise.id).sort(), ['deadlift', 'squat']);

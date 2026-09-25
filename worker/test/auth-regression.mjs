@@ -30,9 +30,10 @@ const env = {
   BETTER_AUTH_URL: 'https://api.lift.test',
   BETTER_AUTH_SECRETS: `2:${'n'.repeat(40)},1:${'o'.repeat(40)}`,
   BETTER_AUTH_SECRET: 'legacy-secret-that-is-at-least-32-characters',
-  TRUSTED_ORIGINS: 'https://lift.test,mobile://',
+  TRUSTED_ORIGINS: 'https://lift.test,lift://',
   RESEND_API_KEY: 're_test',
   RESEND_FROM_EMAIL: 'Lift <auth@lift.test>',
+  SUPPORT_EMAIL: 'support@lift.test',
   DELETION_RATE_LIMITER: { limit: async () => ({ success: true }) },
   SYNC_RATE_LIMITER: { limit: async () => ({ success: !denySync }) },
   EXPENSIVE_RATE_LIMITER: { limit: async () => ({ success: !denyExpensive }) },
@@ -56,7 +57,7 @@ const cookieFrom = (response) => {
   return match[0];
 };
 const createUser = async (email, name, environment = env) => {
-  const signup = await call('/api/auth/sign-up/email', { method: 'POST', body: JSON.stringify({ email, name, password: 'correct horse battery staple' }) }, environment);
+  const signup = await call('/api/auth/sign-up/email', { method: 'POST', body: JSON.stringify({ email, name, password: 'correct horse battery staple', callbackURL: 'lift:///auth/verified' }) }, environment);
   if (signup.status !== 200) throw new Error(`Sign-up failed: ${signup.status} ${await signup.text()}`);
   const signupCookie = cookieFrom(signup);
   if ((await call('/v1/profile', { headers: { Cookie: signupCookie } }, environment)).status !== 200) throw new Error('Sign-up did not create a usable session.');
@@ -64,8 +65,11 @@ const createUser = async (email, name, environment = env) => {
   const verificationURL = verificationEmail?.text?.match(/https:\/\/[^\s]+/)?.[0];
   if (!verificationURL) throw new Error('Verification email did not contain a link.');
   const verification = new URL(verificationURL);
+  if (verification.searchParams.get('callbackURL') !== 'https://api.lift.test/email-verified') throw new Error('Mobile verification email redirects into a browser-only app link.');
   const verified = await call(`${verification.pathname}${verification.search}`, {}, environment);
-  if (![200, 302].includes(verified.status) || !(await DB.prepare('SELECT emailVerified FROM user WHERE email = ?').bind(email).first()).emailVerified) throw new Error('Email verification link failed.');
+  if (verified.status !== 302 || verified.headers.get('location') !== 'https://api.lift.test/email-verified' || !(await DB.prepare('SELECT emailVerified FROM user WHERE email = ?').bind(email).first()).emailVerified) throw new Error('Email verification link failed.');
+  const confirmation = await call('/email-verified');
+  if (confirmation.status !== 200 || !(await confirmation.text()).includes('Email verified') || confirmation.headers.get('cache-control') !== 'no-store') throw new Error('Mobile verification confirmation page failed.');
   const signin = await call('/api/auth/sign-in/email', { method: 'POST', body: JSON.stringify({ email, password: 'correct horse battery staple' }) }, environment);
   if (signin.status !== 200) throw new Error(`Sign-in failed: ${signin.status} ${await signin.text()}`);
   return cookieFrom(signin);
@@ -85,10 +89,32 @@ const totp = (uri) => {
 
 const health = await call('/healthz');
 if (health.status !== 200 || !(await health.json()).ok) throw new Error('Readiness check failed with valid configuration and D1.');
+if ((await call('/healthz', {}, { ...env, SUPPORT_EMAIL: '' })).status !== 503) throw new Error('Readiness check accepted a missing support address.');
 const publicPage = await call('/delete-account');
 for (const header of ['content-security-policy', 'strict-transport-security', 'x-frame-options', 'x-content-type-options', 'referrer-policy']) if (!publicPage.headers.has(header)) throw new Error(`Security header missing: ${header}`);
+const expiredVerification = await call('/email-verified?error=INVALID_TOKEN');
+if (!(await expiredVerification.text()).includes('Verification link expired')) throw new Error('Invalid verification link showed success.');
 const oversized = await call('/api/auth/sign-up/email', { method: 'POST', body: 'x'.repeat(64 * 1024 + 1) });
 if (oversized.status !== 413) throw new Error('Oversized request body reached the route handler.');
+
+await createUser('recovery@lift.test', 'Recovery');
+const resetRequest = await call('/api/auth/request-password-reset', { method: 'POST', body: JSON.stringify({ email: 'recovery@lift.test', redirectTo: 'https://api.lift.test/reset-password' }) });
+if (resetRequest.status !== 200) throw new Error(`Password reset request failed: ${resetRequest.status}`);
+const resetEmail = sentEmails.findLast((item) => item.to?.includes('recovery@lift.test') && item.subject === 'Reset your Lift password');
+const resetLink = resetEmail?.text?.match(/https:\/\/[^\s]+/)?.[0];
+if (!resetLink) throw new Error('Password reset email did not contain a link.');
+const resetURL = new URL(resetLink);
+const resetRedirect = await call(`${resetURL.pathname}${resetURL.search}`);
+const destination = new URL(resetRedirect.headers.get('location'));
+if (resetRedirect.status !== 302 || destination.pathname !== '/reset-password' || !destination.searchParams.has('token')) throw new Error('Password reset link did not redirect to the browser fallback with a token.');
+const resetPage = await call(`${destination.pathname}${destination.search}`);
+const resetHtml = await resetPage.text();
+if (resetPage.status !== 200 || resetPage.headers.get('cache-control') !== 'no-store' || resetPage.headers.get('referrer-policy') !== 'no-referrer' || !resetHtml.includes('Open in Lift') || !resetHtml.includes("fetch('/api/auth/reset-password'")) throw new Error('Browser password reset page was not usable or private.');
+const newPassword = 'fresh correct horse battery staple';
+const resetSaved = await call('/api/auth/reset-password', { method: 'POST', headers: { Origin: 'https://api.lift.test' }, body: JSON.stringify({ newPassword, token: destination.searchParams.get('token') }) });
+if (resetSaved.status !== 200) throw new Error(`Browser password reset failed: ${resetSaved.status} ${await resetSaved.text()}`);
+const recoveredSignIn = await call('/api/auth/sign-in/email', { method: 'POST', body: JSON.stringify({ email: 'recovery@lift.test', password: newPassword }) });
+if (recoveredSignIn.status !== 200) throw new Error('The recovered account could not sign in with its new password.');
 
 const untrusted = await call('/api/auth/sign-up/email', { method: 'POST', headers: { Origin: 'https://evil.test' }, body: JSON.stringify({ email: 'evil@lift.test', name: 'Evil', password: 'correct horse battery staple' }) });
 if (untrusted.status < 400) throw new Error('Better Auth accepted an untrusted origin.');

@@ -281,7 +281,7 @@ export function getWorkoutSplitDefinition(split: WorkoutSplit) {
   return builtin ? { ...builtin, muscles: [...builtin.muscles] } : getCustomSplits().find((item) => item.id === split) ?? null;
 }
 
-export function getRecommendedWorkoutSplit(now = new Date()): WorkoutSplit {
+export function getRecommendedWorkoutSplit(now = new Date(), useCustomSplits = false): WorkoutSplit {
   const muscleRatings: MuscleExhaustionRating[] = [];
   const history = getWorkoutVisits().map((visit) => {
     const ratings = getWorkoutMuscleRatings(visit.workout.id);
@@ -294,8 +294,7 @@ export function getRecommendedWorkoutSplit(now = new Date()): WorkoutSplit {
     };
   });
   const custom = getCustomSplits();
-  const latestSplit = history[0]?.split;
-  const definitions = custom.some((item) => item.id === latestSplit) ? custom : builtinSplits;
+  const definitions = useCustomSplits && custom.length ? custom : builtinSplits;
   return recommendWorkoutSplit(history, now, muscleRatings, definitions) as WorkoutSplit;
 }
 
@@ -686,7 +685,7 @@ function enqueueCloudSync(entity: CloudSyncEntity, key: string, operation: 'upse
   sqlite.runSync(`INSERT INTO sync_outbox (entity, entity_key, operation, record_json, base_revision, mutation_id, batch_id, created_at)
     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
     ON CONFLICT(entity, entity_key) WHERE batch_id IS NULL DO UPDATE SET operation = excluded.operation, record_json = excluded.record_json,
-      base_revision = excluded.base_revision, mutation_id = excluded.mutation_id, created_at = excluded.created_at`,
+      base_revision = excluded.base_revision, mutation_id = excluded.mutation_id`,
   [entity, key, operation, record ? JSON.stringify(record) : null, syncVersion(entity, key), id, Date.now()]);
 }
 
@@ -711,8 +710,8 @@ export function getCloudSyncBatch(limit = 3): CloudSyncBatch | null {
   seedCloudSyncOutbox();
   const existing = sqlite.getFirstSync<{ batchId: string }>('SELECT batch_id AS batchId FROM sync_outbox WHERE batch_id IS NOT NULL ORDER BY created_at, rowid LIMIT 1');
   const batchId = existing?.batchId ?? mutationId();
-  if (!existing) sqlite.runSync('UPDATE sync_outbox SET batch_id = ? WHERE mutation_id IN (SELECT mutation_id FROM sync_outbox WHERE batch_id IS NULL ORDER BY created_at, rowid LIMIT ?)', [batchId, Math.min(limit, 3)]);
-  const rows = sqlite.getAllSync<{ entity: CloudSyncEntity; key: string; operation: 'upsert' | 'delete'; recordJson: string | null; baseRevision: number }>('SELECT entity, entity_key AS key, operation, record_json AS recordJson, base_revision AS baseRevision FROM sync_outbox WHERE batch_id = ? ORDER BY created_at, rowid', [batchId]);
+  if (!existing) sqlite.runSync("UPDATE sync_outbox SET batch_id = ? WHERE mutation_id IN (SELECT mutation_id FROM sync_outbox WHERE batch_id IS NULL ORDER BY CASE WHEN entity = 'workout' THEN 0 ELSE 1 END, created_at, rowid LIMIT ?)", [batchId, Math.min(limit, 3)]);
+  const rows = sqlite.getAllSync<{ entity: CloudSyncEntity; key: string; operation: 'upsert' | 'delete'; recordJson: string | null; baseRevision: number }>("SELECT entity, entity_key AS key, operation, record_json AS recordJson, base_revision AS baseRevision FROM sync_outbox WHERE batch_id = ? ORDER BY CASE WHEN entity = 'workout' THEN 0 ELSE 1 END, created_at, rowid", [batchId]);
   return rows.length ? { batchId, changes: rows.map(({ recordJson, ...row }) => ({ ...row, record: recordJson ? JSON.parse(recordJson) : undefined })) } : null;
 }
 export function acknowledgeCloudSyncBatch(batchId: string, revision: number) {
@@ -741,6 +740,10 @@ export function prepareCloudSyncForUser(userId: string): boolean {
   }
   if (activeUserId === userId) {
     sqlite.runSync("DELETE FROM sync_state WHERE key = 'active_clerk_user_id'");
+    if (syncState('cloud_sync_repair_sets_v1') !== '1') {
+      setSyncState('cloud_sync_needs_seed', '1');
+      setSyncState('cloud_sync_repair_sets_v1', '1');
+    }
     return true;
   }
   if (hasPendingCloudSync()) return false;

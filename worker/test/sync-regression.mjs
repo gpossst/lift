@@ -35,7 +35,7 @@ for (const file of readdirSync('migrations').filter((name) => name.endsWith('.sq
 }
 if (!(await DB.prepare("SELECT 1 FROM set_muscles WHERE user_id = 'migration-user' AND muscle = 'middle back'").first())
   || !(await DB.prepare("SELECT 1 FROM recommendation_feedback WHERE user_id = 'migration-user' AND action = 'accepted'").first())) throw new Error('Custom split migration failed to preserve workout relationships.');
-const deletionPage = await handler.fetch(new Request('https://test/delete-account'), { DB });
+const deletionPage = await handler.fetch(new Request('https://test/delete-account'), { DB, SUPPORT_EMAIL: 'support@lift.test' });
 if (deletionPage.status !== 200 || !(await deletionPage.text()).includes('Delete your Lift account')) throw new Error('Public deletion resource is unavailable.');
 let deletionRequestCount = 0;
 const DELETION_RATE_LIMITER = { limit: async () => ({ success: ++deletionRequestCount <= 5 }) };
@@ -74,6 +74,13 @@ const send = async (batchId, changes) => {
   return { response, body: await response.json() };
 };
 const row = async (id) => DB.prepare('SELECT split, created_at AS createdAt, sync_revision AS revision FROM workouts WHERE user_id = ? AND local_id = ?').bind('user', id).first();
+
+const sameBatchId = 'workout-with-sets';
+const sameBatch = await send('workout-with-sets', [
+  workout(sameBatchId),
+  ...[1, 2].map((setNumber) => ({ entity: 'set', key: [sameBatchId, 'bench', setNumber].join('\u001f'), operation: 'upsert', baseRevision: 0, record: { workoutId: sameBatchId, exerciseId: 'bench', setNumber, weight: setNumber * 45, reps: 8, completedAt: 20 + setNumber, muscles: ['chest'] } })),
+]);
+if (sameBatch.response.status !== 200 || (await DB.prepare('SELECT COUNT(*) AS count FROM workout_sets WHERE user_id = ? AND workout_local_id = ?').bind('user', sameBatchId).first()).count !== 2) throw new Error('Workout and sets in one sync batch were not stored together.');
 
 // D1 batch is atomic: the first write is rolled back when a later statement fails.
 await DB.exec("CREATE TRIGGER fail_second BEFORE INSERT ON workouts WHEN NEW.local_id = 'explode' BEGIN SELECT RAISE(ABORT, 'forced partial failure'); END;");

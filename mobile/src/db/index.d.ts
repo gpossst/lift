@@ -11,7 +11,7 @@ export function getCustomSplits(): CustomSplit[];
 export function saveCustomSplit(split: { id?: CustomSplit['id']; name: string; muscles: string[] }): CustomSplit;
 export function deleteCustomSplit(id: CustomSplit['id']): void;
 export function getWorkoutSplitDefinition(split: WorkoutSplit): { id: string; name: string; muscles: string[] } | null;
-export function getRecommendedWorkoutSplit(now?: Date): WorkoutSplit;
+export function getRecommendedWorkoutSplit(now?: Date, useCustomSplits?: boolean): WorkoutSplit;
 export type Workout = { id: string; split: WorkoutSplit; createdAt: Date; endedAt: Date | null };
 export function createWorkout(split: WorkoutSplit): Workout;
 export function saveWorkoutSet(set: { exerciseId: string; workoutId: string; setNumber: number; weight: number; reps: number; completedAt: Date }): void;

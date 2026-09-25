@@ -1,7 +1,7 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { router, Tabs, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, LogBox, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -75,10 +75,18 @@ function AppNavigator() {
   const isLoaded = !isPending;
   const isSignedIn = Boolean(session?.user);
   const [authMode, setAuthMode] = useState<'onboarding' | 'signIn' | 'signUp'>('onboarding');
+  const wasSignedIn = useRef(false);
 
   useEffect(() => {
     if (pathname === '/auth/verified') void refetch().finally(() => router.replace('/'));
   }, [pathname, refetch]);
+
+  // Returning to the signed-out flow (sign out or account deletion) starts at
+  // the first onboarding page, not whatever auth screen was last open.
+  useEffect(() => {
+    if (isSignedIn) { wasSignedIn.current = true; return; }
+    if (wasSignedIn.current) { wasSignedIn.current = false; setAuthMode('onboarding'); }
+  }, [isSignedIn]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -88,7 +96,7 @@ function AppNavigator() {
         : pathname === '/auth/verified' ? <VerifiedEmailScreen />
         : isSignedIn ? <SignedInApp key={session!.user.id} userId={session!.user.id} email={session!.user.email} emailVerified={session!.user.emailVerified} />
             : authMode === 'onboarding' ? <OnboardingFlow onSignIn={() => setAuthMode('signIn')} onSignUp={() => setAuthMode('signUp')} />
-              : <AuthFlow key={authMode} mode={authMode} onBack={() => setAuthMode('onboarding')} onModeChange={setAuthMode} />}
+              : <AuthFlow key={authMode} mode={authMode} onBack={() => setAuthMode('onboarding')} onModeChange={(next) => setAuthMode(next === 'signUp' ? 'onboarding' : 'signIn')} />}
     </GestureHandlerRootView>
   );
 }
@@ -122,6 +130,7 @@ function LoadingScreen() {
 }
 
 function SignedInApp({ userId, email, emailVerified }: { userId: string; email: string; emailVerified: boolean }) {
+  const { useCustomSplits } = useAppearance();
   const [verificationDismissed, setVerificationDismissed] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const [pendingOnboarding, setPendingOnboarding] = useState<Awaited<ReturnType<typeof takePendingOnboarding>>>(null);
@@ -140,7 +149,7 @@ function SignedInApp({ userId, email, emailVerified }: { userId: string; email: 
   const continueToWorkout = async () => {
     await dismissFirstWorkoutPreview(userId);
     setPendingOnboarding(null);
-    const split = getRecommendedWorkoutSplit();
+    const split = getRecommendedWorkoutSplit(new Date(), useCustomSplits);
     const workout = createWorkout(split);
     router.replace({ pathname: '/exercises', params: { split, workoutId: workout.id } });
   };
@@ -152,7 +161,7 @@ function SignedInApp({ userId, email, emailVerified }: { userId: string; email: 
 
   if (!emailVerified && !verificationDismissed) return <VerificationPrompt email={email} onContinue={() => setVerificationDismissed(true)} />;
   if (checkingOnboarding) return <LoadingScreen />;
-  const firstSplit = pendingOnboarding ? getRecommendedWorkoutSplit() : null;
+  const firstSplit = pendingOnboarding ? getRecommendedWorkoutSplit(new Date(), useCustomSplits) : null;
   const firstSplitName = firstSplit ? getWorkoutSplitDefinition(firstSplit)?.name ?? 'First workout' : '';
   return <View style={styles.navigator}>
     <AppStack />

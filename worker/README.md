@@ -17,6 +17,9 @@ bunx wrangler secret put RESEND_FROM_EMAIL
 bunx wrangler secret put SUPPORT_EMAIL
 ```
 
+Use a monitored inbox for `SUPPORT_EMAIL`; the deploy validator requires the
+secret and `/healthz` requires a nonempty value.
+
 For local development, copy `.dev.vars.example` to `.dev.vars`; Wrangler loads
 that ignored file without exposing the values to the client bundles.
 
@@ -27,7 +30,7 @@ is being rotated. Configure these non-secret values in production:
 
 ```text
 BETTER_AUTH_URL=https://api.lift.garrett.one
-TRUSTED_ORIGINS=https://lift.garrett.one,mobile://
+TRUSTED_ORIGINS=https://lift.garrett.one,lift://
 ```
 
 In Resend, verify `lift.garrett.one` (or the exact sending domain) and use a

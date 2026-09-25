@@ -1,4 +1,7 @@
 import { createAuth, sendEmail, type AuthEnv } from './auth';
+import { emailLogoPngBase64 } from './email-logo';
+
+const emailLogoPng = Uint8Array.from(atob(emailLogoPngBase64), (character) => character.charCodeAt(0));
 
 export interface Env extends AuthEnv {
   DB: D1Database;
@@ -6,7 +9,7 @@ export interface Env extends AuthEnv {
   SYNC_RATE_LIMITER: RateLimit;
   EXPENSIVE_RATE_LIMITER: RateLimit;
   /** Address shown on the public support and privacy pages. */
-  SUPPORT_EMAIL?: string;
+  SUPPORT_EMAIL: string;
 }
 
 type SyncSet = { exerciseId: string; workoutId: string; setNumber: number; weight: number; reps: number; completedAt: number; muscles: string[]; updatedAt?: number };
@@ -43,12 +46,14 @@ const maxSyncChunk = 3; // Three eight-muscle sets use 40 batch statements (42 f
 const maxRequestBodyBytes = 64 * 1024;
 const deletionVerificationSeconds = 24 * 60 * 60;
 const deletionRetentionSeconds = 30 * 24 * 60 * 60;
-const supportEmail = (env: Env) => env.SUPPORT_EMAIL?.trim() || 'support@liftfitness.app';
+const supportEmail = (env: Env) => env.SUPPORT_EMAIL.trim();
 
 const page = (title: string, body: string) => {
   const nonce = crypto.randomUUID();
   const content = body.replaceAll('<script>', `<script nonce="${nonce}">`);
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Lift</title><style nonce="${nonce}">body{font:16px/1.55 system-ui,sans-serif;max-width:720px;margin:auto;padding:32px 20px;color:#1b1c17;background:#f9f9f7}h1{font-size:2.4rem;line-height:1.05}h2{margin-top:2rem}a{color:#0969da}nav{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:40px}label{display:block;font-weight:700;margin:18px 0 6px}input,button{box-sizing:border-box;font:inherit;padding:12px;border:1px solid #aaa;border-radius:10px}input{width:100%}label input{width:auto}button{margin-top:16px;background:#1b1c17;color:white;cursor:pointer}.note{color:#5f635b}.error{color:#b42318}</style></head><body><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="/delete-account">Delete account</a></nav>${content}</body></html>`, { headers: {
+  const tokens = ':root{color-scheme:light dark;--bg:#F9F9F7;--surface:#EDEEE9;--surface-strong:#E3E5DF;--text:#11120F;--muted:#72776D;--subtle:#858980;--accent:#FFCC4A;--accent-text:#17180F;--danger:#E5484D}@media(prefers-color-scheme:dark){:root{--bg:#151612;--surface:#252720;--surface-strong:#34372E;--text:#F7F8F2;--muted:#A9AEA2;--subtle:#747B70}}';
+  const layout = "*{box-sizing:border-box}body{font:16px/1.55 Spline Sans,Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;max-width:720px;margin:auto;padding:40px 20px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}h1{font-size:clamp(2rem,7vw,2.75rem);line-height:1.02;letter-spacing:-.035em;font-weight:900}h2{margin-top:2rem;letter-spacing:-.02em;font-weight:900}p{color:var(--muted);font-weight:600}strong{color:var(--text)}a{color:var(--text);font-weight:800;text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}nav{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:40px;font-size:14px;font-weight:800}nav .brand{margin-right:auto;color:var(--text);font-size:1.25rem;font-weight:900;letter-spacing:-.03em;text-decoration:none}nav a{color:var(--muted);text-decoration:none}nav a:hover{color:var(--text)}label{display:block;margin:18px 0 6px;color:var(--muted);font-size:13px;font-weight:800}input{width:100%;height:56px;padding:0 18px;border:1.5px solid var(--surface-strong);border-radius:16px;background:var(--surface);color:var(--text);font:inherit;font-size:17px;font-weight:700}input::placeholder{color:var(--subtle)}label input[type=checkbox]{width:auto;height:auto;margin-right:8px}button{margin-top:20px;min-height:52px;padding:0 24px;border:0;border-radius:16px;background:var(--accent);color:var(--accent-text);font:inherit;font-size:16px;font-weight:900;cursor:pointer}button:disabled{cursor:default;opacity:.6}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.note{color:var(--muted)}.error{color:var(--danger);font-weight:700}";
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Lift</title><style nonce="${nonce}">${tokens}${layout}</style></head><body><nav><a class="brand" href="/">Lift</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="/delete-account">Delete account</a></nav>${content}</body></html>`, { headers: {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'public, max-age=300',
     'Content-Security-Policy': `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
@@ -59,11 +64,17 @@ const noStorePage = (title: string, body: string) => {
   const response = page(title, body);
   const headers = new Headers(response.headers);
   headers.set('Cache-Control', 'no-store');
+  headers.set('Referrer-Policy', 'no-referrer');
   return new Response(response.body, { status: response.status, headers });
 };
 
+function passwordResetPage() {
+  return noStorePage('Reset password', `<h1>Reset your password</h1><p>Choose a new password here, or open the link in Lift on your phone.</p><p><a id="open-app" href="#">Open in Lift</a></p><form id="reset"><label for="password">New password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required><button type="submit">Save password</button><p id="result" role="status"></p></form><script>const q=new URLSearchParams(location.search),token=q.get('token'),form=document.querySelector('#reset'),result=document.querySelector('#result'),open=document.querySelector('#open-app');if(!token||q.has('error')){form.remove();open.remove();result.textContent='This reset link is invalid or expired. Request another one in Lift.';document.body.append(result)}else{open.href='lift:///reset-password?token='+encodeURIComponent(token);form.addEventListener('submit',async(e)=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;result.textContent='Saving…';try{const response=await fetch('/api/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({newPassword:document.querySelector('#password').value,token})});if(!response.ok){const data=await response.json();throw Error(data.message||'Could not reset password. Request another link if this one expired.')}history.replaceState(null,'','/reset-password');form.remove();open.remove();result.textContent='Password saved. Return to Lift and sign in with your new password.';document.body.append(result)}catch(error){result.textContent=error.message;result.className='error'}finally{button.disabled=false}})}</script>`);
+}
+
 function publicPage(pathname: string, env: Env) {
   const email = supportEmail(env);
+  if (pathname === '/email-verified') return noStorePage('Email verification', '<h1>Email verified</h1><p>Your Lift email address is verified. You can return to the app.</p><p><a href="lift:///auth/verified">Open Lift</a></p>');
   if (pathname === '/privacy') return page('Privacy policy', `<h1>Privacy policy</h1><p class="note">Effective September 23, 2026</p><h2>Data Lift handles</h2><p>Lift stores account and profile information, password hashes, verification and MFA records, workout history, recommendation preferences and feedback, and friend connections.</p><h2>Use and sharing</h2><p>We use this data to provide authentication, sync, progress, recommendations, friend features, security, and support. Cloudflare hosts account and synchronized app data, and Resend delivers transactional account email. We do not sell personal data.</p><h2>Export and retention</h2><p>You can export or delete your Lift data from Profile. In-app deletion removes the identity and synchronized app data. Limited security records and encrypted backups may remain for up to 30 additional days unless law requires longer retention.</p><h2>Your choices</h2><p>Similar-user comparisons are off by default. Contact <a href="mailto:${email}">${email}</a> for access, correction, privacy, or support requests.</p><h2>Fitness disclaimer</h2><p>Lift provides general fitness tracking and suggestions, not medical advice, diagnosis, or treatment.</p>`);
   if (pathname === '/terms') return page('Terms', `<h1>Terms of use</h1><p class="note">Effective September 22, 2026</p><p>Lift is a personal fitness tracking tool. You are responsible for your account, the accuracy of information you enter, and exercising within your abilities. Do not misuse the service, attempt unauthorized access, or use it to harm others.</p><h2>No medical advice</h2><p>Lift's tracking, comparisons, and recommendations are informational fitness features only. They are not medical advice, diagnosis, treatment, or a substitute for a qualified professional. Stop activity and seek care for pain or concerning symptoms.</p><h2>Your content and availability</h2><p>You keep ownership of data you enter and allow Lift to process it to operate the service. Features may change, and the service is provided without a guarantee that it will always be available or error-free. You can export or delete your data from Profile.</p><h2>Contact</h2><p>Questions: <a href="mailto:${email}">${email}</a>.</p>`);
   if (pathname === '/support') return page('Support', `<h1>Lift support</h1><p>For account, privacy, export, or technical help, email <a href="mailto:${email}">${email}</a>.</p><p>Include the email address on your Lift account, but never send your password or verification codes.</p><p>You can also <a href="/delete-account">request account deletion</a>.</p>`);
@@ -672,7 +683,7 @@ function configurationErrors(env: Env) {
   if (!env.SYNC_RATE_LIMITER) missing.push('SYNC_RATE_LIMITER');
   if (!env.EXPENSIVE_RATE_LIMITER) missing.push('EXPENSIVE_RATE_LIMITER');
   if (!env.BETTER_AUTH_SECRET?.trim() && !env.BETTER_AUTH_SECRETS?.trim()) missing.push('BETTER_AUTH_SECRET or BETTER_AUTH_SECRETS');
-  for (const name of ['BETTER_AUTH_URL', 'TRUSTED_ORIGINS', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL'] as const) if (!env[name]?.trim()) missing.push(name);
+  for (const name of ['BETTER_AUTH_URL', 'TRUSTED_ORIGINS', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL', 'SUPPORT_EMAIL'] as const) if (!env[name]?.trim()) missing.push(name);
   return missing;
 }
 
@@ -703,6 +714,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     if (request.method === 'GET' && url.pathname === '/healthz') return readiness(env);
     if (request.method === 'GET' && url.pathname === '/delete-account/verify') return deletionVerificationPage(url);
     if (request.method === 'GET') {
+      if (url.pathname === '/email-logo.png') return new Response(emailLogoPng, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' } });
+      if (url.pathname === '/reset-password') return passwordResetPage();
+      if (url.pathname === '/email-verified' && url.searchParams.has('error')) return noStorePage('Verification link expired', '<h1>Verification link expired</h1><p>This verification link is invalid or expired. Return to Lift and request a new email.</p><p><a href="lift:///auth/verified">Open Lift</a></p>');
       const response = publicPage(url.pathname, env);
       if (response) return response;
     }
@@ -715,7 +729,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session) return json({ error: 'Unauthorized.' }, 401);
     const origin = request.headers.get('Origin');
-    const trustedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,mobile://').split(',').map((value) => value.trim());
+    const trustedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,lift://').split(',').map((value) => value.trim());
     if (!['GET', 'HEAD'].includes(request.method) && origin && !trustedOrigins.includes(origin)) return json({ error: 'Untrusted origin.' }, 403);
     const user: AuthenticatedUser = { id: session.user.id, displayName: session.user.name?.trim() || 'Lifter', imageUrl: session.user.image ?? null };
     const limited = await customRateLimit(request, env, user.id, url.pathname);
@@ -775,7 +789,7 @@ export default {
     const headers = new Headers(response.headers);
     headers.set('X-Request-ID', requestId);
     const origin = request.headers.get('Origin');
-    const allowedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,mobile://').split(',').map((value) => value.trim());
+    const allowedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,lift://').split(',').map((value) => value.trim());
     if (origin && allowedOrigins.includes(origin)) headers.set('Access-Control-Allow-Origin', origin);
     headers.set('Access-Control-Allow-Credentials', 'true');
     headers.set('Vary', 'Origin');

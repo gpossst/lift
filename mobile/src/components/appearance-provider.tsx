@@ -8,6 +8,7 @@ type AppearanceContextValue = AppearancePreferences & {
   setMode: (mode: AppearanceMode) => void;
   setAccent: (accent: AccentId) => void;
   setShowWorkoutRecommendations: (show: boolean) => void;
+  setUseCustomSplits: (enabled: boolean) => void;
   setRestTimerEnabled: (enabled: boolean) => void;
   setUseRecommendedRestTimer: (enabled: boolean) => void;
   setRestTimerSeconds: (seconds: number) => void;
@@ -31,6 +32,7 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
     setMode: (mode: AppearanceMode) => update({ ...preferences, mode }),
     setAccent: (accent: AccentId) => update({ ...preferences, accent }),
     setShowWorkoutRecommendations: (showWorkoutRecommendations: boolean) => update({ ...preferences, showWorkoutRecommendations }),
+    setUseCustomSplits: (useCustomSplits: boolean) => update({ ...preferences, useCustomSplits }),
     setRestTimerEnabled: (restTimerEnabled: boolean) => update({ ...preferences, restTimerEnabled }),
     setUseRecommendedRestTimer: (useRecommendedRestTimer: boolean) => update({ ...preferences, useRecommendedRestTimer }),
     setRestTimerSeconds: (restTimerSeconds: number) => update({ ...preferences, restTimerSeconds }),

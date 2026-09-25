@@ -8,7 +8,7 @@ export const apiUrl = (process.env.EXPO_PUBLIC_API_URL ?? 'https://api.lift.garr
 export const authClient = createAuthClient({
   baseURL: `${apiUrl}/api/auth`,
   plugins: [
-    expoClient({ scheme: 'mobile', storagePrefix: 'lift', storage: SecureStore }),
+    expoClient({ scheme: 'lift', storagePrefix: 'lift', storage: SecureStore }),
     twoFactorClient(),
   ],
 });

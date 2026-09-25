@@ -11,6 +11,7 @@ export function readAppearance(): AppearancePreferences {
       showWorkoutRecommendations: typeof value.showWorkoutRecommendations === 'boolean'
         ? value.showWorkoutRecommendations
         : defaultAppearance.showWorkoutRecommendations,
+      useCustomSplits: value.useCustomSplits === true,
       restTimerEnabled: typeof value.restTimerEnabled === 'boolean' ? value.restTimerEnabled : defaultAppearance.restTimerEnabled,
       useRecommendedRestTimer: typeof value.useRecommendedRestTimer === 'boolean' ? value.useRecommendedRestTimer : defaultAppearance.useRecommendedRestTimer,
       restTimerSeconds: normalizeRestTimerSeconds(value.restTimerSeconds),

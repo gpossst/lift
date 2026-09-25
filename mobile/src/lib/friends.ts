@@ -40,7 +40,7 @@ export async function getFriendCode(): Promise<string> {
 }
 
 export async function getFriends(): Promise<FriendsSummary> {
-  return (await request<{ friends: FriendsSummary }>('/v1/friends')).friends;
+  return requestFriends('/v1/friends');
 }
 
 export async function getFriendPersonalRecords(): Promise<FriendPersonalRecord[]> {
@@ -48,20 +48,25 @@ export async function getFriendPersonalRecords(): Promise<FriendPersonalRecord[]
 }
 
 export async function addFriend(code: string): Promise<FriendsSummary> {
-  return (await request<{ friends: FriendsSummary }>('/v1/friends', {
+  return requestFriends('/v1/friends', {
     method: 'POST',
     body: JSON.stringify({ code }),
-  })).friends;
+  });
 }
 
 export async function removeFriend(friendId: string): Promise<FriendsSummary> {
-  return (await request<{ friends: FriendsSummary }>(`/v1/friends/${encodeURIComponent(friendId)}`, { method: 'DELETE' })).friends;
+  return requestFriends(`/v1/friends/${encodeURIComponent(friendId)}`, { method: 'DELETE' });
 }
 
 export async function blockFriend(friendId: string): Promise<FriendsSummary> {
-  return (await request<{ friends: FriendsSummary }>(`/v1/friends/${encodeURIComponent(friendId)}/block`, { method: 'POST' })).friends;
+  return requestFriends(`/v1/friends/${encodeURIComponent(friendId)}/block`, { method: 'POST' });
 }
 
 export async function unblockFriend(friendId: string): Promise<FriendsSummary> {
-  return (await request<{ friends: FriendsSummary }>(`/v1/friends/${encodeURIComponent(friendId)}/block`, { method: 'DELETE' })).friends;
+  return requestFriends(`/v1/friends/${encodeURIComponent(friendId)}/block`, { method: 'DELETE' });
+}
+
+async function requestFriends(path: string, init?: RequestInit): Promise<FriendsSummary> {
+  const { friends } = await request<{ friends: FriendsSummary }>(path, init);
+  return { ...friends, blocked: friends.blocked ?? [] };
 }
