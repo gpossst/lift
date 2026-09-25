@@ -130,7 +130,7 @@ function Home() {
             <Wordmark height={18} /><h2 id="auth-title">{session?.user.name || session?.user.email}</h2>
             <p className="auth-note">{session?.user.email}</p>
             {message && <p className="auth-message" role="status">{message}</p>}
-            {session?.user && !session.user.emailVerified && <div className="auth-feature"><p>Check your inbox and open the verification link sent to {session.user.email}.</p><button type="button" className="text-button" onClick={() => void submit(undefined, () => authClient.sendVerificationEmail({ email: session.user.email, callbackURL: window.location.origin }), 'Verification email sent.')}>Resend verification email</button></div>}
+            {session?.user && !session.user.emailVerified && <div className="auth-feature"><p>Check your inbox or Spam folder for the verification link sent to {session.user.email}.</p><button type="button" className="text-button" onClick={() => void submit(undefined, () => authClient.sendVerificationEmail({ email: session.user.email, callbackURL: window.location.origin }), 'Verification email sent.')}>Resend verification email</button></div>}
             <form onSubmit={(e) => void submit(e, async () => {
               const result = await authClient.twoFactor.enable({ password, method: 'totp', issuer: 'Lift' })
               if (result.data?.method === 'totp') {
@@ -171,7 +171,7 @@ function Home() {
               if (view === 'signin') return authClient.signIn.email({ email, password })
               if (view === 'forgot') return authClient.requestPasswordReset({ email, redirectTo: window.location.origin })
               return authClient.resetPassword({ newPassword: password, token: new URLSearchParams(window.location.search).get('token') || '' })
-            }, view === 'signup' ? 'Account created. Check your email to verify your address.' : view === 'forgot' ? 'If an account uses that email, a reset link is on its way.' : view === 'reset' ? 'Password updated. You can sign in now.' : 'Signed in successfully.') }>
+            }, view === 'signup' ? 'Account created. Check your inbox or Spam folder for the verification link.' : view === 'forgot' ? 'If an account uses that email, a reset link is on its way.' : view === 'reset' ? 'Password updated. You can sign in now.' : 'Signed in successfully.') }>
               {view === 'signup' && <label>Name<input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required /></label>}
               {view !== 'reset' && <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>}
               {view !== 'forgot' && <label>Password<input type="password" autoComplete={view === 'signin' ? 'current-password' : 'new-password'} minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} required /></label>}
