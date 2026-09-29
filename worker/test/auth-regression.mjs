@@ -156,6 +156,21 @@ await DB.batch([
 ]);
 const friendFeed = await (await call('/v1/friends/prs', { headers: { Cookie: twoCookie } })).json();
 if (friendFeed.prs.length !== 2 || friendFeed.prs[0].weight !== 120 || friendFeed.prs[1].weight !== 110) throw new Error('Friend feed did not return recent PRs in newest-first order.');
+const post = friendFeed.prs[0];
+const postBody = JSON.stringify({ id: post.id, workoutId: post.workoutId, exerciseId: post.exerciseId, setNumber: post.setNumber });
+if (post.liked || post.likeCount || post.commentCount) throw new Error('New PR should have no reactions.');
+const like = await call('/v1/friends/prs/likes', { method: 'POST', headers: { Cookie: twoCookie }, body: postBody });
+if (like.status !== 200 || (await like.json()).likeCount !== 1) throw new Error('Could not like a friend PR.');
+await call('/v1/friends/prs/likes', { method: 'POST', headers: { Cookie: twoCookie }, body: postBody });
+const comment = await call('/v1/friends/prs/comments', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ ...JSON.parse(postBody), body: 'Strong lift!' }) });
+if (comment.status !== 200 || (await comment.json()).comments[0]?.body !== 'Strong lift!') throw new Error('Could not comment on a friend PR.');
+const reactedFeed = await (await call('/v1/friends/prs', { headers: { Cookie: twoCookie } })).json();
+if (!reactedFeed.prs[0].liked || reactedFeed.prs[0].likeCount !== 1 || reactedFeed.prs[0].commentCount !== 1 || reactedFeed.prs[1].likeCount) throw new Error('Reactions were not scoped to the right PR.');
+if ((await call('/v1/friends/prs/likes', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ ...JSON.parse(postBody), setNumber: 1 }) })).status !== 404) throw new Error('A non-PR set accepted a like.');
+if ((await call('/v1/friends/prs/comments', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ ...JSON.parse(postBody), body: ' ' }) })).status !== 400) throw new Error('Blank comment was accepted.');
+if ((await call('/v1/friends/prs/likes', { method: 'POST', headers: { Cookie: oneCookie }, body: postBody })).status !== 404) throw new Error('A user could react to their own PR through friend activity.');
+const unlike = await call('/v1/friends/prs/likes', { method: 'DELETE', headers: { Cookie: twoCookie }, body: postBody });
+if (unlike.status !== 200 || (await unlike.json()).likeCount !== 0) throw new Error('Could not unlike a friend PR.');
 const pushed = await call('/v1/sync', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ batchId: 'account-isolation', changes: [{ entity: 'workout', key: 'private', operation: 'upsert', baseRevision: 0, record: { id: 'private', split: 'push', createdAt: 1, endedAt: null } }] }) });
 if (pushed.status !== 200) throw new Error(`Authenticated account could not write sync data: ${await pushed.text()}`);
 const own = await (await call('/v1/sync', { headers: { Cookie: oneCookie } })).json();
@@ -164,6 +179,7 @@ if (own.changes?.length !== 1 || other.changes?.length !== 0) throw new Error('A
 
 const deleted = await call('/api/auth/delete-user', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ password: 'correct horse battery staple' }) });
 if (deleted.status !== 200 || await DB.prepare("SELECT 1 FROM user WHERE email = 'two@lift.test'").first() || await DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(twoId).first()) throw new Error('Better Auth account deletion did not remove identity and app data.');
+if (await DB.prepare('SELECT 1 FROM friend_pr_comments WHERE user_id = ?').bind(twoId).first()) throw new Error('Account deletion left friend comments behind.');
 
 const one = await DB.prepare("SELECT id FROM user WHERE email = 'one@lift.test'").first();
 await DB.prepare('UPDATE session SET expiresAt = 0 WHERE userId = ?').bind(one.id).run();
