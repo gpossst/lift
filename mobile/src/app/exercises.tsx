@@ -50,7 +50,8 @@ export default function ExerciseLibraryScreen() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [screenFocused, setScreenFocused] = useState(false);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
-  const [replacements, setReplacements] = useState<{ workoutId?: string; ids: string[] }>({ workoutId, ids: [] });
+  const [skipped, setSkipped] = useState<{ workoutId?: string; ids: string[] }>({ workoutId, ids: [] });
+  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
   const [fallbackWorkoutId] = useState(() => `workout-${Date.now()}`);
   const [recommendationContext, setRecommendationContext] = useState<RecommendationContext>({});
   const [favoritePrompt, setFavoritePrompt] = useState<{ ids: string[]; selected: string[] } | null>(null);
@@ -60,7 +61,7 @@ export default function ExerciseLibraryScreen() {
   const recommendationExposure = useRef<{
     workoutId?: string; impressions: Map<string, number>; timers: Map<string, { rank: number; timeout: ReturnType<typeof setTimeout> }>;
   }>({ workoutId, impressions: new Map(), timers: new Map() });
-  const replacedExerciseIds = useMemo(() => replacements.workoutId === workoutId ? replacements.ids : [], [replacements, workoutId]);
+  const skippedExerciseIds = useMemo(() => skipped.workoutId === workoutId ? skipped.ids : [], [skipped, workoutId]);
   const workoutExerciseIds = useMemo(() => workoutExercises.map((exercise) => exercise.id), [workoutExercises]);
   const splitExercises = useMemo(() => exercises.filter((exercise) => matchesSplit(exercise, split)), [split]);
   const muscleOptions = useMemo(() => uniqueSorted(splitExercises.flatMap(getPrimaryMuscles)), [splitExercises]);
@@ -83,8 +84,8 @@ export default function ExerciseLibraryScreen() {
   const recommendations = useMemo(() => {
     void workoutExerciseKey; void workoutSetRevision;
     if (!showWorkoutRecommendations || !workoutId || !isWorkoutSplit(split)) return [];
-    return getExerciseRecommendations(workoutId, split, 3, { ...recommendationContext, excludedExerciseIds: replacedExerciseIds });
-  }, [recommendationContext, replacedExerciseIds, showWorkoutRecommendations, split, workoutExerciseKey, workoutId, workoutSetRevision]);
+    return getExerciseRecommendations(workoutId, split, 3, { ...recommendationContext, excludedExerciseIds: skippedExerciseIds });
+  }, [recommendationContext, skippedExerciseIds, showWorkoutRecommendations, split, workoutExerciseKey, workoutId, workoutSetRevision]);
   const rankedExerciseScores = useMemo(() => {
     void workoutExerciseKey; void workoutSetRevision;
     if (!showWorkoutRecommendations || !workoutId || !isWorkoutSplit(split)) return new Map<string, number>();
@@ -243,9 +244,10 @@ export default function ExerciseLibraryScreen() {
     } });
   };
 
-  const replaceRecommendation = (exerciseId: string) => {
-    if (workoutId) recordRecommendationFeedback(workoutId, exerciseId, 'replaced');
-    setReplacements((current) => {
+  const skipRecommendation = (exerciseId: string) => {
+    if (workoutId) recordRecommendationFeedback(workoutId, exerciseId, 'skipped');
+    setOpenSwipeId(null);
+    setSkipped((current) => {
       const ids = current.workoutId === workoutId ? current.ids : [];
       return { workoutId, ids: ids.includes(exerciseId) ? ids : [...ids, exerciseId] };
     });
@@ -255,20 +257,20 @@ export default function ExerciseLibraryScreen() {
     if (!workoutId || !endWorkout(workoutId)) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     const completed = new Set(workoutExerciseIds);
-    const replaced = new Set(replacedExerciseIds);
+    const alreadySkipped = new Set(skippedExerciseIds);
     recommendationExposure.current.impressions.forEach((rank, exerciseId) => {
-      if (!completed.has(exerciseId) && !replaced.has(exerciseId)) recordRecommendationFeedback(workoutId, exerciseId, 'skipped', rank);
+      if (!completed.has(exerciseId) && !alreadySkipped.has(exerciseId)) recordRecommendationFeedback(workoutId, exerciseId, 'skipped', rank);
     });
     void syncWorkoutData().catch(() => { /* Local completion is never blocked; the next completion retries the full snapshot. */ });
     router.replace({ pathname: '/summary', params: { workoutId } });
   };
 
-  return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+  return <SafeAreaView onTouchStart={() => { if (openSwipeId) setOpenSwipeId(null); }} style={[styles.safeArea, { backgroundColor: colors.background }]}>
     <ScrollView style={styles.recommendationScroll} contentContainerStyle={styles.recommendationContent} showsVerticalScrollIndicator={false}>
       <Text style={[styles.heroTitle, { color: colors.text }]}>Active workout</Text>
       {recommendations.length > 0 && <Text style={[styles.recommendationHeading, { color: colors.text }]}>Your next exercise</Text>}
       <View style={styles.recommendationList}>
-        {recommendations.map((recommendation, index) => <RecommendationCard key={recommendation.exercise.id} recommendation={recommendation} featured={index === 0} onOpen={() => openExercise(recommendation.exercise, 'recommended', recommendation)} onReplace={() => replaceRecommendation(recommendation.exercise.id)} />)}
+        {recommendations.map((recommendation, index) => <RecommendationCard key={recommendation.exercise.id} recommendation={recommendation} featured={index === 0} open={openSwipeId === recommendation.exercise.id} onSwipeOpen={() => setOpenSwipeId(recommendation.exercise.id)} onDismiss={() => setOpenSwipeId(null)} onOpen={() => openExercise(recommendation.exercise, 'recommended', recommendation)} onSkip={() => skipRecommendation(recommendation.exercise.id)} />)}
       </View>
       <Pressable onPress={() => setCatalogOpen(true)} style={({ pressed }) => [styles.browseButton, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Browse all"><View><Text style={[styles.browseTitle, { color: colors.text }]}>Browse all</Text><Text style={[styles.browseCopy, { color: colors.mutedText }]}>Search, filter, or choose something else</Text></View><Search width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable>
       <View style={styles.completedSection}>
@@ -284,29 +286,29 @@ export default function ExerciseLibraryScreen() {
   </SafeAreaView>;
 }
 
-function RecommendationCard({ recommendation, featured, onOpen, onReplace }: { recommendation: ExerciseRecommendation; featured: boolean; onOpen: () => void; onReplace: () => void }) {
+function RecommendationCard({ recommendation, featured, open, onSwipeOpen, onDismiss, onOpen, onSkip }: { recommendation: ExerciseRecommendation; featured: boolean; open: boolean; onSwipeOpen: () => void; onDismiss: () => void; onOpen: () => void; onSkip: () => void }) {
   const { colors } = useAppearance();
   const { exercise } = recommendation;
-  const swipeAction = () => <View accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.swipeAction, { backgroundColor: colors.accent }]}><Text style={[styles.swipeActionText, { color: colors.accentText }]}>Swap</Text></View>;
-  return <View style={[styles.recommendationShell, { backgroundColor: colors.accent }]}>
+  const swipeRef = useRef<Swipeable>(null);
+  const cancelTapRef = useRef(false);
+  useEffect(() => { if (!open) swipeRef.current?.close(); }, [open]);
+  return <View style={[styles.recommendationShell, { backgroundColor: colors.background }]}>
     <Swipeable
+      ref={swipeRef}
       friction={1.6}
-      leftThreshold={64}
-      rightThreshold={64}
-      overshootLeft={false}
+      rightThreshold={48}
       overshootRight={false}
-      renderLeftActions={swipeAction}
-      renderRightActions={swipeAction}
-      onSwipeableOpen={(_, swipeable) => { swipeable.close(); onReplace(); }}
+      renderRightActions={() => <Pressable onTouchStart={(event) => event.stopPropagation()} onPress={onSkip} style={({ pressed }) => [styles.swipeAction, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Skip ${exercise.name}`}><Text style={styles.swipeActionText}>Skip</Text></Pressable>}
+      onSwipeableWillOpen={onSwipeOpen}
+      onSwipeableClose={() => { cancelTapRef.current = false; }}
     >
       <Pressable
-        onPress={onOpen}
-        onAccessibilityAction={({ nativeEvent }) => nativeEvent.actionName === 'swap' ? onReplace() : onOpen()}
+        onTouchStart={() => { if (open) { cancelTapRef.current = true; onDismiss(); } }}
+        onPress={() => { if (cancelTapRef.current) { cancelTapRef.current = false; return; } onOpen(); }}
         style={({ pressed }) => [styles.recommendationCard, { backgroundColor: colors.surface }, pressed && ui.pressed]}
         accessibilityRole="button"
         accessibilityLabel={`Start ${exercise.name}`}
-        accessibilityHint="Swipe either direction to swap this exercise"
-        accessibilityActions={[{ name: 'activate', label: 'Start exercise' }, { name: 'swap', label: 'Swap exercise' }]}
+        accessibilityHint="Swipe left to reveal Skip"
       >
         <Text style={[styles.recommendationName, { color: colors.text }]}>{exercise.name}</Text>
         <Text numberOfLines={1} style={[styles.recommendationMeta, { color: colors.mutedText }, featured && styles.recommendationMetaWithBadge]}>{exerciseMuscleLabel(exercise)} · {exercise.equipment}</Text>
@@ -360,7 +362,7 @@ function CurrentVisit({ visit, coverage, onEnd, onRefresh }: { visit: WorkoutVis
   return <View style={[styles.visitCard, { bottom: bottom + 15, backgroundColor: colors.inverse }]} accessibilityLabel={`Current ${workoutSplitLabel(visit.workout.split)} workout, duration ${duration}`}>
     <Pressable onPress={toggleExpanded} style={styles.visitHeading} accessibilityRole="button" accessibilityLabel="Show workout muscle coverage" accessibilityState={{ expanded }}><Text style={[styles.visitTitle, { color: colors.inverseText }]}>{workoutSplitLabel(visit.workout.split)} day</Text><View style={styles.visitTime}><Text style={[styles.visitTimeText, { color: colors.inverseText }]}>{duration}</Text><ChevronDown width={17} height={17} color={colors.accent} strokeWidth={2.7} style={[styles.visitChevron, expanded && styles.visitChevronExpanded]} /></View></Pressable>
     {expanded && <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} targetMuscles={getWorkoutSplitDefinition(visit.workout.split)?.muscles} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: mode === 'dark' ? '#B34842' : '#FF7565' }]} /><Text style={[styles.missedLegendText, { color: colors.inverseText }]}>Not trained yet</Text></View></Animated.View>}
-    <Pressable onPress={() => confirmEnd ? onEnd() : setConfirmEnd(true)} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.accent }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel={confirmEnd ? 'Confirm end workout' : 'End workout'}><Text style={[styles.endVisitText, { color: colors.accentText }]}>{confirmEnd ? 'Confirm' : 'End workout'}</Text></Pressable>
+    <Pressable onPress={() => confirmEnd ? onEnd() : setConfirmEnd(true)} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.accent }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel={confirmEnd ? 'Confirm end workout' : 'End workout'}><View pointerEvents="none" style={styles.endVisitLabel}><Animated.Text key={confirmEnd ? 'confirm' : 'end'} entering={FadeIn.duration(180)} exiting={FadeOut.duration(140)} style={[styles.endVisitText, { color: colors.accentText }]}>{confirmEnd ? 'Confirm' : 'End workout'}</Animated.Text></View></Pressable>
   </View>;
 }
 
@@ -440,8 +442,8 @@ const styles = StyleSheet.create({
   recommendationName: { marginTop: 5, fontSize: 20, lineHeight: 23, fontWeight: '900', letterSpacing: -.7 },
   recommendationMeta: { marginTop: 4, fontSize: 11, lineHeight: 15, fontWeight: '700', textTransform: 'capitalize' },
   recommendationMetaWithBadge: { paddingRight: 72 },
-  swipeAction: { width: 82, alignItems: 'center', justifyContent: 'center' },
-  swipeActionText: { fontSize: 12, fontWeight: '900' },
+  swipeAction: { width: 80, marginLeft: 12, borderRadius: 17, backgroundColor: '#D9433F', alignItems: 'center', justifyContent: 'center' },
+  swipeActionText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   browseButton: { minHeight: 68, marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   browseTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 },
   browseCopy: { marginTop: 3, fontSize: 11, fontWeight: '700' },
@@ -497,6 +499,7 @@ const styles = StyleSheet.create({
   missedLegendText: { fontSize: 10, fontWeight: '800' },
   endVisitButton: { height: 60, marginTop: 12, marginHorizontal: -16, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   endVisitButtonPressed: { opacity: .78 },
+  endVisitLabel: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
   endVisitText: { fontSize: 18, fontWeight: '800', letterSpacing: -.3 },
   favoriteOverlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,.48)' },
   favoriteSheet: { maxHeight: '82%', borderRadius: 24, padding: 22 },

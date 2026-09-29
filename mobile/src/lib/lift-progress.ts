@@ -8,10 +8,10 @@ export type LiftProgress = {
   sets: WorkoutHistoryPoint[];
 };
 
-export function progressFor(history: WorkoutHistoryPoint[], usesWeight: boolean): LiftProgress[] {
+export function progressFor(history: WorkoutHistoryPoint[], usesWeight: boolean, metric: 'estimated1RM' | 'maxWeight' = 'estimated1RM'): LiftProgress[] {
   const sessions = new Map<string, LiftProgress>();
   for (const set of history) {
-    const value = usesWeight ? set.reps === 1 ? set.weight : set.weight * (1 + set.reps / 30) : set.reps;
+    const value = usesWeight ? metric === 'maxWeight' || set.reps === 1 ? set.weight : set.weight * (1 + set.reps / 30) : set.reps;
     const session = sessions.get(set.workoutId);
     if (!session) sessions.set(set.workoutId, { workoutId: set.workoutId, date: set.completedAt, value, bestSet: set, sets: [set] });
     else {

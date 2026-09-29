@@ -1,6 +1,6 @@
 import { ui } from '@/styles/primitives';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, Minus, Moon, Plus, Sun } from 'react-native-feather';
+import { ArrowLeft, Check, Minus, Moon, Plus, Search, Sun } from 'react-native-feather';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,10 +31,11 @@ export default function SettingsGroupScreen() {
   const selectedGroup: Group = group in groupCopy ? group : 'profile';
   const { colors } = useAppearance();
   const { title, description } = groupCopy[selectedGroup];
+  const goBack = () => router.canGoBack() ? router.back() : router.replace('/settings');
 
   return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}>
     <View style={styles.header}>
-      <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => [styles.backButton, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Back to settings"><ArrowLeft width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable>
+      <Pressable onPress={goBack} style={({ pressed }) => [styles.backButton, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Back to settings"><ArrowLeft width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable>
       <Text style={[ui.title, { color: colors.text }]}>{title}</Text>
     </View>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -184,8 +185,11 @@ function ProfileSettings() {
 function favoriteChoices(query: string, selectedIds: readonly string[]) {
   const selected = new Set(selectedIds);
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  return exerciseCatalog.filter((exercise) => selected.has(exercise.id) || (!terms.length ? exercise.isFeatured : terms.every((term) => `${exercise.name} ${exercise.area} ${exercise.equipment}`.toLowerCase().includes(term))))
-    .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || b.isFeatured - a.isFeatured || a.name.localeCompare(b.name)).slice(0, 12);
+  return exerciseCatalog.filter((exercise) => terms.length
+    ? terms.every((term) => `${exercise.name} ${exercise.area} ${exercise.equipment}`.toLowerCase().includes(term))
+    : selected.has(exercise.id) || exercise.isFeatured)
+    .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || b.isFeatured - a.isFeatured || a.name.localeCompare(b.name))
+    .slice(0, terms.length ? 12 : selectedIds.length + 6);
 }
 
 function LegalSettings() {
@@ -239,6 +243,7 @@ function WorkoutSettings() {
     catch (reason) { setFavoritesError(reason instanceof Error ? reason.message : 'Could not save favorite exercises.'); }
     finally { setFavoritesSaving(false); }
   };
+  const choices = favoriteChoices(favoriteQuery, favoriteExerciseIds);
 
   return <>
     <CustomSplitSettings />
@@ -255,17 +260,25 @@ function WorkoutSettings() {
     </View>
     <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>RANKING</Text><View style={[styles.preferenceRow, { borderBottomColor: colors.surfaceStrong }]}><View style={styles.preferenceCopy}><Text style={[styles.preferenceTitle, { color: colors.text }]}>Personalized exercise ranking</Text><Text style={[styles.preferenceDescription, { color: colors.mutedText }]}>Rank matching movements while building a workout.</Text></View><Switch style={styles.preferenceSwitch} value={showWorkoutRecommendations} onValueChange={setShowWorkoutRecommendations} trackColor={{ false: colors.surfaceStrong, true: colors.accent }} thumbColor={colors.background} accessibilityLabel="Use personalized exercise ranking" accessibilityHint="Ranks matching exercises in the workout library" /></View>
     <Text style={[styles.sectionLabel, { color: colors.mutedText }]}>FAVORITE EXERCISES</Text>
-    {favoritesLoading ? <ActivityIndicator color={colors.accent} /> : <>
-      <TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} autoCapitalize="none" autoCorrect={false} placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.favoriteSearch, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Search favorite exercises" />
-      <Text style={[styles.favoriteCount, { color: colors.mutedText }]}>{favoriteExerciseIds.length} of 20 selected</Text>
-      <View>{favoriteChoices(favoriteQuery, favoriteExerciseIds).map((exercise) => {
+    <View style={styles.favoriteIntro}>
+      <Text style={[styles.favoriteDescription, { color: colors.mutedText }]}>Choose the movements you enjoy. They’ll shape your workout suggestions.</Text>
+      <View style={[styles.favoriteCountBadge, { backgroundColor: colors.surface }]}><Text style={[styles.favoriteCount, { color: colors.text }]}>{favoriteExerciseIds.length}/20</Text></View>
+    </View>
+    {favoritesLoading ? <ActivityIndicator style={styles.favoriteLoading} color={colors.accent} /> : <>
+      <View style={[styles.favoriteSearch, { backgroundColor: colors.surface, borderColor: colors.surfaceStrong }]}>
+        <Search width={19} height={19} color={colors.mutedText} strokeWidth={2.3} />
+        <TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} autoCapitalize="none" autoCorrect={false} placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.favoriteSearchInput, { color: colors.text }]} accessibilityLabel="Search favorite exercises" />
+      </View>
+      <View style={[styles.favoriteList, { borderColor: colors.surfaceStrong }]}>{choices.map((exercise, index) => {
         const selected = favoriteExerciseIds.includes(exercise.id);
-        return <Pressable key={exercise.id} disabled={!selected && favoriteExerciseIds.length >= 20} onPress={() => setFavoriteExerciseIds((current) => selected ? current.filter((id) => id !== exercise.id) : [...current, exercise.id])} style={({ pressed }) => [styles.favoriteChoice, { borderBottomColor: colors.surfaceStrong }, !selected && favoriteExerciseIds.length >= 20 && styles.disabled, pressed && ui.pressed]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
+        const disabled = !selected && favoriteExerciseIds.length >= 20;
+        return <Pressable key={exercise.id} disabled={disabled} onPress={() => setFavoriteExerciseIds((current) => selected ? current.filter((id) => id !== exercise.id) : [...current, exercise.id])} style={({ pressed }) => [styles.favoriteChoice, { backgroundColor: selected ? colors.surface : colors.background, borderBottomColor: colors.surfaceStrong, borderBottomWidth: index === choices.length - 1 ? 0 : StyleSheet.hairlineWidth }, disabled && styles.disabled, pressed && ui.pressed]} accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled }} accessibilityLabel={`${exercise.name}, ${exercise.area}, ${exercise.equipment}`}>
+          <View style={[styles.favoriteExerciseMark, { backgroundColor: exercise.color }]}><Text style={styles.favoriteExerciseMarkText}>{exercise.mark}</Text></View>
           <View style={styles.favoriteChoiceText}><Text style={[styles.favoriteChoiceName, { color: colors.text }]}>{exercise.name}</Text><Text style={[styles.favoriteChoiceDetail, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View>
-          <Text style={[styles.favoriteMark, { color: selected ? colors.accent : colors.subtleText }]}>{selected ? '✓' : '+'}</Text>
+          <View style={[styles.favoriteSelection, selected ? { backgroundColor: colors.accent, borderColor: colors.accent } : { borderColor: colors.surfaceStrong }]}>{selected ? <Check width={17} height={17} color={colors.accentText} strokeWidth={3} /> : <Plus width={17} height={17} color={colors.mutedText} strokeWidth={2.3} />}</View>
         </Pressable>;
-      })}</View>
-      <Pressable onPress={() => void saveFavorites()} disabled={favoritesSaving} style={({ pressed }) => [styles.favoritesSave, { borderBottomColor: colors.surfaceStrong }, pressed && ui.pressed, favoritesSaving && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save favorite exercises"><Text style={[styles.saveText, { color: colors.accent }]}>{favoritesSaving ? 'Saving…' : 'Save favorites'}</Text></Pressable>
+      })}{choices.length === 0 && <Text style={[styles.favoriteEmpty, { color: colors.mutedText }]}>No exercises found. Try another search.</Text>}</View>
+      <Pressable onPress={() => void saveFavorites()} disabled={favoritesSaving} style={({ pressed }) => [styles.favoritesSave, { backgroundColor: colors.accent }, pressed && ui.pressed, favoritesSaving && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save favorite exercises"><Text style={[styles.favoriteSaveText, { color: colors.accentText }]}>{favoritesSaving ? 'Saving…' : 'Save favorites'}</Text></Pressable>
       {favoritesError && <Text accessibilityRole="alert" style={styles.error}>{favoritesError}</Text>}
     </>}
   </>;
@@ -319,7 +332,24 @@ function ModeOption({ mode, label, Icon, selected, onPress }: { mode: Appearance
 }
 
 const styles = StyleSheet.create({
-  header: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 13 }, backButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, content: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 40 }, copy: { maxWidth: 280, fontSize: 14, lineHeight: 20, fontWeight: '700' }, sectionLabel: { marginTop: 38, marginBottom: 2, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, nameInput: { flex: 1, height: 64, paddingHorizontal: 0, fontSize: 16, fontWeight: '800' }, nameRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 10 }, saveButton: { height: 54, paddingLeft: 18, alignItems: 'center', justifyContent: 'center' }, saveText: { fontSize: 15, fontWeight: '900' }, favoriteSearch: { height: 52, marginTop: 12, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, fontSize: 16, fontWeight: '800' }, favoriteCount: { marginTop: 10, fontSize: 12, fontWeight: '800' }, favoriteChoice: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, favoriteChoiceText: { flex: 1 }, favoriteChoiceName: { fontSize: 15, fontWeight: '900' }, favoriteChoiceDetail: { marginTop: 3, fontSize: 12, fontWeight: '700' }, favoriteMark: { minWidth: 22, textAlign: 'center', fontSize: 20, fontWeight: '900' }, favoritesSave: { minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, alignItems: 'flex-end', justifyContent: 'center' }, measurementInputs: { marginTop: 14, flexDirection: 'row', gap: 8 }, measurementInputWrap: { height: 52, borderWidth: 1, borderRadius: 13, paddingHorizontal: 11, flex: 1, flexDirection: 'row', alignItems: 'center' }, measurementInput: { minWidth: 0, flex: 1, padding: 0, fontSize: 16, fontWeight: '800' }, measurementUnit: { fontSize: 12, fontWeight: '800' }, error: { marginTop: 8, color: '#FF5151', fontSize: 12, fontWeight: '700' }, disabled: { opacity: .5 }, modeRow: {}, modeOption: { minHeight: 72, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 }, modeText: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, swatches: { marginTop: 10, flexDirection: 'row', gap: 18 }, swatchButton: { alignItems: 'center', gap: 8 }, swatch: { width: 58, height: 58, borderRadius: 29, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, swatchLabel: { fontSize: 11, fontWeight: '900' }, preferenceRow: { minHeight: 96, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, preferenceCopy: { flex: 1 }, preferenceSwitch: { transform: [{ translateY: 10 }] }, preferenceTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 }, preferenceDescription: { marginTop: 4, maxWidth: 240, fontSize: 12, lineHeight: 16, fontWeight: '700' }, durationRow: { minHeight: 82, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, durationControl: { height: 44, minWidth: 128, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, durationText: { minWidth: 48, textAlign: 'center', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, accountRow: { minHeight: 64, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: 'center' }, accountRowText: { fontSize: 15, fontWeight: '900' }, destructiveText: { color: '#E23D3D', fontSize: 15, fontWeight: '900' }, dataNote: { marginTop: 14, fontSize: 12, lineHeight: 18, fontWeight: '700' }, disclaimer: { marginTop: 18, fontSize: 12, lineHeight: 18, fontWeight: '700' }, modalOverlay: { flex: 1, padding: 24, backgroundColor: 'rgba(0,0,0,.45)', alignItems: 'center', justifyContent: 'center' }, modalCard: { width: '100%', maxWidth: 440, borderRadius: 24, padding: 24 }, modalTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.8 }, modalCopy: { marginTop: 10, fontSize: 14, lineHeight: 21, fontWeight: '700' }, fieldPrompt: { marginTop: 22, marginBottom: 7, fontSize: 12, fontWeight: '900' }, deleteInput: { minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 15, fontSize: 17, fontWeight: '900', letterSpacing: 1 }, deleteButton: { minHeight: 54, marginTop: 20, borderRadius: 15, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center' }, deleteButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' }, cancelButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' }, cancelText: { fontSize: 15, fontWeight: '900' },
+  header: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 13 }, backButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, content: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 40 }, copy: { maxWidth: 280, fontSize: 14, lineHeight: 20, fontWeight: '700' }, sectionLabel: { marginTop: 38, marginBottom: 2, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, nameInput: { flex: 1, height: 64, paddingHorizontal: 0, fontSize: 16, fontWeight: '800' }, nameRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 10 }, saveButton: { height: 54, paddingLeft: 18, alignItems: 'center', justifyContent: 'center' }, saveText: { fontSize: 15, fontWeight: '900' }, favoriteIntro: { marginTop: 9, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  favoriteDescription: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '700' },
+  favoriteCountBadge: { minWidth: 52, height: 30, paddingHorizontal: 8, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  favoriteCount: { fontSize: 12, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  favoriteLoading: { marginTop: 24 },
+  favoriteSearch: { height: 52, marginTop: 20, borderWidth: 1, borderRadius: 14, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  favoriteSearchInput: { flex: 1, height: '100%', padding: 0, fontSize: 15, fontWeight: '700' },
+  favoriteList: { marginTop: 12, borderWidth: 1, borderRadius: 17, overflow: 'hidden' },
+  favoriteChoice: { minHeight: 76, paddingHorizontal: 13, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  favoriteExerciseMark: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  favoriteExerciseMarkText: { color: '#17180F', fontSize: 12, fontWeight: '900', letterSpacing: -.4 },
+  favoriteChoiceText: { flex: 1 },
+  favoriteChoiceName: { fontSize: 14, lineHeight: 18, fontWeight: '900', letterSpacing: -.25 },
+  favoriteChoiceDetail: { marginTop: 4, fontSize: 11, lineHeight: 14, fontWeight: '700', textTransform: 'capitalize' },
+  favoriteSelection: { width: 30, height: 30, borderWidth: 1.5, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  favoriteEmpty: { padding: 24, textAlign: 'center', fontSize: 13, fontWeight: '700' },
+  favoritesSave: { minHeight: 54, marginTop: 16, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  favoriteSaveText: { fontSize: 15, fontWeight: '900' }, measurementInputs: { marginTop: 14, flexDirection: 'row', gap: 8 }, measurementInputWrap: { height: 52, borderWidth: 1, borderRadius: 13, paddingHorizontal: 11, flex: 1, flexDirection: 'row', alignItems: 'center' }, measurementInput: { minWidth: 0, flex: 1, padding: 0, fontSize: 16, fontWeight: '800' }, measurementUnit: { fontSize: 12, fontWeight: '800' }, error: { marginTop: 8, color: '#FF5151', fontSize: 12, fontWeight: '700' }, disabled: { opacity: .5 }, modeRow: {}, modeOption: { minHeight: 72, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 }, modeText: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, swatches: { marginTop: 10, flexDirection: 'row', gap: 18 }, swatchButton: { alignItems: 'center', gap: 8 }, swatch: { width: 58, height: 58, borderRadius: 29, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, swatchLabel: { fontSize: 11, fontWeight: '900' }, preferenceRow: { minHeight: 96, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, preferenceCopy: { flex: 1 }, preferenceSwitch: { transform: [{ translateY: 10 }] }, preferenceTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 }, preferenceDescription: { marginTop: 4, maxWidth: 240, fontSize: 12, lineHeight: 16, fontWeight: '700' }, durationRow: { minHeight: 82, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, durationControl: { height: 44, minWidth: 128, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, durationText: { minWidth: 48, textAlign: 'center', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, accountRow: { minHeight: 64, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: 'center' }, accountRowText: { fontSize: 15, fontWeight: '900' }, destructiveText: { color: '#E23D3D', fontSize: 15, fontWeight: '900' }, dataNote: { marginTop: 14, fontSize: 12, lineHeight: 18, fontWeight: '700' }, disclaimer: { marginTop: 18, fontSize: 12, lineHeight: 18, fontWeight: '700' }, modalOverlay: { flex: 1, padding: 24, backgroundColor: 'rgba(0,0,0,.45)', alignItems: 'center', justifyContent: 'center' }, modalCard: { width: '100%', maxWidth: 440, borderRadius: 24, padding: 24 }, modalTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.8 }, modalCopy: { marginTop: 10, fontSize: 14, lineHeight: 21, fontWeight: '700' }, fieldPrompt: { marginTop: 22, marginBottom: 7, fontSize: 12, fontWeight: '900' }, deleteInput: { minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 15, fontSize: 17, fontWeight: '900', letterSpacing: 1 }, deleteButton: { minHeight: 54, marginTop: 20, borderRadius: 15, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center' }, deleteButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' }, cancelButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' }, cancelText: { fontSize: 15, fontWeight: '900' },
   customSplitRow: { minHeight: 64, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 },
   customSplitCopy: { flex: 1, paddingVertical: 10 },
   addSplitButton: { minHeight: 56, marginTop: 14, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },

@@ -72,6 +72,8 @@ which also cascades the existing app-owned `users` row and all related data.
 - `GET /v1/recommendations` returns private/cohort recommendations.
 - `GET /v1/friends`, `GET /v1/friends/prs`, `GET /v1/friends/code`, and
   `POST /v1/friends` manage the limited friend surface.
+- `POST|DELETE /v1/friends/workouts/likes` and `GET|POST /v1/friends/workouts/comments`
+  manage reactions for a friend's workout with personal records.
 - `GET /v1/export` returns a portable account export.
 - `POST /v1/onboarding` saves onboarding preferences.
 

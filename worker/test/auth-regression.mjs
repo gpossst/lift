@@ -180,8 +180,38 @@ await DB.batch([
   DB.prepare("INSERT INTO workout_sets (user_id, workout_local_id, set_number, exercise_id, weight, reps, completed_at) VALUES (?, 'friend-feed', 2, 'bench-press', 110, 5, 2000)").bind(oneId),
   DB.prepare("INSERT INTO workout_sets (user_id, workout_local_id, set_number, exercise_id, weight, reps, completed_at) VALUES (?, 'friend-feed', 3, 'bench-press', 120, 3, 3000)").bind(oneId),
 ]);
+await DB.prepare("INSERT INTO workouts (user_id, local_id, split, created_at, ended_at) VALUES (?, 'other-feed', 'push', 5000, 6000)").bind(oneId).run();
+await DB.prepare("INSERT INTO workout_sets (user_id, workout_local_id, set_number, exercise_id, weight, reps, completed_at) VALUES (?, 'other-feed', 1, 'bench-press', 130, 2, 5500)").bind(oneId).run();
+await DB.prepare("INSERT INTO workouts (user_id, local_id, split, created_at, ended_at) VALUES (?, 'no-pr-feed', 'push', 7000, 8000)").bind(oneId).run();
+await DB.prepare("INSERT INTO workout_sets (user_id, workout_local_id, set_number, exercise_id, weight, reps, completed_at) VALUES (?, 'no-pr-feed', 1, 'squat', 100, 5, 7500)").bind(oneId).run();
 const friendFeed = await (await call('/v1/friends/prs', { headers: { Cookie: twoCookie } })).json();
-if (friendFeed.prs.length !== 2 || friendFeed.prs[0].weight !== 120 || friendFeed.prs[1].weight !== 110) throw new Error('Friend feed did not return recent PRs in newest-first order.');
+if (friendFeed.prs.length !== 3 || friendFeed.prs[0].weight !== 130 || friendFeed.prs[1].weight !== 120 || friendFeed.prs[2].weight !== 110) throw new Error('Friend feed did not return recent PRs in newest-first order.');
+const post = friendFeed.prs[1];
+const postBody = JSON.stringify({ id: post.id, workoutId: post.workoutId });
+if (post.liked || post.likeCount || post.commentCount) throw new Error('New workout should have no reactions.');
+const like = await call('/v1/friends/workouts/likes', { method: 'POST', headers: { Cookie: twoCookie }, body: postBody });
+if (like.status !== 200 || (await like.json()).likeCount !== 1) throw new Error('Could not like a friend workout.');
+await call('/v1/friends/workouts/likes', { method: 'POST', headers: { Cookie: twoCookie }, body: postBody });
+const comment = await call('/v1/friends/workouts/comments', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ ...JSON.parse(postBody), body: 'Strong lift!' }) });
+if (comment.status !== 200 || (await comment.json()).comments[0]?.body !== 'Strong lift!') throw new Error('Could not comment on a friend workout.');
+const reactedFeed = await (await call('/v1/friends/prs', { headers: { Cookie: twoCookie } })).json();
+if (reactedFeed.prs[0].likeCount || reactedFeed.prs[0].commentCount || reactedFeed.prs.slice(1).some((record) => !record.liked || record.likeCount !== 1 || record.commentCount !== 1)) throw new Error('Reactions were not scoped to the whole workout.');
+if ((await call('/v1/friends/workouts/likes', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ id: oneId, workoutId: 'no-pr-feed' }) })).status !== 404) throw new Error('A workout without a PR accepted a like.');
+if ((await call('/v1/friends/workouts/comments', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ ...JSON.parse(postBody), body: ' ' }) })).status !== 400) throw new Error('Blank comment was accepted.');
+if ((await call('/v1/friends/workouts/likes', { method: 'POST', headers: { Cookie: oneCookie }, body: postBody })).status !== 404) throw new Error('A user could react to their own workout through friend activity.');
+const unlike = await call('/v1/friends/workouts/likes', { method: 'DELETE', headers: { Cookie: twoCookie }, body: postBody });
+if (unlike.status !== 200 || (await unlike.json()).likeCount !== 0) throw new Error('Could not unlike a friend workout.');
+await DB.batch([
+  DB.prepare("INSERT INTO friend_pr_likes (author_id, workout_local_id, exercise_id, set_number, user_id, created_at) VALUES (?, 'friend-feed', 'bench-press', 2, ?, 2000)").bind(oneId, twoId),
+  DB.prepare("INSERT INTO friend_pr_likes (author_id, workout_local_id, exercise_id, set_number, user_id, created_at) VALUES (?, 'friend-feed', 'bench-press', 3, ?, 3000)").bind(oneId, twoId),
+  DB.prepare("INSERT INTO friend_pr_comments (id, author_id, workout_local_id, exercise_id, set_number, user_id, body, created_at) VALUES ('legacy-one', ?, 'friend-feed', 'bench-press', 2, ?, 'Earlier set', 2000)").bind(oneId, twoId),
+  DB.prepare("INSERT INTO friend_pr_comments (id, author_id, workout_local_id, exercise_id, set_number, user_id, body, created_at) VALUES ('legacy-two', ?, 'friend-feed', 'bench-press', 3, ?, 'Later set', 3000)").bind(oneId, twoId),
+]);
+for (const statement of readFileSync('migrations/0018_friend_workout_activity.sql', 'utf8').split(';').map((sql) => sql.trim()).filter((sql) => sql.startsWith('INSERT OR IGNORE'))) await DB.prepare(statement).run();
+const migratedFeed = await (await call('/v1/friends/prs', { headers: { Cookie: twoCookie } })).json();
+if (migratedFeed.prs.slice(1).some((record) => !record.liked || record.likeCount !== 1 || record.commentCount !== 3)) throw new Error('Existing set reactions were not merged into the workout.');
+const migratedComments = await (await call(`/v1/friends/workouts/comments?id=${oneId}&workoutId=friend-feed`, { headers: { Cookie: twoCookie } })).json();
+if (migratedComments.comments.length !== 3) throw new Error('Existing set comments were not preserved on the workout.');
 const pushed = await call('/v1/sync', { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ batchId: 'account-isolation', changes: [{ entity: 'workout', key: 'private', operation: 'upsert', baseRevision: 0, record: { id: 'private', split: 'push', createdAt: 1, endedAt: null } }] }) });
 if (pushed.status !== 200) throw new Error(`Authenticated account could not write sync data: ${await pushed.text()}`);
 const own = await (await call('/v1/sync', { headers: { Cookie: oneCookie } })).json();
@@ -190,6 +220,7 @@ if (own.changes?.length !== 1 || other.changes?.length !== 0) throw new Error('A
 
 const deleted = await call('/api/auth/delete-user', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ password: 'correct horse battery staple' }) });
 if (deleted.status !== 200 || await DB.prepare("SELECT 1 FROM user WHERE email = 'two@lift.test'").first() || await DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(twoId).first()) throw new Error('Better Auth account deletion did not remove identity and app data.');
+if (await DB.prepare('SELECT 1 FROM friend_workout_comments WHERE user_id = ?').bind(twoId).first()) throw new Error('Account deletion left friend comments behind.');
 
 const one = await DB.prepare("SELECT id FROM user WHERE email = 'one@lift.test'").first();
 await DB.prepare('UPDATE session SET expiresAt = 0 WHERE userId = ?').bind(one.id).run();

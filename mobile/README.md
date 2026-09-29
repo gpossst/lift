@@ -18,8 +18,9 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
 ## Optional demo history
 
-To pre-populate the app with 16 weeks of sample workout history, copy
-`.env.example` to `.env` and set `EXPO_PUBLIC_SEED_DEMO_DATA=true`. Restart the
+To pre-populate the app with 16 weeks of sample workout history and a friend
+activity preview, copy `.env.example` to `.env` and set
+`EXPO_PUBLIC_SEED_DEMO_DATA=true`. Restart the
 Expo server after changing the flag. Set it to `false` (or remove it) and launch
 the app once to remove only the generated demo workouts; any workouts you logged
 yourself are kept.

@@ -2,7 +2,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { router, Tabs, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, LogBox, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Easing, LogBox, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppearanceProvider, useAppearance } from '@/components/appearance-provider';
@@ -102,18 +102,30 @@ function AppNavigator() {
 }
 
 function AppStack() {
-  return <Tabs tabBar={(props) => <BottomNavigation {...props} />} screenOptions={{ headerShown: false, animation: 'none' }}>
+  const { colors } = useAppearance();
+  const { width } = useWindowDimensions();
+  return <Tabs tabBar={(props) => <BottomNavigation {...props} />} screenOptions={({ route }) => ({
+    headerShown: false,
+    animation: ['index', 'stats', 'start', 'friends', 'settings'].includes(route.name) ? 'shift' : 'none',
+    sceneStyle: { backgroundColor: colors.background },
+    transitionSpec: { animation: 'timing', config: { duration: 280, easing: Easing.inOut(Easing.cubic) } },
+    sceneStyleInterpolator: ({ current }) => ({
+      sceneStyle: {
+        transform: [{ translateX: current.progress.interpolate({ inputRange: [-1, 0, 1], outputRange: [-width, 0, width] }) }],
+      },
+    }),
+  })}>
     <Tabs.Screen name="index" />
-    <Tabs.Screen name="history" />
+    <Tabs.Screen name="stats" />
+    <Tabs.Screen name="start" options={{ href: null }} />
     <Tabs.Screen name="friends" />
     <Tabs.Screen name="settings" />
-    <Tabs.Screen name="settings/[group]" options={{ href: null }} />
-    <Tabs.Screen name="start" options={{ href: null }} />
     <Tabs.Screen name="exercises" options={{ href: null }} />
     <Tabs.Screen name="workout" options={{ href: null }} />
     <Tabs.Screen name="summary" options={{ href: null }} />
     <Tabs.Screen name="history-detail" options={{ href: null }} />
-    <Tabs.Screen name="stats" options={{ href: null }} />
+    <Tabs.Screen name="history-edit" options={{ href: null }} />
+    <Tabs.Screen name="history" options={{ href: null }} />
     <Tabs.Screen name="explore" options={{ href: null }} />
     <Tabs.Screen name="reset-password" options={{ href: null }} />
     <Tabs.Screen name="auth/verified" options={{ href: null }} />
@@ -130,7 +142,7 @@ function LoadingScreen() {
 }
 
 function SignedInApp({ userId, email, emailVerified }: { userId: string; email: string; emailVerified: boolean }) {
-  const { useCustomSplits } = useAppearance();
+  const { colors, useCustomSplits } = useAppearance();
   const [verificationDismissed, setVerificationDismissed] = useState(false);
   const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const [pendingOnboarding, setPendingOnboarding] = useState<Awaited<ReturnType<typeof takePendingOnboarding>>>(null);
@@ -163,7 +175,7 @@ function SignedInApp({ userId, email, emailVerified }: { userId: string; email: 
   if (checkingOnboarding) return <LoadingScreen />;
   const firstSplit = pendingOnboarding ? getRecommendedWorkoutSplit(new Date(), useCustomSplits) : null;
   const firstSplitName = firstSplit ? getWorkoutSplitDefinition(firstSplit)?.name ?? 'First workout' : '';
-  return <View style={styles.navigator}>
+  return <View style={[styles.navigator, { backgroundColor: colors.background }]}>
     <AppStack />
     {pendingOnboarding && firstSplit && <View style={StyleSheet.absoluteFill}>
       <FirstWorkoutPreview onboarding={pendingOnboarding} splitName={firstSplitName} onStart={continueToWorkout} onSkip={skipWorkout} />

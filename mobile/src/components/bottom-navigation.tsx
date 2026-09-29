@@ -1,6 +1,7 @@
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
-import { Clock, Home, Plus, Settings, Users } from 'react-native-feather';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { usePathname } from 'expo-router';
+import { BarChart2, Home, Plus, Settings, Users } from 'react-native-feather';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -8,23 +9,24 @@ import { useAppearance } from '@/components/appearance-provider';
 
 type Tab = {
   label: string;
-  route: 'index' | 'history' | 'friends' | 'settings';
+  route: 'index' | 'stats' | 'friends' | 'settings';
   Icon: typeof Home;
 };
 
 const tabs: Tab[] = [
   { label: 'Home', route: 'index', Icon: Home },
-  { label: 'History', route: 'history', Icon: Clock },
+  { label: 'Stats', route: 'stats', Icon: BarChart2 },
   { label: 'Friends', route: 'friends', Icon: Users },
-  { label: 'Profile', route: 'settings', Icon: Settings },
+  { label: 'Settings', route: 'settings', Icon: Settings },
 ];
 
 export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
   const { colors } = useAppearance();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
   const activeRoute = state.routes[state.index]?.name;
 
-  if (!tabs.some((tab) => tab.route === activeRoute)) return null;
+  if (activeRoute !== 'start' && (!tabs.some((tab) => tab.route === activeRoute) || pathname.startsWith('/settings/') || pathname.startsWith('/stats/'))) return null;
 
   const selectTab = (route: Tab['route']) => {
     const event = navigation.emit({ type: 'tabPress', target: route, canPreventDefault: true });
@@ -33,7 +35,7 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={[styles.shell, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 10) }]}>
-      <Svg width="100%" height={24} style={styles.gradient} pointerEvents="none">
+      {activeRoute !== 'start' && activeRoute !== 'index' && <Svg width="100%" height={24} style={styles.gradient} pointerEvents="none">
         <Defs>
           <LinearGradient id="navbar-top-fade" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={colors.background} stopOpacity="0" />
@@ -41,7 +43,7 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
           </LinearGradient>
         </Defs>
         <Rect width="100%" height="100%" fill="url(#navbar-top-fade)" />
-      </Svg>
+      </Svg>}
       <View style={styles.tabRow} accessibilityRole="tablist">
         {tabs.slice(0, 2).map((tab) => <TabButton key={tab.route} tab={tab} active={activeRoute === tab.route} onPress={() => selectTab(tab.route)} />)}
         <Pressable
@@ -68,6 +70,7 @@ function TabButton({ tab, active, onPress }: { tab: Tab; active: boolean; onPres
       accessibilityState={{ selected: active }}
       accessibilityLabel={tab.label}>
       <Icon width={21} height={21} color={active ? colors.text : colors.subtleText} strokeWidth={active ? 2.7 : 2.2} />
+      <Text style={[styles.tabLabel, { color: active ? colors.text : colors.subtleText }]}>{tab.label}</Text>
     </Pressable>
   );
 }
@@ -76,7 +79,8 @@ const styles = StyleSheet.create({
   shell: { paddingHorizontal: 14, position: 'relative' },
   gradient: { position: 'absolute', top: -24, left: 0 },
   tabRow: { height: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tabButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  tabButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 3, position: 'relative' },
+  tabLabel: { fontSize: 11, lineHeight: 14, fontWeight: '700' },
   startButton: { width: 58, height: 58, marginHorizontal: 5, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 0 },
   pressed: { opacity: .62 },
   startPressed: { opacity: .82, transform: [{ scale: .94 }] },

@@ -495,7 +495,7 @@ async function friendPersonalRecords(env: Env, userId: string) {
   const rows = await env.DB.prepare(`
     WITH ranked_sets AS (
       SELECT ws.user_id AS friendId, i.display_name AS displayName, i.image_url AS imageUrl,
-        ws.exercise_id AS exerciseId, ws.weight, ws.reps, ws.completed_at AS completedAt,
+        ws.workout_local_id AS workoutId, ws.set_number AS setNumber, ws.exercise_id AS exerciseId, ws.weight, ws.reps, ws.completed_at AS completedAt,
         MAX(ws.weight) OVER (
           PARTITION BY ws.user_id, ws.exercise_id
           ORDER BY ws.completed_at, ws.workout_local_id, ws.set_number
@@ -506,11 +506,58 @@ async function friendPersonalRecords(env: Env, userId: string) {
       JOIN workout_sets ws ON ws.user_id = f.friend_id
       WHERE f.user_id = ?
     )
-    SELECT friendId AS id, displayName, imageUrl, exerciseId, weight, reps, completedAt
+    SELECT friendId AS id, displayName, imageUrl, workoutId, setNumber, exerciseId, weight, reps, completedAt,
+      (SELECT COUNT(*) FROM friend_workout_likes l WHERE l.author_id = friendId AND l.workout_local_id = workoutId) AS likeCount,
+      (SELECT COUNT(*) FROM friend_workout_comments c WHERE c.author_id = friendId AND c.workout_local_id = workoutId) AS commentCount,
+      EXISTS(SELECT 1 FROM friend_workout_likes l WHERE l.author_id = friendId AND l.workout_local_id = workoutId AND l.user_id = ?) AS liked
     FROM ranked_sets WHERE previousBest IS NOT NULL AND weight > previousBest
     ORDER BY completedAt DESC, weight DESC LIMIT 50
-  `).bind(userId).all<{ id: string; displayName: string; imageUrl: string | null; exerciseId: string; weight: number; reps: number; completedAt: number }>();
-  return rows.results;
+  `).bind(userId, userId).all();
+  return rows.results.map((row) => ({ ...row, liked: row.liked === 1 }));
+}
+
+type FriendWorkout = { id: string; workoutId: string };
+
+function friendWorkout(value: unknown): FriendWorkout | null {
+  if (!value || typeof value !== 'object') return null;
+  const workout = value as Partial<FriendWorkout>;
+  return isString(workout.id, 100) && isString(workout.workoutId, 100) ? workout as FriendWorkout : null;
+}
+
+async function visibleFriendWorkout(env: Env, userId: string, workout: FriendWorkout) {
+  return env.DB.prepare(`SELECT 1 FROM friendships f JOIN workout_sets ws ON ws.user_id = f.friend_id
+    WHERE f.user_id = ? AND f.friend_id = ? AND ws.workout_local_id = ?
+    AND EXISTS (SELECT 1 FROM workout_sets earlier WHERE earlier.user_id = ws.user_id AND earlier.exercise_id = ws.exercise_id
+      AND (earlier.completed_at < ws.completed_at OR (earlier.completed_at = ws.completed_at AND (earlier.workout_local_id < ws.workout_local_id OR (earlier.workout_local_id = ws.workout_local_id AND earlier.set_number < ws.set_number)))))
+    AND ws.weight > (SELECT MAX(earlier.weight) FROM workout_sets earlier WHERE earlier.user_id = ws.user_id AND earlier.exercise_id = ws.exercise_id
+      AND (earlier.completed_at < ws.completed_at OR (earlier.completed_at = ws.completed_at AND (earlier.workout_local_id < ws.workout_local_id OR (earlier.workout_local_id = ws.workout_local_id AND earlier.set_number < ws.set_number)))))
+    LIMIT 1`).bind(userId, workout.id, workout.workoutId).first();
+}
+
+async function friendActivity(request: Request, env: Env, userId: string, kind: 'likes' | 'comments') {
+  const url = new URL(request.url);
+  const data = request.method === 'GET' ? Object.fromEntries(url.searchParams) : await request.json().catch(() => null);
+  const workout = friendWorkout(data);
+  if (!workout) return json({ error: 'Invalid workout.' }, 400);
+  if (!await visibleFriendWorkout(env, userId, workout)) return json({ error: 'Workout not found.' }, 404);
+  const args = [workout.id, workout.workoutId];
+  if (kind === 'likes') {
+    if (request.method === 'POST') await env.DB.prepare('INSERT OR IGNORE INTO friend_workout_likes (author_id, workout_local_id, user_id, created_at) VALUES (?, ?, ?, ?)').bind(...args, userId, now()).run();
+    else if (request.method === 'DELETE') await env.DB.prepare('DELETE FROM friend_workout_likes WHERE author_id = ? AND workout_local_id = ? AND user_id = ?').bind(...args, userId).run();
+    else return json({ error: 'Not found.' }, 404);
+    const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM friend_workout_likes WHERE author_id = ? AND workout_local_id = ?').bind(...args).first<{ count: number }>();
+    return json({ liked: request.method === 'POST', likeCount: count?.count ?? 0 });
+  }
+  if (request.method === 'POST') {
+    const body = typeof (data as { body?: unknown })?.body === 'string' ? (data as { body: string }).body.trim() : '';
+    if (!body || body.length > 280) return json({ error: 'Comment must be 1 to 280 characters.' }, 400);
+    await env.DB.prepare('INSERT INTO friend_workout_comments (id, author_id, workout_local_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), ...args, userId, body, now()).run();
+  } else if (request.method !== 'GET') return json({ error: 'Not found.' }, 404);
+  const comments = await env.DB.prepare(`SELECT c.id, c.body, c.created_at AS createdAt, i.display_name AS displayName, i.image_url AS imageUrl, c.user_id = ? AS mine
+    FROM friend_workout_comments c JOIN user_info i ON i.user_id = c.user_id
+    WHERE c.author_id = ? AND c.workout_local_id = ? ORDER BY c.created_at ASC, c.id ASC LIMIT 100`).bind(userId, ...args).all();
+  const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM friend_workout_comments WHERE author_id = ? AND workout_local_id = ?').bind(...args).first<{ count: number }>();
+  return json({ comments: comments.results.map((comment) => ({ ...comment, mine: comment.mine === 1 })), commentCount: count?.count ?? 0 });
 }
 
 async function addFriend(request: Request, env: Env, userId: string) {
@@ -744,6 +791,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     if (request.method === 'GET' && url.pathname === '/v1/recommendations') return json({ recommendations: await recommendations(env, user.id) });
     if (request.method === 'GET' && url.pathname === '/v1/friends') return json({ friends: await friends(env, user.id) });
     if (request.method === 'GET' && url.pathname === '/v1/friends/prs') return json({ prs: await friendPersonalRecords(env, user.id) });
+    if (url.pathname === '/v1/friends/workouts/likes' || url.pathname === '/v1/friends/prs/likes') return friendActivity(request, env, user.id, 'likes');
+    if (url.pathname === '/v1/friends/workouts/comments' || url.pathname === '/v1/friends/prs/comments') return friendActivity(request, env, user.id, 'comments');
     if (request.method === 'GET' && url.pathname === '/v1/friends/code') return json({ code: await codeFor(env, user.id) });
     if (request.method === 'POST' && url.pathname === '/v1/friends') return addFriend(request, env, user.id);
     const friendRoute = url.pathname.match(/^\/v1\/friends\/([^/]+)(\/block)?$/);

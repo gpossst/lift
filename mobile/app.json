@@ -2,7 +2,7 @@
   "expo": {
     "name": "LIFT",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lift",
@@ -54,7 +54,8 @@
             "deploymentTarget": "17.0"
           }
         }
-      ]
+      ],
+      "expo-widgets"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -647,6 +647,16 @@ export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint) {
   );
 }
 
+export function updateWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint, values: { weight: number; reps: number }) {
+  syncedWrite(
+    () => sqlite.runSync(
+      'UPDATE workout_sets SET weight = ?, reps = ?, updated_at = ? WHERE exercise_id = ? AND workout_id = ? AND set_number = ? AND completed_at = ?',
+      [values.weight, values.reps, Math.floor(Date.now() / 1000), exerciseId, set.workoutId, set.setNumber, Math.floor(set.completedAt.getTime() / 1000)],
+    ),
+    (write) => { if (write.changes) markCloudSyncDirty('set', cloudSetKey(set.workoutId, exerciseId, set.setNumber)); },
+  );
+}
+
 const cloudKeySeparator = '\u001F';
 const cloudSetKey = (workoutId: string, exerciseId: string, setNumber: number) => [workoutId, exerciseId, setNumber].join(cloudKeySeparator);
 const syncState = (key: string) => sqlite.getFirstSync<{ value: string }>('SELECT value FROM sync_state WHERE key = ?', [key])?.value ?? null;

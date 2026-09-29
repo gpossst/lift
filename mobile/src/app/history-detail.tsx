@@ -1,6 +1,7 @@
 import { ui } from '@/styles/primitives';
-import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, ChevronRight } from 'react-native-feather';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft } from 'react-native-feather';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getExercises, getWorkoutVisitExerciseDetails, getWorkoutVisitSummary } from '@/db';
@@ -18,6 +19,14 @@ const formatDuration = (ms: number) => {
 export default function HistoryDetailScreen() {
   const { colors } = useAppearance();
   const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
+  const [selectedExercise, setSelectedExercise] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    if (!selectedExercise) return;
+    const timer = setTimeout(() => setSelectedExercise(null), 5_000);
+    return () => clearTimeout(timer);
+  }, [selectedExercise]);
+  const [, refresh] = useState(0);
+  useFocusEffect(useCallback(() => { refresh((value) => value + 1); }, []));
   const visit = workoutId ? getWorkoutVisitSummary(workoutId) : null;
   const exercises = workoutId ? getWorkoutVisitExerciseDetails(workoutId) : [];
   const requiresWeight = new Map(getExercises().map((exercise) => [exercise.id, exerciseRequiresWeight(exercise)]));
@@ -50,15 +59,17 @@ export default function HistoryDetailScreen() {
           const required = requiresWeight.get(exercise.id) ?? true;
           const weighted = required || exercise.sets.some((set) => set.weight > 0);
           return <View key={exercise.id} style={[styles.exercise, { borderColor: colors.surfaceStrong, borderBottomWidth: index === exercises.length - 1 ? 0 : 1 }]}>
-            <Pressable onPress={() => router.navigate({ pathname: '/history', params: { exerciseId: exercise.id } })} style={({ pressed }) => [styles.exerciseHeading, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View progress for ${exercise.name}`}>
+            {selectedExercise?.id === exercise.id ? <View style={styles.exerciseActions}>
+              <Pressable onPress={() => router.push({ pathname: '/history-edit', params: { workoutId, exerciseId: exercise.id } })} style={({ pressed }) => [styles.exerciseAction, { backgroundColor: colors.accent }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Edit ${exercise.name} sets`}><Text style={[styles.exerciseActionText, { color: colors.accentText }]}>Edit sets</Text></Pressable>
+              <Pressable onPress={() => router.push({ pathname: '/stats/progress', params: { exerciseId: exercise.id } })} style={({ pressed }) => [styles.exerciseAction, { backgroundColor: colors.inverse }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View progress for ${exercise.name}`}><Text style={[styles.exerciseActionText, { color: colors.inverseText }]}>View progress</Text></Pressable>
+            </View> : <Pressable onPress={() => setSelectedExercise({ id: exercise.id })} style={({ pressed }) => [styles.exerciseHeading, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Actions for ${exercise.name}`}>
               <Text style={[ui.listIndex, { color: colors.subtleText }]}>{String(index + 1).padStart(2, '0')}</Text>
               <View style={styles.exerciseCopy}><Text style={[ui.listName, { color: colors.text }]} numberOfLines={2}>{exercise.name}</Text><Text style={[ui.listMeta, { color: colors.mutedText }]}>{exercise.sets.length} {exercise.sets.length === 1 ? 'set' : 'sets'}</Text></View>
-              <ChevronRight width={18} height={18} color={colors.subtleText} strokeWidth={2.2} />
-            </Pressable>
-            <View style={styles.sets}>{exercise.sets.map((set) => <View key={set.number} style={styles.setRow}>
+            </Pressable>}
+            <Pressable onPress={() => setSelectedExercise({ id: exercise.id })} style={({ pressed }) => [styles.sets, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Actions for ${exercise.name} sets`}>{exercise.sets.map((set) => <View key={set.number} style={styles.setRow}>
               <Text style={[styles.setLabel, { color: colors.mutedText }]}>Set {set.number}</Text>
               <Text style={[styles.setValue, { color: colors.text }]}>{weighted ? required ? `${set.weight} lb × ` : set.weight ? `+${set.weight} lb × ` : '' : ''}{set.reps} reps</Text>
-            </View>)}</View>
+            </View>)}</Pressable>
           </View>;
         })}
       </View>
@@ -85,6 +96,9 @@ const styles = StyleSheet.create({
   sectionTitle: { marginBottom: 8, fontSize: 10, fontWeight: '900', letterSpacing: .8, textTransform: 'uppercase' },
   exercise: { paddingBottom: 16, marginBottom: 10 },
   exerciseHeading: { minHeight: 56, flexDirection: 'row', alignItems: 'center' },
+  exerciseActions: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exerciseAction: { flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  exerciseActionText: { fontSize: 13, fontWeight: '800' },
   exerciseCopy: { flex: 1, minWidth: 0, paddingRight: 8 },
   sets: { marginLeft: 31 },
   setRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

@@ -1,7 +1,6 @@
 import { ui } from '@/styles/primitives';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'react-native-feather';
 import { Animated as RNAnimated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -27,15 +26,6 @@ export default function StartWorkoutScreen() {
   // intermittently fails to attach its mapper on RN 0.86 Fabric, freezing the tile.
   const [tilePosition] = useState(() => new RNAnimated.Value(0));
   const tileWidth = Math.max((pickerWidth - 16) / 3, 0);
-  const goBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace('/');
-  };
-
   const startWorkout = () => {
     const workout = createWorkout(selectedSplit);
     router.replace({ pathname: '/exercises', params: { split: selectedSplit, workoutId: workout.id } });
@@ -53,9 +43,8 @@ export default function StartWorkoutScreen() {
     RNAnimated.timing(tilePosition, { toValue: selectedIndex * (tileWidth + 4), duration: 240, useNativeDriver: true }).start();
   }, [selectedIndex, tileWidth, tilePosition]);
 
-	return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}>
+	return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
     <View style={styles.header}>
-		<Pressable onPress={goBack} hitSlop={14} style={ui.backButton} accessibilityRole="button" accessibilityLabel="Go back"><ArrowLeft width={22} height={22} color={colors.text} strokeWidth={2.5} /></Pressable>
 		<Text style={[ui.title, { color: colors.text }]}>New Workout</Text>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
@@ -69,7 +58,7 @@ export default function StartWorkoutScreen() {
       {customMode && <View style={styles.customList}>{customSplits.map(({ id, name, muscles }) => <Pressable key={id} onPress={() => chooseSplit(id)} style={[styles.customOption, { backgroundColor: selectedSplit === id ? colors.inverse : colors.surface }]} accessibilityRole="radio" accessibilityState={{ selected: selectedSplit === id }} accessibilityLabel={`Select ${name} workout`}><Text style={[styles.customName, { color: selectedSplit === id ? colors.inverseText : colors.text }]}>{name}</Text><Text style={[styles.customMuscles, { color: selectedSplit === id ? colors.inverseText : colors.mutedText }]} numberOfLines={1}>{muscles.join(' · ')}</Text></Pressable>)}</View>}
     </ScrollView>
 	<View style={[styles.actionFooter, { backgroundColor: colors.background }]}>
-		<Pressable onPress={() => chooseSplit(recommendedSplit)} style={({ pressed }) => [styles.recommendedBadge, { backgroundColor: colors.accent }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${recommendedName} is recommended today`}><Text style={[styles.recommendedText, { color: colors.accentText }]}>{recommendedName.toUpperCase()} RECOMMENDED TODAY</Text></Pressable>
+		<Pressable hitSlop={12} onPress={() => chooseSplit(recommendedSplit)} style={({ pressed }) => [styles.recommendedBadge, { backgroundColor: colors.accent }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${recommendedName} is recommended today`}><Text style={[styles.recommendedText, { color: colors.accentText }]}>{recommendedName.toUpperCase()} RECOMMENDED TODAY</Text></Pressable>
 		{!customMode && <View style={[styles.splitPicker, { backgroundColor: colors.surface }]} onLayout={({ nativeEvent }) => setPickerWidth(nativeEvent.layout.width)} accessibilityRole="tablist">
 			{tileWidth > 0 && !selectedSplit.startsWith('custom:') && <RNAnimated.View pointerEvents="none" style={[styles.activeSplitTile, { width: tileWidth, backgroundColor: colors.inverse, transform: [{ translateX: tilePosition }] }]} />}
         {splits.map(({ id, title }) => {
@@ -78,7 +67,7 @@ export default function StartWorkoutScreen() {
         })}
       </View>}
 		<Pressable onPress={startWorkout} style={({ pressed }) => [styles.startButton, { backgroundColor: colors.accent }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Start ${selectedDefinition?.name ?? selectedSplit} workout`}>
-        <Text style={styles.startText}>Confirm</Text>
+        <Text style={styles.startText}>{`Start ${selectedDefinition?.name ?? selectedSplit} workout`}</Text>
       </Pressable>
     </View>
   </SafeAreaView>;

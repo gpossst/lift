@@ -34,6 +34,7 @@ import { useAppearance } from "@/components/appearance-provider";
 import { SwipeWatermark } from "@/components/swipe-watermark";
 import { getProgressiveOverloadRecommendation } from "@/lib/exercise-recommendations";
 import { normalizeRestTimerSeconds } from "@/lib/appearance";
+import { syncRestLiveActivity } from "@/lib/rest-live-activity";
 import { BAR_WEIGHT_LB, formatPlateCounts, MAX_BAR_WEIGHT_LB, PLATE_INCREMENT_LB, platesPerSide } from "@/lib/plate-loading";
 
 type Field = "weight" | "reps";
@@ -251,6 +252,7 @@ export default function WorkoutScreen() {
   const [setNumber, setSetNumber] = useState(1);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<WorkoutHistoryPoint[]>([]);
+  const [undoSet, setUndoSet] = useState<{ exerciseId: string; set: WorkoutHistoryPoint } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [supersetPickerOpen, setSupersetPickerOpen] = useState(false);
@@ -292,6 +294,15 @@ export default function WorkoutScreen() {
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [restEndsAt]);
+  useEffect(() => {
+    syncRestLiveActivity(restEndsAt);
+  }, [restEndsAt]);
+  useEffect(() => () => syncRestLiveActivity(null), []);
+  useEffect(() => {
+    if (!undoSet || restEndsAt !== null) return;
+    const timer = setTimeout(() => setUndoSet(null), 2_000);
+    return () => clearTimeout(timer);
+  }, [undoSet, restEndsAt]);
   useEffect(() => {
     const timer = setTimeout(() => {
       const nextHistory = getWorkoutHistory(exerciseId);
@@ -352,6 +363,7 @@ export default function WorkoutScreen() {
       const nextHistory = getWorkoutHistory(exerciseId);
       const currentSets = nextHistory.filter((set) => set.workoutId === workoutId);
       const lastSet = currentSets.at(-1);
+      if (lastSet) setUndoSet({ exerciseId, set: lastSet });
       setHistory(nextHistory);
       setWeight(String((requiresWeight || lastSet?.weight ? lastSet : undefined)?.weight ?? ""));
       setReps(String(lastSet?.reps ?? ""));
@@ -375,6 +387,20 @@ export default function WorkoutScreen() {
     setHistory(getWorkoutHistory(exerciseId));
     setSelectedSetIndex(null);
     setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
+  }
+  function undoLastSet() {
+    if (!undoSet) return;
+    if (getWorkoutHistory(undoSet.exerciseId).filter((set) => set.workoutId === workoutId).length === 1) {
+      recordRecommendationFeedback(workoutId, undoSet.exerciseId, "removed");
+    }
+    deleteWorkoutSet(undoSet.exerciseId, undoSet.set);
+    if (undoSet.exerciseId === exerciseId) {
+      setHistory(getWorkoutHistory(exerciseId));
+      setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
+      setWeight(String(undoSet.set.weight || ""));
+      setReps(String(undoSet.set.reps));
+    }
+    setUndoSet(null);
   }
   function selectHistoryPoint(index: number, scrollToSet = false) {
     setSelectedSetIndex(index);
@@ -477,7 +503,8 @@ export default function WorkoutScreen() {
     setSupersetQuery("");
     switchExercise(exercise, ids);
   }
-  const action = field === "weight" ? "Next" : "Log set";
+  const canUndo = undoSet !== null && restEndsAt === null;
+  const action = canUndo ? "Undo last set" : field === "weight" ? "Next" : "Log set";
   const restRemaining = restEndsAt === null ? 0 : Math.max(0, Math.ceil((restEndsAt - restNow) / 1_000));
   const formatRest = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   const weights = history.map((set) => set.weight);
@@ -528,6 +555,9 @@ export default function WorkoutScreen() {
   );
   const recommendationValue = `${usesWeight && recommendation.weight !== undefined ? `${recommendation.weight} lb × ` : ""}${recommendation.reps} reps`;
   const recommendationLabel = ({ start: "START", increase: "ADD WEIGHT", retain: "HOLD", reduce: "EASE BACK", deload: "LIGHT DAY" } as const)[recommendation.action];
+  const valueDisplay = <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.value, { color: colors.text }]}>
+    {value || "0"}{field === "weight" ? " lb" : " reps"}
+  </Text>;
   function applyRecommendation() {
     if (recommendation.weight !== undefined) setWeight(String(recommendation.weight));
     setReps(String(recommendation.reps));
@@ -592,27 +622,24 @@ export default function WorkoutScreen() {
       </View>
       <View style={styles.valueBlock}>
         <View style={styles.valueRow}>
-          <Pressable
+          {field === "weight" && supportsPlateDial ? <Pressable
             onPress={() => {
-              if (field === "weight" && supportsPlateDial && weightInputMode === "plates") {
-                setWeightInputMode("keypad");
-              }
-              else if (field === "weight" && supportsPlateDial) {
+              if (weightInputMode === "plates") setWeightInputMode("keypad");
+              else {
                 setWeight(String(normalizeBarWeight(weight)));
                 setWeightInputMode("plates");
               }
-              else if (field === "weight") setWeight("");
-              else setReps("");
             }}
             style={({ pressed }) => [pressed && styles.valuePressed]}
             accessibilityRole="button"
-            accessibilityLabel={field === "weight" && supportsPlateDial ? weightInputMode === "plates" ? "Show weight keypad" : "Show plate loading" : `Clear ${field}`}
-          >
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.value, { color: colors.text }]}>
-              {value || "0"}
-              {field === "weight" ? " lb" : " reps"}
-            </Text>
-          </Pressable>
+            accessibilityLabel={weightInputMode === "plates" ? "Show weight keypad" : "Show plate loading"}
+          >{valueDisplay}</Pressable> : valueDisplay}
+          {value !== "" && !(field === "weight" && supportsPlateDial && weightInputMode === "plates") && <Pressable
+            onPress={() => field === "weight" ? setWeight("") : setReps("")}
+            style={styles.clearValue}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear ${field}`}
+          ><Text style={[styles.clearValueText, { color: colors.mutedText }]}>CLEAR</Text></Pressable>}
         </View>
         {!!recentSets.length && <Pressable
           onPress={() => setHistoryOpen(true)}
@@ -671,13 +698,15 @@ export default function WorkoutScreen() {
       </View>
       <View style={styles.footer}>
         <Pressable
-          onPress={continueFlow}
+          onPress={canUndo ? undoLastSet : continueFlow}
           style={({ pressed }) => [
             styles.saveButton,
             { backgroundColor: accentColor },
-            !Number(value) && styles.saveDisabled,
+            !canUndo && !Number(value) && styles.saveDisabled,
             pressed && styles.savePressed,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={action}
         >
           {saving ? (
             <ActivityIndicator color="#fff" />
@@ -976,6 +1005,8 @@ const styles = StyleSheet.create({
     lineHeight: 76,
   },
   valuePressed: { opacity: 0.6 },
+  clearValue: { minHeight: 44, justifyContent: "center" },
+  clearValueText: { fontSize: 10, fontWeight: "900", letterSpacing: 0.7 },
   edgeLabel: { marginBottom: 5, fontSize: 7, fontWeight: "900", letterSpacing: 0.7 },
   recommendationButton: { position: "absolute", top: 0, right: 16, bottom: 0, width: 72, justifyContent: "center", alignItems: "flex-end" },
   recommendationPressed: { opacity: 0.55 },
@@ -1052,7 +1083,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   restModal: { flex: 1 },
-  restScreen: { flex: 1, paddingHorizontal: 24, paddingTop: 18, alignItems: "center" },
+  restScreen: { flex: 1, paddingHorizontal: 24, paddingTop: 72, alignItems: "center" },
   restTitle: { fontSize: 28, fontWeight: "900", letterSpacing: -1 },
   restBody: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
   restDial: { width: 310, height: 310, alignItems: "center", justifyContent: "center" },

@@ -56,6 +56,7 @@ export type WorkoutHistoryPoint = { workoutId: string; setNumber: number; weight
 export function getWorkoutHistory(exerciseId: string): WorkoutHistoryPoint[];
 export function getRecentExerciseExhaustion(exerciseId: string, excludingWorkoutId: string, now?: Date): number | undefined;
 export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint): void;
+export function updateWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint, values: { weight: number; reps: number }): void;
 export type WorkoutStats = { visits: number; sets: number; volume: number };
 export function getWorkoutStats(): WorkoutStats;
 export type WorkoutActivity = { date: string; volume: number; sets: number; visits: number };

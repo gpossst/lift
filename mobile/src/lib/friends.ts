@@ -13,11 +13,19 @@ export type FriendsSummary = {
 };
 
 export type FriendPersonalRecord = Friend & {
+  workoutId: string;
+  setNumber: number;
   exerciseId: string;
   weight: number;
   reps: number;
   completedAt: number;
+  liked: boolean;
+  likeCount: number;
+  commentCount: number;
 };
+
+export type FriendComment = { id: string; body: string; createdAt: number; displayName: string; imageUrl: string | null; mine: boolean };
+type WorkoutKey = Pick<FriendPersonalRecord, 'id' | 'workoutId'>;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiUrl}${path}`, {
@@ -45,6 +53,18 @@ export async function getFriends(): Promise<FriendsSummary> {
 
 export async function getFriendPersonalRecords(): Promise<FriendPersonalRecord[]> {
   return (await request<{ prs: FriendPersonalRecord[] }>('/v1/friends/prs')).prs;
+}
+
+export async function setFriendWorkoutLike(workout: WorkoutKey, liked: boolean): Promise<{ liked: boolean; likeCount: number }> {
+  return request('/v1/friends/workouts/likes', { method: liked ? 'POST' : 'DELETE', body: JSON.stringify(workout) });
+}
+
+export async function getFriendWorkoutComments(workout: WorkoutKey): Promise<{ comments: FriendComment[]; commentCount: number }> {
+  return request(`/v1/friends/workouts/comments?${new URLSearchParams({ id: workout.id, workoutId: workout.workoutId })}`);
+}
+
+export async function addFriendWorkoutComment(workout: WorkoutKey, body: string): Promise<{ comments: FriendComment[]; commentCount: number }> {
+  return request('/v1/friends/workouts/comments', { method: 'POST', body: JSON.stringify({ id: workout.id, workoutId: workout.workoutId, body }) });
 }
 
 export async function addFriend(code: string): Promise<FriendsSummary> {

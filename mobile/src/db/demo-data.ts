@@ -1,4 +1,6 @@
 import type { Exercise } from './exercise-catalog';
+import type { FriendComment, FriendPersonalRecord } from '@/lib/friends';
+import { friendWorkoutKey } from '@/lib/friend-record-groups';
 
 export const demoWorkoutIdPrefix = 'demo-history-';
 
@@ -14,6 +16,33 @@ export type DemoWorkoutSet = {
 // Expo replaces EXPO_PUBLIC_* values at bundle time. This intentionally defaults
 // to off so production builds and ordinary development sessions stay empty.
 export const isDemoDataEnabled = process.env.EXPO_PUBLIC_SEED_DEMO_DATA === 'true';
+
+export const demoFriendIdPrefix = 'demo-friend-';
+
+export function buildDemoFriendRecords(now = Date.now()): FriendPersonalRecord[] {
+  const seconds = Math.floor(now / 1000);
+  return [
+    { id: `${demoFriendIdPrefix}maya`, displayName: 'Maya Chen', imageUrl: null, workoutId: 'demo-maya-1', setNumber: 3, exerciseId: 'free_exercise_db:Barbell_Squat', weight: 185, reps: 5, completedAt: seconds - 2 * 60 * 60 - 20 * 60, liked: false, likeCount: 5, commentCount: 2 },
+    { id: `${demoFriendIdPrefix}maya`, displayName: 'Maya Chen', imageUrl: null, workoutId: 'demo-maya-1', setNumber: 4, exerciseId: 'free_exercise_db:Barbell_Bench_Press_-_Medium_Grip', weight: 145, reps: 6, completedAt: seconds - 2 * 60 * 60 - 10 * 60, liked: false, likeCount: 5, commentCount: 2 },
+    { id: `${demoFriendIdPrefix}maya`, displayName: 'Maya Chen', imageUrl: null, workoutId: 'demo-maya-1', setNumber: 3, exerciseId: 'free_exercise_db:Standing_Military_Press', weight: 95, reps: 5, completedAt: seconds - 2 * 60 * 60, liked: false, likeCount: 5, commentCount: 2 },
+    { id: `${demoFriendIdPrefix}jordan`, displayName: 'Jordan Lee', imageUrl: null, workoutId: 'demo-jordan-1', setNumber: 4, exerciseId: 'free_exercise_db:Barbell_Deadlift', weight: 275, reps: 3, completedAt: seconds - 26 * 60 * 60 - 10 * 60, liked: false, likeCount: 9, commentCount: 1 },
+    { id: `${demoFriendIdPrefix}jordan`, displayName: 'Jordan Lee', imageUrl: null, workoutId: 'demo-jordan-1', setNumber: 3, exerciseId: 'free_exercise_db:Pullups', weight: 25, reps: 7, completedAt: seconds - 26 * 60 * 60, liked: false, likeCount: 9, commentCount: 1 },
+    { id: `${demoFriendIdPrefix}alex`, displayName: 'Alex Rivera', imageUrl: null, workoutId: 'demo-alex-1', setNumber: 3, exerciseId: 'free_exercise_db:Barbell_Bench_Press_-_Medium_Grip', weight: 155, reps: 6, completedAt: seconds - 3 * 24 * 60 * 60, liked: false, likeCount: 2, commentCount: 0 },
+  ];
+}
+
+export function buildDemoFriendComments(now = Date.now()): Record<string, FriendComment[]> {
+  const seconds = Math.floor(now / 1000);
+  return {
+    [friendWorkoutKey({ id: `${demoFriendIdPrefix}maya`, workoutId: 'demo-maya-1' })]: [
+      { id: 'demo-comment-1', displayName: 'Jordan Lee', imageUrl: null, body: 'Strong set! 185 is huge 👏', createdAt: seconds - 90 * 60, mine: false },
+      { id: 'demo-comment-2', displayName: 'Alex Rivera', imageUrl: null, body: 'You made that look easy.', createdAt: seconds - 55 * 60, mine: false },
+    ],
+    [friendWorkoutKey({ id: `${demoFriendIdPrefix}jordan`, workoutId: 'demo-jordan-1' })]: [
+      { id: 'demo-comment-3', displayName: 'Maya Chen', imageUrl: null, body: 'New deadlift PR! Let’s go 🔥', createdAt: seconds - 22 * 60 * 60, mine: false },
+    ],
+  };
+}
 
 const demoExercises = [
   { id: 'free_exercise_db:Barbell_Squat', weight: 155, reps: 8 },

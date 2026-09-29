@@ -424,6 +424,16 @@ export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint) {
   }
 }
 
+export function updateWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint, values: { weight: number; reps: number }) {
+  let updated = false;
+  write(read().map((storedSet) => {
+    if (storedSet.exerciseId !== exerciseId || storedSet.workoutId !== set.workoutId || storedSet.setNumber !== set.setNumber || storedSet.completedAt.getTime() !== set.completedAt.getTime()) return storedSet;
+    updated = true;
+    return { ...storedSet, ...values };
+  }));
+  if (updated) markCloudSyncDirty('set', cloudSetKey(set.workoutId, exerciseId, set.setNumber));
+}
+
 const cloudKeySeparator = '\u001F';
 const cloudSetKey = (workoutId: string, exerciseId: string, setNumber: number) => [workoutId, exerciseId, setNumber].join(cloudKeySeparator);
 const readTombstones = (): CloudSyncTombstone[] => JSON.parse(storage?.getItem(tombstonesKey) ?? '[]');
