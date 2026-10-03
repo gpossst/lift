@@ -39,12 +39,16 @@ on account switch.
 
 The active exercise screen can apply a load-and-rep recommendation built from
 the goal-derived prescription and completed sessions for that exercise. It
-adds 5 lb after every prescribed set reaches the top of the range, reduces the
+adds 5 lb after every prescribed working-load set reaches the top of the range, reduces the
 load after two sessions below the bottom, otherwise retains the latest working
 load, and suggests a lighter, one-set-shorter session when three-session decline
 coincides with high recent muscle exhaustion. With no exercise history it fills
 only the conservative bottom of the rep range and asks the lifter to choose a
 comfortable weight.
+
+Lighter warm-up and back-off sets do not satisfy the working-load set count or
+determine whether that load missed the rep range. Session comparisons use the
+heaviest logged load and its sets.
 
 ## Optional personalization
 
@@ -101,9 +105,17 @@ They remain unavailable until at least five people match every supplied cohort
 field; the service does not broaden a sparse cohort by silently dropping gym,
 goal, experience, schedule, height, or weight criteria.
 
-The exercise browser already limits ranking to its visible candidates, so hidden
-equipment or search results cannot consume the diversity bonuses. Unranked
-exercises remain available in the library.
+`getRankedExercises(workoutId, split, context)` in the mobile DB adapters ranks
+every eligible visible catalog movement against the logged session, including
+movements already used. It does not reserve planned muscle work or stop at the
+remaining session time. `getExerciseRecommendations` uses the same scoring
+inputs to choose a small plan within the time budget, updating planned dose and
+diversity after each suggestion. Hidden equipment or search results do not
+affect the visible catalog ranking. Ineligible movements remain available for
+manual selection in the library.
+
+Peer comparisons are fetched separately when needed; workout synchronization
+does not request them or depend on their availability.
 
 Before releasing the updated Worker, apply all pending migrations in
 `worker/migrations/` using the normal migration process. This includes

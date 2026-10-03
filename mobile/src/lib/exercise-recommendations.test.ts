@@ -1,5 +1,5 @@
 import { exerciseCatalog, exerciseRequiresWeight, type Exercise } from '@/db/exercise-catalog';
-import { getExerciseRecommendations, getProgressiveOverloadRecommendation, getRecommendedWorkoutSplit, type RecommendationFeedback, type RecommendationSet } from './exercise-recommendations';
+import { getExerciseRecommendations, getRankedExercises, getProgressiveOverloadRecommendation, getRecommendedWorkoutSplit, type RecommendationFeedback, type RecommendationSet } from './exercise-recommendations';
 
 function assert(condition: unknown, message = 'assertion failed'): asserts condition { if (!condition) throw new Error(message); }
 function equal<T>(actual: T, expected: T) { assert(actual === expected, `expected ${String(expected)}, got ${String(actual)}`); }
@@ -213,3 +213,62 @@ for (const split of ['push', 'pull', 'legs'] as const) {
     return details.category !== 'stretching' && details.category !== 'cardio' && details.category !== 'strongman' && details.level !== 'expert';
   }), `${split} defaults should avoid mobility, cardio, strongman, and expert movements`);
 }
+
+// Warmups and back-off sets do not satisfy the working-load progression target.
+const mixedLoads = [set('bench', 'mixed', 1, 100, 10), ...session('mixed', 1, 50, [10, 10])];
+deepEqual(getProgressiveOverloadRecommendation(mixedLoads, defaultPrescription), {
+  weight: 100, reps: 10, sets: 3, action: 'retain', reason: 'Keep the current prescription while performance is stable',
+});
+deepEqual(getProgressiveOverloadRecommendation([...mixedLoads].reverse(), defaultPrescription), getProgressiveOverloadRecommendation(mixedLoads, defaultPrescription));
+equal(getProgressiveOverloadRecommendation([set('bench', 'warmup', 1, 50, 5), ...session('warmup', 1, 100, [10, 10, 10])], defaultPrescription).action, 'increase');
+equal(getProgressiveOverloadRecommendation([set('bench', 'high-rep-warmup', 1, 50, 40), ...session('high-rep-warmup', 1, 100, [8, 8, 8])], defaultPrescription).weight, 100);
+equal(getProgressiveOverloadRecommendation([
+  ...session('miss-heavy-1', 2, 100, [5, 5, 5]), ...session('miss-heavy-1', 2, 50, [15, 15]),
+  ...session('miss-heavy-2', 1, 100, [5, 5, 5]), ...session('miss-heavy-2', 1, 50, [15, 15]),
+], defaultPrescription).action, 'reduce');
+
+// Library sorting scores all eligible movements rather than consuming a workout plan.
+const rankCatalog = [bench, shoulderPress, pushdown, fly, plank];
+const fullRanking = getRankedExercises(rankCatalog, [], [], 'today', 'push', now, { sessionMinutes: 15 });
+equal(fullRanking.length, rankCatalog.length);
+assert(fullRanking.length > getExerciseRecommendations(rankCatalog, [], [], 'today', 'push', Infinity, now, { sessionMinutes: 15 }).length, 'catalog ranks beyond the session time budget');
+const completedCoverage = [
+  ...Array.from({ length: 24 }, () => set('bench', 'today')),
+  ...Array.from({ length: 24 }, () => set('shoulder', 'today')),
+  ...Array.from({ length: 24 }, () => set('pushdown', 'today')),
+  ...Array.from({ length: 3 }, () => set('plank', 'today', 0, 0, 30)),
+];
+equal(getExerciseRecommendations(rankCatalog, completedCoverage, [], 'today', 'push', Infinity, now).length, 0);
+equal(getRankedExercises(rankCatalog, completedCoverage, [], 'today', 'push', now).length, rankCatalog.length);
+assert(getRankedExercises(rankCatalog, completedCoverage, [], 'today', 'push', now).some(({ score }) => score <= 0), 'catalog retains eligible movements with nonpositive scores');
+const visibleRanking = getRankedExercises(rankCatalog, [], [], 'today', 'push', now, { sessionMinutes: 15, excludedExerciseIds: ['bench', 'pushdown'] });
+deepEqual(visibleRanking, fullRanking.filter(({ exercise }) => !['bench', 'pushdown'].includes(exercise.id)));
+const benchTwin = { ...bench, id: 'bench-twin' };
+const soloHistory = [set('bench', 'solo-previous', 8)];
+const loggedScore = getRankedExercises([bench, benchTwin], [...soloHistory, set('bench', 'today')], [], 'today', 'push', now).find(({ exercise }) => exercise.id === 'bench')!.score;
+const twinScore = getRankedExercises([bench, benchTwin], [...soloHistory, set('bench-twin', 'today')], [], 'today', 'push', now).find(({ exercise }) => exercise.id === 'bench')!.score;
+equal(loggedScore, twinScore + 5);
+const rankingHistory = [...progressingBench, ...yesterdayBench, set('fly', 'paired', 8), set('bench', 'paired', 8), set('bench', 'today')];
+deepEqual(getRankedExercises(rankCatalog, rankingHistory, [], 'today', 'push', now, {}, rejectionHistory), getRankedExercises(rankCatalog, [...rankingHistory].reverse(), [], 'today', 'push', now, {}, [...rejectionHistory].reverse()));
+deepEqual(getExerciseRecommendations(rankCatalog, rankingHistory, [], 'today', 'push', 3, now, {}, rejectionHistory), getExerciseRecommendations(rankCatalog, [...rankingHistory].reverse(), [], 'today', 'push', 3, now, {}, [...rejectionHistory].reverse()));
+const sameNameExercises = [{ ...fly, id: 'z-fly' }, { ...fly, id: 'a-fly' }];
+deepEqual(getRankedExercises(sameNameExercises, [], [], 'today', 'push', now).map(({ exercise }) => exercise.id), ['a-fly', 'z-fly']);
+equal(getExerciseRecommendations([...sameNameExercises].reverse(), [], [], 'today', 'push', 1, now)[0]!.exercise.id, 'a-fly');
+
+// The database adapter and library screen use the full-ranking entry point.
+const storage = new Map<string, string>();
+Object.defineProperty(globalThis, 'localStorage', { value: {
+  getItem: (key: string) => storage.get(key) ?? null,
+  setItem: (key: string, value: string) => { storage.set(key, value); },
+  removeItem: (key: string) => { storage.delete(key); },
+} });
+const db = await import('../db/index.web');
+const rankedWorkout = db.createWorkout('push');
+const dbRanking = db.getRankedExercises(rankedWorkout.id, 'push', { sessionMinutes: 15 });
+assert(dbRanking.length > db.getExerciseRecommendations(rankedWorkout.id, 'push', Infinity, { sessionMinutes: 15 }).length, 'database exposes full catalog ranking');
+const loggedExerciseId = dbRanking[0]!.exercise.id;
+for (let number = 1; number <= 8; number++) db.saveWorkoutSet({ exerciseId: loggedExerciseId, workoutId: rankedWorkout.id, setNumber: number, weight: 100, reps: 8, completedAt: new Date() });
+equal(db.getExerciseRecommendations(rankedWorkout.id, 'push', Infinity, { sessionMinutes: 15 }).length, 0);
+equal(db.getRankedExercises(rankedWorkout.id, 'push', { sessionMinutes: 15 }).length, dbRanking.length);
+assert(db.getRankedExercises(rankedWorkout.id, 'push').some(({ exercise }) => exercise.id === loggedExerciseId), 'database ranks logged movements when the session has no time left');
+equal(db.getRankedExercises(rankedWorkout.id, 'push', { excludedExerciseIds: db.getExercises().filter(({ id }) => id !== loggedExerciseId).map(({ id }) => id) }).length, 1);

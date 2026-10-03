@@ -9,12 +9,12 @@ import { useAppearance } from '@/components/appearance-provider';
 
 type Tab = {
   label: string;
-  route: 'index' | 'stats' | 'friends' | 'settings';
+  route: '(home)' | 'stats' | 'friends' | 'settings';
   Icon: typeof Home;
 };
 
 const tabs: Tab[] = [
-  { label: 'Home', route: 'index', Icon: Home },
+  { label: 'Home', route: '(home)', Icon: Home },
   { label: 'Stats', route: 'stats', Icon: BarChart2 },
   { label: 'Friends', route: 'friends', Icon: Users },
   { label: 'Settings', route: 'settings', Icon: Settings },
@@ -26,7 +26,7 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
   const pathname = usePathname();
   const activeRoute = state.routes[state.index]?.name;
 
-  if (activeRoute !== 'start' && (!tabs.some((tab) => tab.route === activeRoute) || pathname.startsWith('/settings/') || pathname.startsWith('/stats/'))) return null;
+  if (activeRoute !== 'start' && (!tabs.some((tab) => tab.route === activeRoute) || pathname.startsWith('/history') || pathname.startsWith('/settings/') || pathname.startsWith('/stats/'))) return null;
 
   const selectTab = (route: Tab['route']) => {
     const event = navigation.emit({ type: 'tabPress', target: route, canPreventDefault: true });
@@ -35,7 +35,7 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={[styles.shell, { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, 10) }]}>
-      {activeRoute !== 'start' && activeRoute !== 'index' && <Svg width="100%" height={24} style={styles.gradient} pointerEvents="none">
+      {activeRoute !== 'start' && <Svg width="100%" height={24} style={styles.gradient} pointerEvents="none">
         <Defs>
           <LinearGradient id="navbar-top-fade" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={colors.background} stopOpacity="0" />
@@ -76,9 +76,9 @@ function TabButton({ tab, active, onPress }: { tab: Tab; active: boolean; onPres
 }
 
 const styles = StyleSheet.create({
-  shell: { paddingHorizontal: 14, position: 'relative' },
+  shell: { position: 'relative' },
   gradient: { position: 'absolute', top: -24, left: 0 },
-  tabRow: { height: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tabRow: { height: 62, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tabButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 3, position: 'relative' },
   tabLabel: { fontSize: 11, lineHeight: 14, fontWeight: '700' },
   startButton: { width: 58, height: 58, marginHorizontal: 5, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 0 },

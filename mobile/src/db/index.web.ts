@@ -1,9 +1,11 @@
+import { validateReceipt } from '@/lib/cloud-sync-receipt';
+import { assertValidWorkoutSet } from '@/lib/workout-set-validation';
 // The product database is Expo SQLite + Drizzle on iOS/Android. Expo SQLite's web
 // driver requires cross-origin isolation, which local Expo dev servers do not add.
 // This tiny browser adapter keeps the preview usable while the native app uses Drizzle.
 import { exerciseCatalog, type Exercise, workoutSplitForExercise } from './exercise-catalog';
 import { buildDemoWorkoutSets, demoWorkoutIdPrefix, isDemoDataEnabled } from './demo-data';
-import { defaultWorkoutSplits, getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
+import { defaultWorkoutSplits, getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRankedExercises as rankCatalogExercises, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 export type { RecommendationContext, RecommendationFeedback, RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
@@ -28,6 +30,8 @@ export type CloudSyncEntity = 'workout' | 'set' | 'rating' | 'feedback' | 'split
 export type CloudSyncChange = { entity: CloudSyncEntity; key: string; operation: 'upsert' | 'delete'; baseRevision: number; record?: Record<string, unknown> };
 export type CloudSyncRemoteChange = Omit<CloudSyncChange, 'baseRevision'> & { revision: number };
 export type CloudSyncBatch = { batchId: string; changes: CloudSyncChange[] };
+export type CloudSyncMutationResult = { entity: CloudSyncEntity; key: string; status: 'accepted' | 'conflict'; revision?: number };
+export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; conflict?: boolean };
 const key = 'lift-preview-sets';
 const workoutsKey = 'lift-preview-workouts';
 const ratingsKey = 'lift-preview-muscle-ratings';
@@ -43,6 +47,7 @@ const tombstonesKey = 'lift-cloud-sync-tombstones';
 const outboxKey = 'lift-cloud-sync-outbox-v2';
 const versionsKey = 'lift-cloud-sync-versions-v2';
 const cursorKey = 'lift-cloud-sync-cursor-v2';
+const rejectedSyncKey = 'lift-cloud-sync-rejected-v2';
 const storage = typeof globalThis.localStorage?.getItem === 'function'
   && typeof globalThis.localStorage?.setItem === 'function'
   && typeof globalThis.localStorage?.removeItem === 'function'
@@ -140,6 +145,7 @@ export function createWorkout(split: WorkoutSplit): Workout {
 }
 
 export function saveWorkoutSet(set: StoredSet) {
+  assertValidWorkoutSet(set);
   write([...read(), set]);
   markCloudSyncDirty('set', [set.workoutId, set.exerciseId, set.setNumber].join('\u001F'));
 }
@@ -176,6 +182,16 @@ export function endWorkout(workoutId: string): Workout | null {
   return workout;
 }
 
+export function deleteWorkout(workoutId: string): boolean {
+  if (!readWorkouts().some((workout) => workout.id === workoutId)) return false;
+  writeWorkouts(readWorkouts().filter((workout) => workout.id !== workoutId));
+  write(read().filter((set) => set.workoutId !== workoutId));
+  const ratings = readRatings(); delete ratings[workoutId]; writeRatings(ratings);
+  writeRecommendationFeedback(readRecommendationFeedback().filter((item) => item.workoutId !== workoutId));
+  queueCloudSyncTombstone('workout', workoutId);
+  return true;
+}
+
 export function getWorkoutVisitSummary(workoutId: string): WorkoutVisitSummary | null {
   const workout = readWorkouts().find((item) => item.id === workoutId);
   if (!workout) return null;
@@ -197,10 +213,51 @@ export function getWorkoutVisitExercises(workoutId: string): WorkoutVisitExercis
 
 /** Completed workouts with at least one logged set, newest first. */
 export function getWorkoutVisits(): WorkoutVisitSummary[] {
+  const totals = new Map<string, { sets: number; exerciseIds: Set<string>; volume: number; reps: number }>();
+  for (const set of read()) {
+    const total = totals.get(set.workoutId) ?? { sets: 0, exerciseIds: new Set<string>(), volume: 0, reps: 0 };
+    total.sets += 1;
+    total.exerciseIds.add(set.exerciseId);
+    total.volume += set.weight * set.reps;
+    total.reps += set.reps;
+    totals.set(set.workoutId, total);
+  }
   return readWorkouts()
-    .filter((workout) => read().some((set) => set.workoutId === workout.id))
-    .map((workout) => getWorkoutVisitSummary(workout.id)!)
-    .sort((a, b) => (b.workout.endedAt ?? b.workout.createdAt).getTime() - (a.workout.endedAt ?? a.workout.createdAt).getTime());
+    .flatMap((workout) => {
+      const total = totals.get(workout.id);
+      return workout.endedAt && total ? [{ workout, sets: total.sets, exercises: total.exerciseIds.size, volume: total.volume, reps: total.reps }] : [];
+    })
+    .sort((a, b) => b.workout.endedAt!.getTime() - a.workout.endedAt!.getTime() || a.workout.id.localeCompare(b.workout.id));
+}
+
+/** One history read for overview screens, excluding unfinished workouts. */
+export function getCompletedWorkoutExerciseDetails(): Map<string, WorkoutVisitExerciseDetail[]> {
+  const completed = new Set(readWorkouts().filter((workout) => workout.endedAt).map((workout) => workout.id));
+  const names = new Map(exerciseCatalog.map((exercise) => [exercise.id, exercise.name]));
+  const workouts = new Map<string, Map<string, WorkoutVisitExerciseDetail>>();
+  for (const set of read()) {
+    if (!completed.has(set.workoutId)) continue;
+    const exercises = workouts.get(set.workoutId) ?? new Map<string, WorkoutVisitExerciseDetail>();
+    const exercise = exercises.get(set.exerciseId) ?? { id: set.exerciseId, name: names.get(set.exerciseId) ?? 'Exercise', sets: [] };
+    exercise.sets.push({ number: set.setNumber, weight: set.weight, reps: set.reps });
+    exercises.set(set.exerciseId, exercise);
+    workouts.set(set.workoutId, exercises);
+  }
+  return new Map([...workouts].map(([id, exercises]) => [id, [...exercises.values()]
+    .map((exercise) => ({ ...exercise, sets: exercise.sets.sort((a, b) => a.number - b.number) }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))]));
+}
+
+export function getExerciseSessionCounts(): Map<string, number> {
+  const completed = new Set(readWorkouts().filter((workout) => workout.endedAt).map((workout) => workout.id));
+  const sessions = new Map<string, Set<string>>();
+  for (const set of read()) {
+    if (!completed.has(set.workoutId)) continue;
+    const workouts = sessions.get(set.exerciseId) ?? new Set<string>();
+    workouts.add(set.workoutId);
+    sessions.set(set.exerciseId, workouts);
+  }
+  return new Map([...sessions].map(([id, workouts]) => [id, workouts.size]));
 }
 
 export function getWorkoutVisitExerciseDetails(workoutId: string): WorkoutVisitExerciseDetail[] {
@@ -220,7 +277,9 @@ export function getWorkoutAchievements(workoutId: string): WorkoutAchievement[] 
   return [...currentExercises].flatMap<WorkoutAchievement>((exerciseId) => {
     const history = read().filter((set) => set.exerciseId === exerciseId);
     const current = history.filter((set) => set.workoutId === workoutId);
-    const previous = history.filter((set) => set.workoutId !== workoutId);
+    // Only earlier sets count, so a past workout keeps the PRs it earned at the time.
+    const start = Math.min(...current.map((set) => set.completedAt.getTime()));
+    const previous = history.filter((set) => set.workoutId !== workoutId && set.completedAt.getTime() < start);
     if (!previous.length) return [];
     const maxCurrentWeight = Math.max(...current.map((set) => set.weight));
     const maxPreviousWeight = Math.max(...previous.map((set) => set.weight));
@@ -280,7 +339,7 @@ export function getWorkoutMuscleRatings(workoutId: string): WorkoutMuscleRating[
   return getWorkoutMuscles(workoutId).flatMap((muscle) => ratings[muscle.id] === undefined ? [] : [{ ...muscle, exhaustion: ratings[muscle.id] }]);
 }
 
-export function getExerciseRecommendations(workoutId: string, split: WorkoutSplit, limit?: number, context?: RecommendationContext): ExerciseRecommendation[] {
+function recommendationsFromHistory(workoutId: string, split: WorkoutSplit, limit?: number, context?: RecommendationContext, rankOnly = false): ExerciseRecommendation[] {
   const workouts = new Map(readWorkouts().map((workout) => [workout.id, workout]));
   const muscleRatings = Object.entries(readRatings()).flatMap(([ratedWorkoutId, ratings]) => {
     const workout = workouts.get(ratedWorkoutId);
@@ -291,7 +350,19 @@ export function getExerciseRecommendations(workoutId: string, split: WorkoutSpli
   const completedSets = read().filter((set) => set.workoutId === workoutId || workouts.get(set.workoutId)?.endedAt || !workouts.has(set.workoutId))
     .sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.setNumber - b.setNumber);
   const feedback = readRecommendationFeedback().sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.exerciseId.localeCompare(b.exerciseId));
-  return rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, context, feedback, getWorkoutSplitDefinition(split) ?? undefined);
+  const definition = getWorkoutSplitDefinition(split) ?? undefined;
+  return rankOnly
+    ? rankCatalogExercises(getExercises(), completedSets, muscleRatings, workoutId, split, undefined, context, feedback, definition)
+    : rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, context, feedback, definition);
+}
+
+
+export function getExerciseRecommendations(workoutId: string, split: WorkoutSplit, limit?: number, context?: RecommendationContext): ExerciseRecommendation[] {
+  return recommendationsFromHistory(workoutId, split, limit, context);
+}
+
+export function getRankedExercises(workoutId: string, split: WorkoutSplit, context?: RecommendationContext): ExerciseRecommendation[] {
+  return recommendationsFromHistory(workoutId, split, undefined, context, true);
 }
 
 export function recordRecommendationFeedback(
@@ -425,6 +496,7 @@ export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint) {
 }
 
 export function updateWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint, values: { weight: number; reps: number }) {
+  assertValidWorkoutSet({ ...set, ...values });
   let updated = false;
   write(read().map((storedSet) => {
     if (storedSet.exerciseId !== exerciseId || storedSet.workoutId !== set.workoutId || storedSet.setNumber !== set.setNumber || storedSet.completedAt.getTime() !== set.completedAt.getTime()) return storedSet;
@@ -443,6 +515,8 @@ type StoredOutbox = CloudSyncChange & { mutationId: string; batchId?: string; cr
 const readOutbox = (): StoredOutbox[] => JSON.parse(storage?.getItem(outboxKey) ?? '[]');
 const writeOutbox = (items: StoredOutbox[]) => storage?.setItem(outboxKey, JSON.stringify(items));
 const readVersions = (): Record<string, number> => JSON.parse(storage?.getItem(versionsKey) ?? '{}');
+export const getRejectedCloudSyncChanges = (): CloudSyncRejectedChange[] => JSON.parse(storage?.getItem(rejectedSyncKey) ?? '[]');
+const writeRejectedChanges = (items: CloudSyncRejectedChange[]) => storage?.setItem(rejectedSyncKey, JSON.stringify([...new Map(items.map((item) => [`${item.entity}\u0000${item.key}`, item])).values()]));
 const versionKey = (entity: CloudSyncEntity, key: string) => `${entity}\u0000${key}`;
 const mutationId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
@@ -475,7 +549,8 @@ function localSyncRecord(entity: CloudSyncEntity, entityKey: string): Record<str
 function enqueueCloudSync(entity: CloudSyncEntity, entityKey: string, operation: 'upsert' | 'delete') {
   const record = operation === 'upsert' ? localSyncRecord(entity, entityKey) : null;
   if (operation === 'upsert' && !record) return;
-  const items = readOutbox();
+  writeRejectedChanges(getRejectedCloudSyncChanges().filter((item) => !(item.entity === entity && item.key === entityKey) && !(operation === 'delete' && entity === 'workout' && item.key.startsWith(entityKey + cloudKeySeparator))));
+  const items = readOutbox().filter((item) => !(operation === 'delete' && entity === 'workout' && !item.batchId && item.key.startsWith(entityKey + cloudKeySeparator)));
   const index = items.findIndex((item) => !item.batchId && item.entity === entity && item.key === entityKey);
   const item: StoredOutbox = { entity, key: entityKey, operation, baseRevision: readVersions()[versionKey(entity, entityKey)] ?? 0, record: record ?? undefined, mutationId: mutationId(), createdAt: Date.now() };
   if (index < 0) items.push(item); else items[index] = item;
@@ -511,14 +586,43 @@ export function getCloudSyncBatch(limit = 3): CloudSyncBatch | null {
   const changes = items.filter((item) => item.batchId === batchId).map(({ mutationId: _, batchId: __, createdAt: ___, ...change }) => change);
   return changes.length ? { batchId, changes } : null;
 }
-export function acknowledgeCloudSyncBatch(batchId: string, revision: number) {
+export function acknowledgeCloudSyncBatch(batchId: string, revision: number, results: CloudSyncMutationResult[]) {
   const items = readOutbox();
   const acknowledged = items.filter((item) => item.batchId === batchId);
+  validateReceipt(acknowledged, revision, results);
   const remaining = items.filter((item) => item.batchId !== batchId);
-  for (const item of remaining) if (acknowledged.some((prior) => prior.entity === item.entity && prior.key === item.key)) item.baseRevision = Math.max(item.baseRevision, revision);
+  const versions = readVersions();
+  const rejected = getRejectedCloudSyncChanges();
+  for (const item of acknowledged) {
+    const result = results.find((entry) => entry.entity === item.entity && entry.key === item.key)!;
+    if (result.status === 'conflict') {
+      if ((item.operation === 'delete' || localSyncRecord(item.entity, item.key)) && !remaining.some((entry) => entry.entity === item.entity && entry.key === item.key)) rejected.push({ ...item, reason: 'Another device changed this record. Review your attempted values before saving again.', conflict: true });
+      continue;
+    }
+    versions[versionKey(item.entity, item.key)] = Math.max(versions[versionKey(item.entity, item.key)] ?? 0, revision);
+    for (const entry of remaining) if (entry.entity === item.entity && entry.key === item.key) entry.baseRevision = Math.max(entry.baseRevision, revision);
+  }
+  // Save revisions before removing their durable mutations: a crash may retry,
+  // but cannot leave an acknowledged record with an obsolete base revision.
+  storage?.setItem(versionsKey, JSON.stringify(versions));
+  writeRejectedChanges(rejected);
   writeOutbox(remaining);
-  const deleted = new Set(acknowledged.filter((item) => item.operation === 'delete').map((item) => versionKey(item.entity, item.key)));
+  const deleted = new Set(acknowledged.filter((item) => item.operation === 'delete' && results.some((entry) => entry.entity === item.entity && entry.key === item.key && entry.status === 'accepted')).map((item) => versionKey(item.entity, item.key)));
   writeTombstones(readTombstones().filter((item) => !deleted.has(versionKey(item.entity, item.key))));
+}
+export function rejectCloudSyncBatch(batchId: string, reason: string, invalidChanges?: { entity: CloudSyncEntity; key: string }[]) {
+  const items = readOutbox();
+  const rejected = getRejectedCloudSyncChanges();
+  const remaining = items.filter((item) => item.batchId !== batchId);
+  for (const item of items.filter((entry) => entry.batchId === batchId)) {
+    if (remaining.some((entry) => entry.entity === item.entity && entry.key === item.key) || (item.operation === 'upsert' && !localSyncRecord(item.entity, item.key))) continue;
+    if (invalidChanges?.length && !invalidChanges.some((entry) => entry.entity === item.entity && entry.key === item.key)) {
+      const { batchId: _, ...unclaimed } = item;
+      remaining.push(unclaimed);
+    } else rejected.push({ ...item, reason });
+  }
+  writeRejectedChanges(rejected);
+  writeOutbox(remaining);
 }
 export function getCloudSyncCursor() { return Number(storage?.getItem(cursorKey) ?? 0); }
 function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: string) {
@@ -535,7 +639,7 @@ export function prepareCloudSyncForUser(userId: string): boolean {
     return true;
   }
   if (activeUserId === userId) { storage?.removeItem(legacyActiveUserKey); return true; }
-  if (hasPendingCloudSync()) return false;
+  if (hasPendingCloudSync() || getRejectedCloudSyncChanges().length) return false;
   write([]);
   writeWorkouts([]);
   writeRatings({});
@@ -546,6 +650,7 @@ export function prepareCloudSyncForUser(userId: string): boolean {
   storage?.removeItem(outboxKey);
   storage?.removeItem(versionsKey);
   storage?.removeItem(cursorKey);
+  storage?.removeItem(rejectedSyncKey);
   storage?.setItem(activeUserKey, userId);
   storage?.removeItem(legacyActiveUserKey);
   syncDemoWorkoutData();
@@ -557,16 +662,22 @@ export function clearLocalAccountData() {
   write([]);
   writeWorkouts([]);
   writeRatings({});
-  for (const item of [recommendationFeedbackKey, customSplitsKey, tombstonesKey, pendingSyncKey, outboxKey, versionsKey, cursorKey, activeUserKey, legacyActiveUserKey]) storage?.removeItem(item);
+  for (const item of [recommendationFeedbackKey, customSplitsKey, tombstonesKey, pendingSyncKey, outboxKey, versionsKey, cursorKey, rejectedSyncKey, activeUserKey, legacyActiveUserKey]) storage?.removeItem(item);
   syncDemoWorkoutData();
 }
 
 export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: number) {
-  const pending = new Set(readOutbox().map((item) => versionKey(item.entity, item.key)));
+  const pending = new Set([...readOutbox(), ...getRejectedCloudSyncChanges().filter((item) => !item.conflict)].map((item) => versionKey(item.entity, item.key)));
   const versions = readVersions();
   for (const change of changes) {
     const identity = versionKey(change.entity, change.key);
-    if (!pending.has(identity)) {
+    if (change.revision < (versions[identity] ?? 0)) continue;
+    const issues = getRejectedCloudSyncChanges();
+    const retainedDelete = change.operation === 'delete' && issues.some((item) => (item.entity === change.entity && item.key === change.key) || (change.entity === 'workout' && item.key.startsWith(change.key + cloudKeySeparator)));
+    if (retainedDelete && change.entity === 'workout' && !issues.some((item) => item.entity === 'workout' && item.key === change.key)) {
+      writeRejectedChanges([...issues, { entity: 'workout', key: change.key, operation: 'delete', baseRevision: change.revision, record: localSyncRecord('workout', change.key) ?? undefined, conflict: true, reason: 'Another device deleted this workout. Review its local sets, then delete the workout here to resolve the conflict.' }]);
+    }
+    if (!pending.has(identity) && !retainedDelete) {
       const pieces = change.key.split(cloudKeySeparator);
       if (change.operation === 'delete') {
         if (change.entity === 'workout') {
@@ -590,8 +701,8 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
           const set = { workoutId: String(record.workoutId), exerciseId: String(record.exerciseId), setNumber: Number(record.setNumber), weight: Number(record.weight), reps: Number(record.reps), completedAt: new Date(Number(record.completedAt) * 1000) };
           if (index < 0) sets.push(set); else sets[index] = set; write(sets);
         }
-        if (change.entity === 'rating') { const ratings = readRatings(); const workoutId = String(record.workoutId); ratings[workoutId] = { ...ratings[workoutId], [String(record.muscle)]: Number(record.exhaustion) }; writeRatings(ratings); }
-        if (change.entity === 'feedback') {
+        if (change.entity === 'rating' && readWorkouts().some((item) => item.id === record.workoutId)) { const ratings = readRatings(); const workoutId = String(record.workoutId); ratings[workoutId] = { ...ratings[workoutId], [String(record.muscle)]: Number(record.exhaustion) }; writeRatings(ratings); }
+        if (change.entity === 'feedback' && readWorkouts().some((item) => item.id === record.workoutId)) {
           const feedback = readRecommendationFeedback(); const index = feedback.findIndex((item) => item.workoutId === record.workoutId && item.exerciseId === record.exerciseId && item.action === record.action);
           const item = { workoutId: String(record.workoutId), exerciseId: String(record.exerciseId), action: record.action as RecommendationFeedbackAction, rank: record.rank == null ? undefined : Number(record.rank), createdAt: new Date(Number(record.createdAt) * 1000) };
           if (index < 0) feedback.push(item); else feedback[index] = item; writeRecommendationFeedback(feedback);

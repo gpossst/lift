@@ -77,6 +77,18 @@ which also cascades the existing app-owned `users` row and all related data.
 - `GET /v1/export` returns a portable account export.
 - `POST /v1/onboarding` saves onboarding preferences.
 
+Sync upload receipts include a `results` entry for each mutation with its
+`entity`, `key`, and `accepted` or `conflict` status. Accepted entries include
+their record revision. Clients persist those revisions when acknowledging the
+batch, rather than assuming every mutation received the batch revision.
+Invalid batches return the rejected identities in `invalidChanges`, allowing
+valid records to continue syncing while the rejected changes remain on the
+device for correction. The mobile Settings screen lists changes needing review.
+
+Deploy this Worker before shipping the updated mobile sync client. The new
+client keeps its queued changes if an older Worker returns a receipt without
+mutation results. No additional database migration is needed for these receipts.
+
 Public `/privacy`, `/terms`, `/support`, and `/delete-account` pages remain
 available. The deletion request form emails a 24-hour ownership-verification
 link. An hourly scheduled Worker deletes verified accounts through the same

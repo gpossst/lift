@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Haptics from 'expo-haptics';
-import LottieView, { type AnimationObject } from 'lottie-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeIn, FadeInDown, FadeInUp, interpolateColor, Layout, SlideInLeft, SlideInRight, ZoomIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppearance } from '@/components/appearance-provider';
+import { FlexAnimation } from '@/components/flex-animation';
 import { SwipeWatermark } from '@/components/swipe-watermark';
 import { Wordmark } from '@/components/wordmark';
 import type { AppearanceColors } from '@/lib/appearance';
@@ -18,36 +18,6 @@ const steps: Step[] = ['welcome', 'goals', 'experience', 'routine'];
 const rulerTrackHeight = 66;
 const goals = ['Build muscle', 'Get stronger', 'Lose fat', 'Feel healthier'];
 const springify = <T,>(e: T) => (e as { springify: () => T }).springify();
-// flex.json's only visible paint is a #5194FF fill (the Blue accent); strokes are
-// transparent. Retint fills to the active accent so the art matches the theme.
-const flexBlue: [number, number, number] = [0.3176470588235294, 0.5803921568627451, 1];
-function hexToRgb(hex: string): [number, number, number] {
-  const v = hex.replace('#', '');
-  const full = v.length === 3 ? v.split('').map((c) => c + c).join('') : v;
-  const n = Number.parseInt(full, 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-}
-function tintFlexFills(source: AnimationObject, hex: string): AnimationObject {
-  const clone = JSON.parse(JSON.stringify(source)) as unknown;
-  const [r, g, b] = hexToRgb(hex);
-  const visit = (node: unknown): void => {
-    if (Array.isArray(node)) { node.forEach(visit); return; }
-    if (node && typeof node === 'object') {
-      const o = node as Record<string, unknown>;
-      if (o['ty'] === 'fl' && o['c'] && typeof o['c'] === 'object') {
-        const k = (o['c'] as Record<string, unknown>)['k'];
-        if (Array.isArray(k) && k.length === 4 && k.every((v) => typeof v === 'number')
-          && Math.abs((k[0] as number) - flexBlue[0]) < 0.01 && Math.abs((k[1] as number) - flexBlue[1]) < 0.01 && Math.abs((k[2] as number) - flexBlue[2]) < 0.01) {
-          (o['c'] as Record<string, unknown>)['k'] = [r, g, b, k[3]];
-        }
-      }
-      Object.values(o).forEach(visit);
-    }
-  };
-  visit(clone);
-  return clone as AnimationObject;
-}
-
 // Mobbin patterns (Tonal, Yazio, Strava, WHOOP, Equinox): thin top progress + step
 // counter, staggered card entrance, selected-card inversion with radio pop, bottom
 // CTA that fades/slides in when valid, direction-aware step slides.
@@ -55,7 +25,6 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
   const { colors } = useAppearance();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const scrollRef = useRef<ScrollView>(null);
-  const flexSource = useMemo(() => tintFlexFills(require('../../assets/flex.json'), colors.accent), [colors.accent]);
   const [step, setStep] = useState<Step>('welcome');
   const [forward, setForward] = useState(true);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
@@ -103,7 +72,7 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
         {step === 'welcome' && <View style={styles.welcome}>
           <Animated.View entering={FadeInUp.delay(0).duration(400)} accessible accessibilityLabel="LIFT"><Wordmark height={48} /></Animated.View>
           <Animated.Text entering={FadeInUp.delay(80).duration(400)} style={styles.subtitle}>A few quick questions will tailor your starting point.</Animated.Text>
-          <Animated.View entering={FadeIn.delay(150).duration(500)} style={styles.animationWrap}><LottieView autoPlay loop resizeMode="contain" source={flexSource} style={styles.animation} /></Animated.View>
+          <Animated.View entering={FadeIn.delay(150).duration(500)} style={styles.animationWrap}><FlexAnimation style={styles.animation} /></Animated.View>
         </View>}
         {step === 'goals' && <Question title="What are you working toward?" subtitle="Pick all that feel right." styles={styles}><View style={styles.choices}>{goals.map((goal, i) => {
           const selected = selectedGoals.includes(goal);

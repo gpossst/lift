@@ -1,0 +1,64 @@
+[     950ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[    1656ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:15804
+[    2468ms] [ERROR] Access to fetch at 'https://api.lift.garrett.one/api/auth/get-session' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://localhost:3000/:0
+[    2470ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.lift.garrett.one/api/auth/get-session:0
+[   75445ms] [ERROR] Access to fetch at 'https://api.lift.garrett.one/api/auth/get-session' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://localhost:3000/:0
+[   75447ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.lift.garrett.one/api/auth/get-session:0
+[  105849ms] [ERROR] %o
+
+%s
+
+%s
+ ReferenceError: signedIn is not defined
+    at Home (http://localhost:3000/src/routes/index.tsx?t=1791034909049&tsr-split=component:126:31)
+    at Object.react_stack_bottom_frame (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:14142:12)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:4400:19)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:5775:16)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:6391:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:944:66)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9148:92)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9044:37)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9028:6)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:8715:27) The above error occurred in the <Home> component. React will try to recreate this component tree from scratch using the error boundary you provided, CatchBoundary. @ http://localhost:3000/@vite/client:298
+[  105854ms] [WARNING] Warning: The following error wasn't caught by any route! At the very least, consider setting an 'errorComponent' in your RootRoute! @ http://localhost:3000/@vite/client:298
+[  105854ms] [WARNING] Warning: ReferenceError: signedIn is not defined
+    at Home (http://localhost:3000/src/routes/index.tsx?t=1791034909049&tsr-split=component:126:31)
+    at Object.react_stack_bottom_frame (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:14142:12)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:4400:19)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:5775:16)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:6391:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:944:66)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9148:92)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9044:37)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9028:6)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:8715:27) @ http://localhost:3000/@vite/client:298
+[  138622ms] [ERROR] %o
+
+%s
+
+%s
+ ReferenceError: signedIn is not defined
+    at Home (http://localhost:3000/src/routes/index.tsx?t=1791034909049&tsr-split=component:126:31)
+    at Object.react_stack_bottom_frame (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:14142:12)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:4400:19)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:5775:16)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:6391:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:944:66)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9148:92)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9044:37)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9028:6)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:8715:27) The above error occurred in the <Home> component. React will try to recreate this component tree from scratch using the error boundary you provided, CatchBoundary. @ http://localhost:3000/@vite/client:298
+[  138628ms] [WARNING] Warning: The following error wasn't caught by any route! At the very least, consider setting an 'errorComponent' in your RootRoute! @ http://localhost:3000/@vite/client:298
+[  138628ms] [WARNING] Warning: ReferenceError: signedIn is not defined
+    at Home (http://localhost:3000/src/routes/index.tsx?t=1791034909049&tsr-split=component:126:31)
+    at Object.react_stack_bottom_frame (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:14142:12)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:4400:19)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:5775:16)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:6391:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:944:66)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9148:92)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9044:37)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:9028:6)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=5c5bf0a7:8715:27) @ http://localhost:3000/@vite/client:298
+[  139031ms] [ERROR] Access to fetch at 'https://api.lift.garrett.one/api/auth/get-session' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://localhost:3000/:0
+[  139032ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.lift.garrett.one/api/auth/get-session:0

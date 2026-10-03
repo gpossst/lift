@@ -1,9 +1,10 @@
+import { isValidWorkoutSetValues } from '@/lib/workout-set-validation';
 import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { ChevronLeft, Delete, Info, Minus, Plus, Trash2, X } from "react-native-feather";
+import { ChevronLeft, Delete, Info, Plus, X } from "react-native-feather";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Animated, { cancelAnimation, Easing, FadeIn, FadeInLeft, FadeInRight, FadeOutLeft, FadeOutRight, interpolate, interpolateColor, LinearTransition, SlideInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
-import Svg, { Circle, Defs, LinearGradient, Polyline, Rect, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import {
   ActivityIndicator,
   Image,
@@ -17,7 +18,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import Swipeable from "react-native-gesture-handler/Swipeable";
 import {
   deleteWorkoutSet,
   getExercises,
@@ -31,6 +31,7 @@ import {
 } from "@/db";
 import { exerciseRequiresWeight } from "@/db/exercise-catalog";
 import { useAppearance } from "@/components/appearance-provider";
+import { StatsPanel } from "@/components/stats-panel";
 import { SwipeWatermark } from "@/components/swipe-watermark";
 import { getProgressiveOverloadRecommendation } from "@/lib/exercise-recommendations";
 import { normalizeRestTimerSeconds } from "@/lib/appearance";
@@ -47,8 +48,6 @@ const plateDialWeights = Array.from(
 const plateTickWidth = 24;
 const rulerHeight = 88;
 const normalizeBarWeight = (value: string) => Math.min(MAX_BAR_WEIGHT_LB, Math.max(BAR_WEIGHT_LB, Math.round(((Number(value) || BAR_WEIGHT_LB) - BAR_WEIGHT_LB) / PLATE_INCREMENT_LB) * PLATE_INCREMENT_LB + BAR_WEIGHT_LB));
-const formatHistoryDate = (date: Date) =>
-  `${date.getMonth() + 1}/${date.getDate()}`;
 const exerciseCatalog = getExercises();
 const exerciseImageBase = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
 const restCenter = 72;
@@ -266,13 +265,10 @@ export default function WorkoutScreen() {
     strokeDashoffset: restCircumference * (1 - restProgress.value),
   }));
   const restTimeAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: restScale.value }] }));
-  const [selectedSetIndex, setSelectedSetIndex] = useState<number | null>(null);
-  const [renderedAt] = useState(() => Date.now());
   const inputPagerRef = useRef<ScrollView>(null);
   const inputScrollProgress = useSharedValue(0);
   const plateDotStyle = useAnimatedStyle(() => ({ width: interpolate(inputScrollProgress.value, [0, 1], [12, 6]), backgroundColor: interpolateColor(inputScrollProgress.value, [0, 1], [colors.accent, colors.subtleText]) }));
   const keypadDotStyle = useAnimatedStyle(() => ({ width: interpolate(inputScrollProgress.value, [0, 1], [6, 12]), backgroundColor: interpolateColor(inputScrollProgress.value, [0, 1], [colors.subtleText, colors.accent]) }));
-  const pastSetsScrollRef = useRef<ScrollView>(null);
   const skippingRestRef = useRef(false);
   const supersetIds = useMemo(() => readSupersetIds(params.superset, exerciseId), [exerciseId, params.superset]);
   const supersetExercises = useMemo(() => supersetIds
@@ -312,17 +308,18 @@ export default function WorkoutScreen() {
       setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
       setHistory(nextHistory);
       setIncludesAddedWeight(continueAddedWeight);
-      setWeight(String((requiresWeight || continueAddedWeight ? lastSet : undefined)?.weight ?? ""));
+      const lastWeight = lastSet
+        ? (requiresWeight || continueAddedWeight ? lastSet.weight : undefined)
+        : requiresWeight ? getProgressiveOverloadRecommendation(nextHistory, prescription, { currentWorkoutId: workoutId, exhaustion: getRecentExerciseExhaustion(exerciseId, workoutId) }).weight : undefined;
+      setWeight(String(lastWeight ?? ""));
       setReps(lastSet ? String(lastSet.reps) : "");
       setField(requiresWeight || continueAddedWeight ? "weight" : "reps");
-      const lastWeight = (requiresWeight || continueAddedWeight ? lastSet : undefined)?.weight;
       const canShowLastWeightOnBar = !lastWeight || lastWeight >= BAR_WEIGHT_LB && (lastWeight - BAR_WEIGHT_LB) % PLATE_INCREMENT_LB === 0;
       setWeightInputMode(exercise.equipment === "barbell" && canShowLastWeightOnBar ? "plates" : "keypad");
       setPlateHintDismissed(false);
-      setSelectedSetIndex(null);
     }, 0);
     return () => clearTimeout(timer);
-  }, [exercise.equipment, exerciseId, requiresWeight, workoutId]);
+  }, [exercise.equipment, exerciseId, prescription, requiresWeight, workoutId]);
   useEffect(() => {
     if (supportsPlateDial && weightInputMode === "plates" && field === "weight" && !Number(weight)) {
       setWeight(String(BAR_WEIGHT_LB));
@@ -347,7 +344,7 @@ export default function WorkoutScreen() {
     else setReps(next);
   }
   async function saveSet() {
-    if ((usesWeight && !Number(weight)) || !Number(reps) || saving) return;
+    if ((usesWeight && !Number(weight)) || !isValidWorkoutSetValues({ weight: usesWeight ? Number(weight) : 0, reps: Number(reps) }) || setNumber > 100 || saving) return;
     setSaving(true);
     try {
       saveWorkoutSet({
@@ -355,7 +352,7 @@ export default function WorkoutScreen() {
         workoutId,
         setNumber,
         weight: usesWeight ? Number(weight) : 0,
-        reps: Math.round(Number(reps)),
+        reps: Number(reps),
         completedAt: new Date(),
       });
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -385,7 +382,6 @@ export default function WorkoutScreen() {
     }
     deleteWorkoutSet(exerciseId, set);
     setHistory(getWorkoutHistory(exerciseId));
-    setSelectedSetIndex(null);
     setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
   }
   function undoLastSet() {
@@ -401,16 +397,6 @@ export default function WorkoutScreen() {
       setReps(String(undoSet.set.reps));
     }
     setUndoSet(null);
-  }
-  function selectHistoryPoint(index: number, scrollToSet = false) {
-    setSelectedSetIndex(index);
-    if (scrollToSet) {
-      const reverseIndex = history.length - 1 - index;
-      pastSetsScrollRef.current?.scrollTo({
-        y: Math.max(0, reverseIndex * 60 - 8),
-        animated: true,
-      });
-    }
   }
   function continueFlow() {
     if (field === "weight") {
@@ -504,47 +490,10 @@ export default function WorkoutScreen() {
     switchExercise(exercise, ids);
   }
   const canUndo = undoSet !== null && restEndsAt === null;
+  const validInput = field === "weight" ? Number(weight) > 0 && Number(weight) <= 10_000 && isValidWorkoutSetValues({ weight: Number(weight), reps: 1 }) : isValidWorkoutSetValues({ weight: usesWeight ? Number(weight) : 0, reps: Number(reps) }) && setNumber <= 100;
   const action = canUndo ? "Undo last set" : field === "weight" ? "Next" : "Log set";
   const restRemaining = restEndsAt === null ? 0 : Math.max(0, Math.ceil((restEndsAt - restNow) / 1_000));
   const formatRest = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-  const weights = history.map((set) => set.weight);
-  const repsValues = history.map((set) => set.reps);
-  const rawMinWeight = history.length ? Math.min(...weights) : 0;
-  const rawMaxWeight = history.length ? Math.max(...weights) : 1;
-  const weightStep = rawMaxWeight - rawMinWeight <= 20 ? 5 : 10;
-  const minWeight = Math.max(0, Math.floor((rawMinWeight - weightStep) / weightStep) * weightStep);
-  const maxWeight = Math.ceil((rawMaxWeight + weightStep) / weightStep) * weightStep;
-  const rawMinReps = history.length ? Math.min(...repsValues) : 0;
-  const rawMaxReps = history.length ? Math.max(...repsValues) : 1;
-  const minReps = Math.max(0, rawMinReps - 1);
-  const maxReps = Math.max(rawMaxReps, minReps + 1) + 1;
-  const newestTime = Math.max(...history.map((set) => set.completedAt.getTime()), renderedAt);
-  const volumeByWorkout = history.reduce((volumes, set) => {
-    volumes.set(set.workoutId, (volumes.get(set.workoutId) ?? 0) + (requiresWeight ? set.weight * set.reps : set.reps));
-    return volumes;
-  }, new Map<string, number>());
-  const volumeHistory = Array.from(volumeByWorkout, ([id, volume]) => ({
-    id,
-    volume,
-    time: Math.min(...history.filter((set) => set.workoutId === id).map((set) => set.completedAt.getTime())),
-  })).sort((a, b) => a.time - b.time);
-  const minVolume = Math.min(...volumeHistory.map((point) => point.volume));
-  const maxVolume = Math.max(...volumeHistory.map((point) => point.volume));
-  const volumeRange = maxVolume - minVolume || 1;
-  const volumeLinePoints = volumeHistory
-    .map((point, index) => {
-      const x = 8 + (index / (volumeHistory.length - 1)) * 84;
-      const y = 87 - ((point.volume - minVolume) / volumeRange) * 70;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  const estimatedStrength = (set: WorkoutHistoryPoint) => requiresWeight ? Math.round(set.weight * (1 + set.reps / 30)) : set.reps;
-  const strongestSetIndex = history.reduce(
-    (strongest, set, index) => estimatedStrength(set) > estimatedStrength(history[strongest]) ? index : strongest,
-    0,
-  );
-  const activeSetIndex = selectedSetIndex ?? history.length - 1;
-  const activeSet = history[activeSetIndex];
   const recentSets = history.slice(-5);
   const recommendation = useMemo(
     () => getProgressiveOverloadRecommendation(history, prescription, {
@@ -597,7 +546,7 @@ export default function WorkoutScreen() {
       </View>
       <View style={styles.supersetBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.supersetTabs}>
-          {supersetExercises.map((exercise) => {
+          {supersetExercises.length > 1 && supersetExercises.map((exercise) => {
             const active = exercise.id === exerciseId;
             return <Pressable
               key={exercise.id}
@@ -647,9 +596,9 @@ export default function WorkoutScreen() {
           accessibilityRole="button"
           accessibilityLabel="View latest set history"
         >
-          <Text style={[styles.edgeLabel, { color: colors.subtleText }]}>HISTORY</Text>
-          {recentSets.map((set, index) => <View key={`recent-${set.completedAt.getTime()}-${set.setNumber}-${index}`} style={[styles.recentSet, { opacity: 0.6 + (index / Math.max(1, recentSets.length - 1)) * 0.4 }]}>
-            <Text numberOfLines={1} style={[styles.recentSetValue, { color: colors.subtleText }]}>{requiresWeight ? `${set.weight}×${set.reps}` : set.weight ? `+${set.weight}×${set.reps}` : `${set.reps} reps`}</Text>
+          <Text style={[styles.edgeLabel, { color: colors.mutedText }]}>HISTORY</Text>
+          {recentSets.map((set, index) => <View key={`recent-${set.completedAt.getTime()}-${set.setNumber}-${index}`} style={styles.recentSet}>
+            <Text numberOfLines={1} style={[styles.recentSetValue, { color: index === recentSets.length - 1 ? colors.text : colors.mutedText }]}>{requiresWeight ? `${set.weight}×${set.reps}` : set.weight ? `+${set.weight}×${set.reps}` : `${set.reps} reps`}</Text>
           </View>)}
         </Pressable>}
         <Pressable
@@ -697,12 +646,15 @@ export default function WorkoutScreen() {
           </View>}
       </View>
       <View style={styles.footer}>
+        {!canUndo && !validInput && value !== "" && <Text style={{ color: colors.mutedText, fontSize: 12 }}>{setNumber > 100 ? 'This exercise supports up to 100 sets per workout.' : 'Use up to 10,000 lb (two decimal places) and 1–10,000 whole reps.'}</Text>}
         <Pressable
           onPress={canUndo ? undoLastSet : continueFlow}
+          disabled={!canUndo && (!validInput || saving)}
+          accessibilityState={{ disabled: !canUndo && (!validInput || saving) }}
           style={({ pressed }) => [
             styles.saveButton,
             { backgroundColor: accentColor },
-            !canUndo && !Number(value) && styles.saveDisabled,
+            !canUndo && !validInput && styles.saveDisabled,
             pressed && styles.savePressed,
           ]}
           accessibilityRole="button"
@@ -774,126 +726,7 @@ export default function WorkoutScreen() {
                 <X width={24} height={24} color={colors.mutedText} strokeWidth={2} />
               </Pressable>
             </View>
-            {history.length ? (
-              <>
-                <View style={styles.scatterChart}>
-                  {volumeHistory.length > 1 && (
-                    <Svg
-                      accessibilityElementsHidden
-                      pointerEvents="none"
-                      style={styles.volumeChart}
-                      viewBox="0 0 100 100"
-                      preserveAspectRatio="none"
-                    >
-                      <Polyline
-                        points={volumeLinePoints}
-                        fill="none"
-                        stroke={colors.subtleText}
-                        strokeOpacity={0.72}
-                        strokeWidth={0.8}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    </Svg>
-                  )}
-                  <View style={styles.repsAxis}>
-                    <Plus width={10} height={10} color={colors.subtleText} strokeWidth={2.5} />
-                    <Text style={[styles.directionText, { color: colors.subtleText }]}>REPS</Text>
-                    <Minus width={10} height={10} color={colors.subtleText} strokeWidth={2.5} />
-                  </View>
-                  <View style={styles.weightAxis}>
-                    {requiresWeight ? <Minus width={10} height={10} color={colors.subtleText} strokeWidth={2.5} /> : <Text style={[styles.directionText, { color: colors.subtleText }]}>OLDER</Text>}
-                    {requiresWeight && <Text style={[styles.directionText, { color: colors.subtleText }]}>WEIGHT</Text>}
-                    {requiresWeight ? <Plus width={10} height={10} color={colors.subtleText} strokeWidth={2.5} /> : <Text style={[styles.directionText, { color: colors.subtleText }]}>NEWER</Text>}
-                  </View>
-                  {history.map((set, index) => {
-                    const progress = history.length === 1 ? 1 : index / (history.length - 1);
-                    const ageInDays = Math.max(0, (newestTime - set.completedAt.getTime()) / 86_400_000);
-                    const opacity = Math.max(0.25, (0.46 + progress * 0.54) * Math.max(0.52, 1 - ageInDays / 180));
-                    const left = 8 + (requiresWeight ? (set.weight - minWeight) / (maxWeight - minWeight) : index / Math.max(history.length - 1, 1)) * 84;
-                    const bottom = 13 + ((set.reps - minReps) / (maxReps - minReps)) * 70;
-                    const isActive = activeSetIndex === index;
-                    return (
-                      <Pressable
-                        key={`${set.completedAt.getTime()}-${set.setNumber}-${index}`}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${formatHistoryDate(set.completedAt)}: ${requiresWeight ? `${set.weight} pounds for ` : set.weight ? `${set.weight} pounds added for ` : ''}${set.reps} reps`}
-                        onPress={() => selectHistoryPoint(index, true)}
-                        hitSlop={10}
-                        style={[
-                          styles.scatterDot,
-                          {
-                            left: `${left}%`,
-                            bottom: `${bottom}%`,
-                            backgroundColor: colors.accent,
-                            opacity,
-                          },
-                          isActive && styles.activeDot,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-                {activeSet && (
-                  <>
-                    <View style={styles.selectedSet}>
-                      <View>
-                        <Text style={[styles.selectedMeta, { color: colors.mutedText }]}>
-                          {activeSet.workoutId === workoutId ? 'THIS WORKOUT' : 'PAST WORKOUT'} · SET {activeSet.setNumber}
-                        </Text>
-                        <Text style={[styles.selectedValue, { color: colors.text }]}>{requiresWeight ? `${activeSet.weight} LB × ` : activeSet.weight ? `+${activeSet.weight} LB × ` : ''}{activeSet.reps} REPS</Text>
-                      </View>
-                      <Text style={[styles.selectedNote, { backgroundColor: colors.accent, color: colors.accentText }]}>
-                        {activeSetIndex === strongestSetIndex ? "BEST\nSET" : activeSetIndex === history.length - 1 ? "LATEST\nSET" : "PAST\nSET"}
-                      </Text>
-                    </View>
-                    <View style={styles.pastSets}>
-                      <Text style={[styles.pastSetsTitle, { color: colors.mutedText }]}>PAST SETS</Text>
-                      <ScrollView
-                        ref={pastSetsScrollRef}
-                        bounces={false}
-                        showsVerticalScrollIndicator={false}
-                        style={styles.pastSetsScroll}
-                      >
-                        {[...history].reverse().map((set, reverseIndex) => {
-                          const index = history.length - 1 - reverseIndex;
-                          const isActive = index === activeSetIndex;
-                          return (
-                            <Swipeable
-                              key={`past-${set.completedAt.getTime()}-${set.setNumber}-${index}`}
-                              friction={2}
-                              rightThreshold={44}
-                              overshootRight={false}
-                              renderRightActions={() => (
-                                <Pressable
-                                  accessibilityRole="button"
-                                  accessibilityLabel={`Delete workout set ${set.setNumber}`}
-                                  onPress={() => deleteSet(set)}
-                                  style={({ pressed }) => [styles.deleteAction, pressed && styles.deleteActionPressed]}
-                                >
-                                  <Trash2 width={19} height={19} color="#FFFFFF" strokeWidth={2.5} />
-                                </Pressable>
-                              )}
-                            >
-                              <Pressable
-                                onPress={() => selectHistoryPoint(index)}
-                                style={({ pressed }) => [styles.pastSetRow, { backgroundColor: isActive ? `${colors.accent}38` : colors.surface }, pressed && styles.pastSetRowPressed]}
-                              >
-                                <Text style={[styles.pastSetDate, { color: colors.mutedText }]}>
-                                  {set.workoutId === workoutId ? 'THIS WORKOUT' : 'PAST WORKOUT'} · SET {set.setNumber}
-                                </Text>
-                                <Text style={[styles.pastSetValue, { color: colors.text }]}>{requiresWeight ? `${set.weight} LB × ` : set.weight ? `+${set.weight} LB × ` : ''}{set.reps} REPS</Text>
-                              </Pressable>
-                            </Swipeable>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  </>
-                )}
-              </>
-            ) : (
-              <Text style={[styles.emptyHistory, { color: colors.mutedText }]}>No sets logged yet.</Text>
-            )}
+            <StatsPanel initialExerciseId={exerciseId} history={history} onDeleteSet={deleteSet} embedded />
           </Animated.View>
         </View>
       </Modal>
@@ -1008,14 +841,14 @@ const styles = StyleSheet.create({
   clearValue: { minHeight: 44, justifyContent: "center" },
   clearValueText: { fontSize: 10, fontWeight: "900", letterSpacing: 0.7 },
   edgeLabel: { marginBottom: 5, fontSize: 7, fontWeight: "900", letterSpacing: 0.7 },
-  recommendationButton: { position: "absolute", top: 0, right: 16, bottom: 0, width: 72, justifyContent: "center", alignItems: "flex-end" },
+  recommendationButton: { position: "absolute", top: 0, right: 24, bottom: 0, width: 72, justifyContent: "center", alignItems: "flex-end" },
   recommendationPressed: { opacity: 0.55 },
   recommendationValue: { maxWidth: 72, fontSize: 13, lineHeight: 15, textAlign: "right", fontWeight: "900", letterSpacing: -0.2, textTransform: "uppercase" },
   recommendationSets: { marginTop: 3, fontSize: 8, fontWeight: "800" },
-  recentSets: { position: "absolute", top: 0, left: 16, bottom: 0, width: 64, gap: 5, justifyContent: "center", alignItems: "flex-start" },
+  recentSets: { position: "absolute", top: 0, left: 24, bottom: 0, width: 64, gap: 3, justifyContent: "center", alignItems: "flex-start" },
   recentSet: { paddingVertical: 2, alignItems: "flex-end" },
   recentSetPressed: { opacity: 0.68 },
-  recentSetValue: { fontSize: 9, fontWeight: "800", letterSpacing: -0.15 },
+  recentSetValue: { fontSize: 11, fontWeight: "800", letterSpacing: -0.15, fontVariant: ["tabular-nums"] },
   inputArea: {
     flex: 1,
     width: "100%",
@@ -1153,30 +986,5 @@ const styles = StyleSheet.create({
   pickerName: { fontSize: 16, fontWeight: "900", letterSpacing: -0.35 },
   pickerMeta: { marginTop: 3, fontSize: 10, fontWeight: "800", letterSpacing: 0.55 },
   emptyPicker: { paddingVertical: 28, textAlign: "center", fontSize: 13, fontWeight: "700" },
-  scatterChart: {
-    height: 224,
-    position: "relative",
-    overflow: "visible",
-  },
-  volumeChart: { ...StyleSheet.absoluteFill, opacity: 0.9 },
-  directionText: { fontSize: 8, fontWeight: "900", letterSpacing: 0.8, color: "#A3A79F" },
-  repsAxis: { position: "absolute", left: 0, top: 6, bottom: 15, alignItems: "center", justifyContent: "space-between" },
-  weightAxis: { position: "absolute", left: "8%", right: "8%", bottom: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  scatterDot: { position: "absolute", width: 16, height: 16, marginLeft: -8, marginBottom: -8, borderRadius: 8 },
-  activeDot: { width: 22, height: 22, marginLeft: -11, marginBottom: -11, borderRadius: 11, zIndex: 2, opacity: 1, transform: [{ scale: 1.08 }] },
-  selectedSet: { marginTop: 4, paddingTop: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  selectedMeta: { fontSize: 9, fontWeight: "900", letterSpacing: 1.1, color: "#858A80" },
-  selectedValue: { marginTop: 3, fontSize: 20, lineHeight: 23, fontWeight: "900", letterSpacing: -0.5, color: "#171813" },
-  selectedNote: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: "#FFCC4A", fontSize: 9, lineHeight: 11, textAlign: "center", fontWeight: "900", letterSpacing: 0.7, color: "#171813" },
-  pastSets: { flex: 1, minHeight: 0, marginTop: 26 },
-  pastSetsTitle: { marginBottom: 8, fontSize: 10, fontWeight: "900", letterSpacing: 1.2, color: "#858A80" },
-  pastSetsScroll: { flex: 1 },
-  pastSetRow: { minHeight: 52, marginBottom: 8, paddingHorizontal: 14, borderRadius: 13, backgroundColor: "#F5F6F2", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  pastSetRowActive: { backgroundColor: "#FFF1C8" },
-  pastSetRowPressed: { opacity: 0.68 },
-  deleteAction: { width: 62, minHeight: 52, marginBottom: 8, marginLeft: 8, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "#D84C41" },
-  deleteActionPressed: { opacity: 0.72 },
-  pastSetDate: { fontSize: 10, fontWeight: "900", letterSpacing: 0.8, color: "#7F847B" },
-  pastSetValue: { fontSize: 15, fontWeight: "900", letterSpacing: -0.2, color: "#1B1C17" },
   emptyHistory: { fontSize: 14, color: "#767A71" },
 });

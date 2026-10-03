@@ -1,9 +1,11 @@
+import { validateReceipt } from '@/lib/cloud-sync-receipt';
+import { assertValidWorkoutSet } from '@/lib/workout-set-validation';
 import * as SQLite from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from './schema';
 import { exerciseCatalog, type Exercise, workoutSplitForExercise } from './exercise-catalog';
 import { buildDemoWorkoutSets, demoWorkoutIdPrefix, isDemoDataEnabled } from './demo-data';
-import { defaultWorkoutSplits, getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
+import { defaultWorkoutSplits, getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRankedExercises as rankCatalogExercises, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 export type { RecommendationContext, RecommendationFeedback, RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
@@ -220,6 +222,8 @@ export type CloudSyncEntity = 'workout' | 'set' | 'rating' | 'feedback' | 'split
 export type CloudSyncChange = { entity: CloudSyncEntity; key: string; operation: 'upsert' | 'delete'; baseRevision: number; record?: Record<string, unknown> };
 export type CloudSyncRemoteChange = Omit<CloudSyncChange, 'baseRevision'> & { revision: number };
 export type CloudSyncBatch = { batchId: string; changes: CloudSyncChange[] };
+export type CloudSyncMutationResult = { entity: CloudSyncEntity; key: string; status: 'accepted' | 'conflict'; revision?: number };
+export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; conflict?: boolean };
 
 function syncedWrite<T>(write: () => T, queue: (result: T) => void): T {
   sqlite.execSync('BEGIN IMMEDIATE');
@@ -283,8 +287,9 @@ export function getWorkoutSplitDefinition(split: WorkoutSplit) {
 
 export function getRecommendedWorkoutSplit(now = new Date(), useCustomSplits = false): WorkoutSplit {
   const muscleRatings: MuscleExhaustionRating[] = [];
+  const ratingsByWorkout = getCompletedWorkoutMuscleRatings();
   const history = getWorkoutVisits().map((visit) => {
-    const ratings = getWorkoutMuscleRatings(visit.workout.id);
+    const ratings = ratingsByWorkout.get(visit.workout.id) ?? [];
     const completedAt = visit.workout.endedAt ?? visit.workout.createdAt;
     muscleRatings.push(...ratings.map((rating) => ({ workoutId: visit.workout.id, split: visit.workout.split, muscle: rating.id, exhaustion: rating.exhaustion, completedAt })));
     return {
@@ -309,6 +314,7 @@ export function createWorkout(split: WorkoutSplit): Workout {
 }
 
 export function saveWorkoutSet(set: { exerciseId: string; workoutId: string; setNumber: number; weight: number; reps: number; completedAt: Date }) {
+  assertValidWorkoutSet(set);
   const stamp = Math.floor(set.completedAt.getTime() / 1000);
   syncedWrite(
     () => sqlite.runSync('INSERT INTO workout_sets (exercise_id, workout_id, set_number, weight, reps, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [set.exerciseId, set.workoutId, set.setNumber, set.weight, set.reps, stamp, stamp]),
@@ -352,6 +358,20 @@ export function endWorkout(workoutId: string): Workout | null {
   return summary?.workout ?? null;
 }
 
+function removeWorkoutRows(workoutId: string) {
+  sqlite.runSync('DELETE FROM recommendation_feedback WHERE workout_id = ?', [workoutId]);
+  sqlite.runSync('DELETE FROM workout_muscle_ratings WHERE workout_id = ?', [workoutId]);
+  sqlite.runSync('DELETE FROM workout_sets WHERE workout_id = ?', [workoutId]);
+  return sqlite.runSync('DELETE FROM workouts WHERE id = ?', [workoutId]);
+}
+
+export function deleteWorkout(workoutId: string): boolean {
+  return syncedWrite(
+    () => removeWorkoutRows(workoutId),
+    (result) => { if (result.changes) queueCloudSyncTombstone('workout', workoutId); },
+  ).changes > 0;
+}
+
 export function getWorkoutVisitSummary(workoutId: string): WorkoutVisitSummary | null {
   const workout = sqlite.getFirstSync<{ id: string; split: WorkoutSplit; createdAt: number; endedAt: number | null }>(
     'SELECT id, split, created_at AS createdAt, ended_at AS endedAt FROM workouts WHERE id = ?', [workoutId],
@@ -380,9 +400,10 @@ export function getWorkoutVisits(): WorkoutVisitSummary[] {
       COUNT(workout_sets.id) AS sets, COUNT(DISTINCT workout_sets.exercise_id) AS exercises,
       COALESCE(SUM(workout_sets.weight * workout_sets.reps), 0) AS volume, COALESCE(SUM(workout_sets.reps), 0) AS reps
      FROM workouts INNER JOIN workout_sets ON workout_sets.workout_id = workouts.id
-     GROUP BY workouts.id ORDER BY COALESCE(workouts.ended_at, workouts.created_at) DESC, workouts.id ASC`,
+     WHERE workouts.ended_at IS NOT NULL
+     GROUP BY workouts.id ORDER BY workouts.ended_at DESC, workouts.id ASC`,
   );
-  return visits.map((visit) => ({ ...visit, workout: { id: visit.id, split: visit.split, createdAt: new Date(visit.createdAt * 1000), endedAt: visit.endedAt ? new Date(visit.endedAt * 1000) : null } }));
+  return visits.map((visit) => ({ ...visit, workout: { id: visit.id, split: visit.split, createdAt: new Date(visit.createdAt * 1000), endedAt: visit.endedAt !== null ? new Date(visit.endedAt * 1000) : null } }));
 }
 
 export function getWorkoutVisitExerciseDetails(workoutId: string): WorkoutVisitExerciseDetail[] {
@@ -402,11 +423,42 @@ export function getWorkoutVisitExerciseDetails(workoutId: string): WorkoutVisitE
   return [...exercises.values()];
 }
 
+/** One query for overview screens, excluding unfinished workouts. */
+export function getCompletedWorkoutExerciseDetails(): Map<string, WorkoutVisitExerciseDetail[]> {
+  const rows = sqlite.getAllSync<{ workoutId: string; id: string; name: string; number: number; weight: number; reps: number }>(
+    `SELECT workout_sets.workout_id AS workoutId, exercise_catalog.id AS id, exercise_catalog.name AS name,
+      workout_sets.set_number AS number, workout_sets.weight AS weight, workout_sets.reps AS reps
+     FROM workout_sets INNER JOIN workouts ON workouts.id = workout_sets.workout_id
+     INNER JOIN exercise_catalog ON exercise_catalog.id = workout_sets.exercise_id
+     WHERE workouts.ended_at IS NOT NULL
+     ORDER BY workout_sets.workout_id ASC, exercise_catalog.name ASC, exercise_catalog.id ASC, workout_sets.set_number ASC`,
+  );
+  const workouts = new Map<string, Map<string, WorkoutVisitExerciseDetail>>();
+  for (const row of rows) {
+    const exercises = workouts.get(row.workoutId) ?? new Map<string, WorkoutVisitExerciseDetail>();
+    const exercise = exercises.get(row.id) ?? { id: row.id, name: row.name, sets: [] };
+    exercise.sets.push({ number: row.number, weight: row.weight, reps: row.reps });
+    exercises.set(row.id, exercise);
+    workouts.set(row.workoutId, exercises);
+  }
+  return new Map([...workouts].map(([id, exercises]) => [id, [...exercises.values()]]));
+}
+
+export function getExerciseSessionCounts(): Map<string, number> {
+  return new Map(sqlite.getAllSync<{ exerciseId: string; sessions: number }>(
+    `SELECT workout_sets.exercise_id AS exerciseId, COUNT(DISTINCT workout_sets.workout_id) AS sessions
+     FROM workout_sets INNER JOIN workouts ON workouts.id = workout_sets.workout_id
+     WHERE workouts.ended_at IS NOT NULL GROUP BY workout_sets.exercise_id`,
+  ).map((row) => [row.exerciseId, row.sessions]));
+}
+
 export function getWorkoutAchievements(workoutId: string): WorkoutAchievement[] {
   return getWorkoutVisitExercises(workoutId).flatMap<WorkoutAchievement>((exercise) => {
     const history = getWorkoutHistory(exercise.id);
     const current = history.filter((set) => set.workoutId === workoutId);
-    const previous = history.filter((set) => set.workoutId !== workoutId);
+    // Only earlier sets count, so a past workout keeps the PRs it earned at the time.
+    const start = Math.min(...current.map((set) => set.completedAt.getTime()));
+    const previous = history.filter((set) => set.workoutId !== workoutId && set.completedAt.getTime() < start);
     if (!previous.length) return [];
     const maxCurrentWeight = Math.max(...current.map((set) => set.weight));
     const maxPreviousWeight = Math.max(...previous.map((set) => set.weight));
@@ -484,7 +536,29 @@ export function getWorkoutMuscleRatings(workoutId: string): WorkoutMuscleRating[
   });
 }
 
-export function getExerciseRecommendations(workoutId: string, split: WorkoutSplit, limit?: number, context?: RecommendationContext): ExerciseRecommendation[] {
+function getCompletedWorkoutMuscleRatings(): Map<string, WorkoutMuscleRating[]> {
+  const rows = sqlite.getAllSync<{ workoutId: string; muscle: string; exhaustion: number; area: string; detailsJson: string | null }>(
+    `SELECT DISTINCT workout_muscle_ratings.workout_id AS workoutId, workout_muscle_ratings.muscle AS muscle,
+      workout_muscle_ratings.exhaustion AS exhaustion, exercise_catalog.area AS area, exercise_catalog.details_json AS detailsJson
+     FROM workout_muscle_ratings INNER JOIN workouts ON workouts.id = workout_muscle_ratings.workout_id
+     INNER JOIN workout_sets ON workout_sets.workout_id = workouts.id
+     INNER JOIN exercise_catalog ON exercise_catalog.id = workout_sets.exercise_id
+     WHERE workouts.ended_at IS NOT NULL
+     ORDER BY workouts.id ASC, workout_muscle_ratings.muscle ASC`,
+  );
+  const workouts = new Map<string, Map<string, WorkoutMuscleRating>>();
+  for (const row of rows) {
+    let primary: string[] = [];
+    try { primary = JSON.parse(row.detailsJson ?? '{}').primaryMuscles ?? []; } catch { /* fall back to area */ }
+    if (!primary.includes(row.muscle) && (primary.length || row.area.toLowerCase() !== row.muscle)) continue;
+    const ratings = workouts.get(row.workoutId) ?? new Map<string, WorkoutMuscleRating>();
+    ratings.set(row.muscle, { id: row.muscle, name: muscleNames[row.muscle] ?? row.muscle, area: row.area, exhaustion: row.exhaustion });
+    workouts.set(row.workoutId, ratings);
+  }
+  return new Map([...workouts].map(([id, ratings]) => [id, [...ratings.values()]]));
+}
+
+function recommendationsFromHistory(workoutId: string, split: WorkoutSplit, limit?: number, context?: RecommendationContext, rankOnly = false): ExerciseRecommendation[] {
   const sets = sqlite.getAllSync<{ exerciseId: string; workoutId: string; weight: number; reps: number; completedAt: number }>(
     `SELECT workout_sets.exercise_id AS exerciseId, workout_sets.workout_id AS workoutId, weight, reps, completed_at AS completedAt
      FROM workout_sets LEFT JOIN workouts ON workouts.id = workout_sets.workout_id
@@ -503,7 +577,19 @@ export function getExerciseRecommendations(workoutId: string, split: WorkoutSpli
     `SELECT workout_id AS workoutId, exercise_id AS exerciseId, action, rank, created_at AS createdAt FROM recommendation_feedback
      ORDER BY created_at ASC, workout_id ASC, exercise_id ASC, action ASC`,
   ).map((item) => ({ ...item, createdAt: new Date(item.createdAt * 1000) }));
-  return rankExerciseRecommendations(getExercises(), sets, muscleRatings, workoutId, split, limit, undefined, context, feedback, getWorkoutSplitDefinition(split) ?? undefined);
+  const definition = getWorkoutSplitDefinition(split) ?? undefined;
+  return rankOnly
+    ? rankCatalogExercises(getExercises(), sets, muscleRatings, workoutId, split, undefined, context, feedback, definition)
+    : rankExerciseRecommendations(getExercises(), sets, muscleRatings, workoutId, split, limit, undefined, context, feedback, definition);
+}
+
+
+export function getExerciseRecommendations(workoutId: string, split: WorkoutSplit, limit?: number, context?: RecommendationContext): ExerciseRecommendation[] {
+  return recommendationsFromHistory(workoutId, split, limit, context);
+}
+
+export function getRankedExercises(workoutId: string, split: WorkoutSplit, context?: RecommendationContext): ExerciseRecommendation[] {
+  return recommendationsFromHistory(workoutId, split, undefined, context, true);
 }
 
 export function recordRecommendationFeedback(
@@ -648,6 +734,7 @@ export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint) {
 }
 
 export function updateWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint, values: { weight: number; reps: number }) {
+  assertValidWorkoutSet({ ...set, ...values });
   syncedWrite(
     () => sqlite.runSync(
       'UPDATE workout_sets SET weight = ?, reps = ?, updated_at = ? WHERE exercise_id = ? AND workout_id = ? AND set_number = ? AND completed_at = ?',
@@ -661,6 +748,9 @@ const cloudKeySeparator = '\u001F';
 const cloudSetKey = (workoutId: string, exerciseId: string, setNumber: number) => [workoutId, exerciseId, setNumber].join(cloudKeySeparator);
 const syncState = (key: string) => sqlite.getFirstSync<{ value: string }>('SELECT value FROM sync_state WHERE key = ?', [key])?.value ?? null;
 const setSyncState = (key: string, value: string) => sqlite.runSync("INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, value]);
+
+export const getRejectedCloudSyncChanges = (): CloudSyncRejectedChange[] => JSON.parse(syncState('cloud_sync_rejected_changes') ?? '[]');
+const writeRejectedChanges = (items: CloudSyncRejectedChange[]) => setSyncState('cloud_sync_rejected_changes', JSON.stringify([...new Map(items.map((item) => [`${item.entity}\u0000${item.key}`, item])).values()]));
 
 const mutationId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 const syncVersion = (entity: CloudSyncEntity, key: string) => sqlite.getFirstSync<{ revision: number }>('SELECT revision FROM sync_versions WHERE entity = ? AND entity_key = ?', [entity, key])?.revision ?? 0;
@@ -691,6 +781,8 @@ function localSyncRecord(entity: CloudSyncEntity, key: string): Record<string, u
 function enqueueCloudSync(entity: CloudSyncEntity, key: string, operation: 'upsert' | 'delete') {
   const record = operation === 'upsert' ? localSyncRecord(entity, key) : null;
   if (operation === 'upsert' && !record) return;
+  writeRejectedChanges(getRejectedCloudSyncChanges().filter((item) => !(item.entity === entity && item.key === key) && !(operation === 'delete' && entity === 'workout' && item.key.startsWith(key + cloudKeySeparator))));
+  if (operation === 'delete' && entity === 'workout') sqlite.runSync('DELETE FROM sync_outbox WHERE batch_id IS NULL AND substr(entity_key, 1, ?) = ?', [key.length + 1, key + cloudKeySeparator]);
   const id = mutationId();
   sqlite.runSync(`INSERT INTO sync_outbox (entity, entity_key, operation, record_json, base_revision, mutation_id, batch_id, created_at)
     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
@@ -724,14 +816,53 @@ export function getCloudSyncBatch(limit = 3): CloudSyncBatch | null {
   const rows = sqlite.getAllSync<{ entity: CloudSyncEntity; key: string; operation: 'upsert' | 'delete'; recordJson: string | null; baseRevision: number }>("SELECT entity, entity_key AS key, operation, record_json AS recordJson, base_revision AS baseRevision FROM sync_outbox WHERE batch_id = ? ORDER BY CASE WHEN entity = 'workout' THEN 0 ELSE 1 END, created_at, rowid", [batchId]);
   return rows.length ? { batchId, changes: rows.map(({ recordJson, ...row }) => ({ ...row, record: recordJson ? JSON.parse(recordJson) : undefined })) } : null;
 }
-export function acknowledgeCloudSyncBatch(batchId: string, revision: number) {
-  const keys = sqlite.getAllSync<{ entity: CloudSyncEntity; key: string; operation: string }>('SELECT entity, entity_key AS key, operation FROM sync_outbox WHERE batch_id = ?', [batchId]);
-  sqlite.runSync('DELETE FROM sync_outbox WHERE batch_id = ?', [batchId]);
-  for (const item of keys) {
-    sqlite.runSync('UPDATE sync_outbox SET base_revision = MAX(base_revision, ?) WHERE entity = ? AND entity_key = ?', [revision, item.entity, item.key]);
-    if (item.operation === 'delete') sqlite.runSync('DELETE FROM sync_tombstones WHERE entity = ? AND entity_key = ?', [item.entity, item.key]);
+export function acknowledgeCloudSyncBatch(batchId: string, revision: number, results: CloudSyncMutationResult[]) {
+  const changes = getClaimedChanges(batchId);
+  validateReceipt(changes, revision, results);
+  sqlite.execSync('BEGIN IMMEDIATE');
+  try {
+    const rejected = getRejectedCloudSyncChanges();
+    sqlite.runSync('DELETE FROM sync_outbox WHERE batch_id = ?', [batchId]);
+    for (const item of changes) {
+      const result = results.find((entry) => entry.entity === item.entity && entry.key === item.key)!;
+      if (result.status === 'conflict') {
+        if ((item.operation === 'delete' || localSyncRecord(item.entity, item.key)) && !sqlite.getFirstSync('SELECT 1 FROM sync_outbox WHERE entity = ? AND entity_key = ?', [item.entity, item.key])) rejected.push({ ...item, reason: 'Another device changed this record. Review your attempted values before saving again.', conflict: true });
+        continue;
+      }
+      sqlite.runSync(`INSERT INTO sync_versions (entity, entity_key, revision) VALUES (?, ?, ?)
+        ON CONFLICT(entity, entity_key) DO UPDATE SET revision = MAX(revision, excluded.revision)`, [item.entity, item.key, revision]);
+      sqlite.runSync('UPDATE sync_outbox SET base_revision = MAX(base_revision, ?) WHERE entity = ? AND entity_key = ?', [revision, item.entity, item.key]);
+      if (item.operation === 'delete') sqlite.runSync('DELETE FROM sync_tombstones WHERE entity = ? AND entity_key = ?', [item.entity, item.key]);
+    }
+    writeRejectedChanges(rejected);
+    sqlite.execSync("DELETE FROM sync_state WHERE key = 'cloud_sync_failed_at'; COMMIT;");
+  } catch (error) {
+    sqlite.execSync('ROLLBACK');
+    throw error;
   }
-  sqlite.execSync("DELETE FROM sync_state WHERE key = 'cloud_sync_failed_at'");
+}
+function getClaimedChanges(batchId: string): CloudSyncChange[] {
+  return sqlite.getAllSync<{ entity: CloudSyncEntity; key: string; operation: 'upsert' | 'delete'; recordJson: string | null; baseRevision: number }>('SELECT entity, entity_key AS key, operation, record_json AS recordJson, base_revision AS baseRevision FROM sync_outbox WHERE batch_id = ?', [batchId])
+    .map(({ recordJson, ...item }) => ({ ...item, record: recordJson ? JSON.parse(recordJson) : undefined }));
+}
+export function rejectCloudSyncBatch(batchId: string, reason: string, invalidChanges?: { entity: CloudSyncEntity; key: string }[]) {
+  sqlite.execSync('BEGIN IMMEDIATE');
+  try {
+    const changes = getClaimedChanges(batchId);
+    const rejected = getRejectedCloudSyncChanges();
+    sqlite.runSync('DELETE FROM sync_outbox WHERE batch_id = ?', [batchId]);
+    for (const item of changes) {
+      if (sqlite.getFirstSync('SELECT 1 FROM sync_outbox WHERE entity = ? AND entity_key = ?', [item.entity, item.key]) || (item.operation === 'upsert' && !localSyncRecord(item.entity, item.key))) continue;
+      if (invalidChanges?.length && !invalidChanges.some((entry) => entry.entity === item.entity && entry.key === item.key)) {
+        sqlite.runSync('INSERT INTO sync_outbox (entity, entity_key, operation, record_json, base_revision, mutation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [item.entity, item.key, item.operation, item.record ? JSON.stringify(item.record) : null, item.baseRevision, mutationId(), Date.now()]);
+      } else rejected.push({ ...item, reason });
+    }
+    writeRejectedChanges(rejected);
+    sqlite.execSync('COMMIT');
+  } catch (error) {
+    sqlite.execSync('ROLLBACK');
+    throw error;
+  }
 }
 export function getCloudSyncCursor() { return Number(syncState('cloud_sync_cursor') ?? 0); }
 function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: string) {
@@ -756,7 +887,7 @@ export function prepareCloudSyncForUser(userId: string): boolean {
     }
     return true;
   }
-  if (hasPendingCloudSync()) return false;
+  if (hasPendingCloudSync() || getRejectedCloudSyncChanges().length) return false;
   sqlite.execSync(`DELETE FROM recommendation_feedback; DELETE FROM workout_muscle_ratings; DELETE FROM workout_sets; DELETE FROM workouts WHERE id NOT LIKE '${demoWorkoutIdPrefix}%'; DELETE FROM custom_splits; DELETE FROM sync_tombstones; DELETE FROM sync_outbox; DELETE FROM sync_versions; DELETE FROM sync_state WHERE key LIKE 'cloud_sync_%';`);
   setSyncState('active_user_id', userId);
   sqlite.runSync("DELETE FROM sync_state WHERE key = 'active_clerk_user_id'");
@@ -775,11 +906,17 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
   sqlite.execSync('BEGIN IMMEDIATE');
   try {
     for (const change of changes) {
-      const pending = sqlite.getFirstSync('SELECT 1 FROM sync_outbox WHERE entity = ? AND entity_key = ?', [change.entity, change.key]);
-      if (!pending) {
+      if (change.revision < syncVersion(change.entity, change.key)) continue;
+      const issues = getRejectedCloudSyncChanges();
+      const retainedDelete = change.operation === 'delete' && issues.some((item) => (item.entity === change.entity && item.key === change.key) || (change.entity === 'workout' && item.key.startsWith(change.key + cloudKeySeparator)));
+      if (retainedDelete && change.entity === 'workout' && !issues.some((item) => item.entity === 'workout' && item.key === change.key)) {
+        writeRejectedChanges([...issues, { entity: 'workout', key: change.key, operation: 'delete', baseRevision: change.revision, record: localSyncRecord('workout', change.key) ?? undefined, conflict: true, reason: 'Another device deleted this workout. Review its local sets, then delete the workout here to resolve the conflict.' }]);
+      }
+      const pending = getRejectedCloudSyncChanges().some((item) => !item.conflict && item.entity === change.entity && item.key === change.key) || sqlite.getFirstSync('SELECT 1 FROM sync_outbox WHERE entity = ? AND entity_key = ?', [change.entity, change.key]);
+      if (!pending && !retainedDelete) {
         if (change.operation === 'delete') {
           const pieces = change.key.split(cloudKeySeparator);
-          if (change.entity === 'workout') sqlite.runSync('DELETE FROM workouts WHERE id = ?', [change.key]);
+          if (change.entity === 'workout') removeWorkoutRows(change.key);
           if (change.entity === 'split') sqlite.runSync('DELETE FROM custom_splits WHERE id = ?', [change.key]);
           if (change.entity === 'set') sqlite.runSync('DELETE FROM workout_sets WHERE workout_id = ? AND exercise_id = ? AND set_number = ?', [pieces[0], pieces[1], Number(pieces[2])]);
           if (change.entity === 'rating') sqlite.runSync('DELETE FROM workout_muscle_ratings WHERE workout_id = ? AND muscle = ?', [pieces[0], pieces[1]]);

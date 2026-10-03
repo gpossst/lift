@@ -12,5 +12,8 @@
       "bun": "1.2.18",
       "autoIncrement": true
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

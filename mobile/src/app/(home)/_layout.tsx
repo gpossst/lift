@@ -1,0 +1,12 @@
+import { Stack } from 'expo-router';
+import { useAppearance } from '@/components/appearance-provider';
+
+export const unstable_settings = { anchor: 'index' };
+
+export default function HomeLayout() {
+  const { colors } = useAppearance();
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+    <Stack.Screen name="index" />
+    <Stack.Screen name="(history)" options={{ gestureEnabled: true }} />
+  </Stack>;
+}

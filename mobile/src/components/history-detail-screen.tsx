@@ -1,0 +1,148 @@
+import { ui } from '@/styles/primitives';
+import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
+import { ArrowLeft, Edit2, TrendingUp } from 'react-native-feather';
+import { useCallback, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { deleteWorkout, getExercises, getWorkoutAchievements, getWorkoutVisitExerciseDetails, getWorkoutVisitSummary } from '@/db';
+import { exerciseRequiresWeight } from '@/db/exercise-catalog';
+import { useAppearance } from '@/components/appearance-provider';
+import { workoutSplitLabel } from '@/lib/workout-split-label';
+import { syncWorkoutData } from '@/lib/cloud-sync';
+
+const formatDate = (date: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }).format(date);
+const formatVolume = (volume: number) => volume >= 10_000 ? `${Math.round(volume / 1000)}k` : volume >= 1_000 ? `${(volume / 1000).toFixed(1)}k` : String(volume);
+const formatDuration = (ms: number) => {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m` : `${minutes}m`;
+};
+
+export default function HistoryDetailScreen() {
+  const { colors } = useAppearance();
+  const pathname = usePathname();
+  const historyPath = pathname.startsWith('/stats/') ? '/stats/history' : '/history';
+  const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
+  const [, refresh] = useState(0);
+  useFocusEffect(useCallback(() => { refresh((value) => value + 1); }, []));
+  const visit = workoutId ? getWorkoutVisitSummary(workoutId) : null;
+  const exercises = workoutId ? getWorkoutVisitExerciseDetails(workoutId) : [];
+  const records = new Map((workoutId ? getWorkoutAchievements(workoutId) : []).filter((item) => item.level === 'gold').map((item) => [item.exerciseId, item]));
+  const requiresWeight = new Map(getExercises().map((exercise) => [exercise.id, exerciseRequiresWeight(exercise)]));
+  const back = () => router.dismissTo(historyPath);
+  const remove = () => {
+    if (!workoutId) return;
+    try {
+      if (!deleteWorkout(workoutId)) { setDeleteError(true); return; }
+      setDeleteOpen(false);
+      void syncWorkoutData().catch(() => undefined);
+      back();
+    } catch {
+      setDeleteError(true);
+    }
+  };
+
+  if (!visit) return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}><View style={styles.missing}><Text style={[styles.missingText, { color: colors.text }]}>Workout unavailable</Text><Pressable onPress={back}><Text style={[styles.backText, { color: colors.text }]}>Back to history</Text></Pressable></View></SafeAreaView>;
+
+  const date = visit.workout.endedAt ?? visit.workout.createdAt;
+  const duration = visit.workout.endedAt ? formatDuration(date.getTime() - visit.workout.createdAt.getTime()) : null;
+  const hasRequiredWeight = exercises.some((exercise) => requiresWeight.get(exercise.id) ?? true);
+  const split = workoutSplitLabel(visit.workout.split);
+
+  return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}>
+    <View style={styles.header}><Pressable onPress={back} hitSlop={10} style={ui.backButton} accessibilityRole="button" accessibilityLabel="Back to workout history"><ArrowLeft width={22} height={22} color={colors.text} strokeWidth={2.5} /></Pressable></View>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.hero}>
+        <Text style={[styles.kicker, { color: colors.mutedText }]}>{formatDate(date)}</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{split} workout</Text>
+        {(duration || records.size > 0) && <View style={styles.heroMeta}>
+          {duration && <Text style={[styles.date, { color: colors.mutedText }]}>{duration}</Text>}
+          {records.size > 0 && <View style={[styles.recordPill, { backgroundColor: colors.accent }]}><Text style={[styles.recordPillText, { color: colors.accentText }]}>✦ {records.size} {records.size === 1 ? 'PR' : 'PRs'}</Text></View>}
+        </View>}
+      </View>
+      <View style={styles.totals}>
+        <Stat label={visit.volume ? hasRequiredWeight ? 'Volume' : 'Added volume' : 'Reps'} value={visit.volume ? `${formatVolume(visit.volume)} lb` : String(visit.reps)} colors={colors} />
+        <Stat label="Sets" value={String(visit.sets)} colors={colors} />
+        <Stat label="Exercises" value={String(visit.exercises)} colors={colors} />
+      </View>
+      <View style={styles.training}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedText }]}>Exercises</Text>
+        {exercises.map((exercise, index) => {
+          const required = requiresWeight.get(exercise.id) ?? true;
+          const weighted = required || exercise.sets.some((set) => set.weight > 0);
+          const record = records.get(exercise.id);
+          return <View key={exercise.id} style={[styles.exercise, { borderColor: colors.surfaceStrong, borderBottomWidth: index === exercises.length - 1 ? 0 : 1 }]}>
+            <View style={styles.exerciseHeading}>
+              <Text style={[ui.listIndex, { color: colors.subtleText }]}>{String(index + 1).padStart(2, '0')}</Text>
+              <View style={styles.exerciseCopy}><Text style={[ui.listName, { color: colors.text }]} numberOfLines={2}>{exercise.name}</Text><Text style={[ui.listMeta, { color: colors.mutedText }]}>{exercise.sets.length} {exercise.sets.length === 1 ? 'set' : 'sets'}</Text></View>
+              {record && <View style={[styles.recordPill, { backgroundColor: colors.accent }]} accessible accessibilityLabel={`Personal record, ${record.metric === 'reps' ? `${record.reps} reps at ${record.weight} pounds` : `${record.weight} pounds`}`}><Text style={[styles.recordPillText, { color: colors.accentText }]}>PR · {record.metric === 'reps' ? `${record.reps} reps` : `${record.weight} lb`}</Text></View>}
+            </View>
+            <View style={styles.sets}>
+              {exercise.sets.map((set) => <View key={set.number} style={styles.setRow}>
+                <Text style={[styles.setLabel, { color: colors.mutedText }]}>Set {set.number}</Text>
+                <Text style={[styles.setValue, { color: colors.text }]}>{weighted ? required ? `${set.weight} lb × ` : set.weight ? `+${set.weight} lb × ` : '' : ''}{set.reps} reps</Text>
+              </View>)}
+              <View style={styles.exerciseActions}>
+                <Pressable onPress={() => router.push({ pathname: pathname.startsWith('/stats/') ? '/stats/history-edit' : '/history-edit', params: { workoutId, exerciseId: exercise.id } })} style={({ pressed }) => [styles.exerciseAction, { backgroundColor: colors.surface }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Edit ${exercise.name} sets`}><Edit2 width={13} height={13} color={colors.text} strokeWidth={2.4} /><Text style={[styles.exerciseActionText, { color: colors.text }]}>Edit sets</Text></Pressable>
+                <Pressable onPress={() => router.push({ pathname: pathname.startsWith('/stats/') ? '/stats/history-progress' : '/history-progress', params: { exerciseId: exercise.id } })} style={({ pressed }) => [styles.exerciseAction, { backgroundColor: colors.surface }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View progress for ${exercise.name}`}><TrendingUp width={13} height={13} color={colors.text} strokeWidth={2.4} /><Text style={[styles.exerciseActionText, { color: colors.text }]}>Progress</Text></Pressable>
+              </View>
+            </View>
+          </View>;
+        })}
+      </View>
+      <Pressable onPress={() => { setDeleteError(false); setDeleteOpen(true); }} style={({ pressed }) => [styles.deleteTrigger, { borderColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Delete this workout"><Text style={styles.deleteText}>Delete workout</Text></Pressable>
+    </ScrollView>
+    <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => setDeleteOpen(false)}><View style={styles.modalOverlay}><View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+      <Text style={[styles.modalTitle, { color: colors.text }]}>Delete this workout?</Text>
+      <Text style={[styles.modalCopy, { color: colors.mutedText }]}>All its sets and muscle ratings will be removed from your history and progress. This cannot be undone.</Text>
+      {deleteError && <Text accessibilityRole="alert" style={styles.deleteText}>Could not delete this workout. Try again.</Text>}
+      <Pressable onPress={remove} style={({ pressed }) => [styles.confirmDelete, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Confirm delete workout"><Text style={styles.confirmDeleteText}>Delete workout</Text></Pressable>
+      <Pressable onPress={() => setDeleteOpen(false)} style={styles.cancelDelete} accessibilityRole="button" accessibilityLabel="Cancel deletion"><Text style={[styles.cancelDeleteText, { color: colors.text }]}>Cancel</Text></Pressable>
+    </View></View></Modal>
+  </SafeAreaView>;
+}
+
+function Stat({ label, value, colors }: { label: string; value: string; colors: ReturnType<typeof useAppearance>['colors'] }) {
+  return <View style={[ui.stat, { backgroundColor: colors.surface }]}><Text style={[ui.statValue, { color: colors.text }]}>{value}</Text><Text style={[ui.statLabel, { color: colors.mutedText }]}>{label}</Text></View>;
+}
+
+const styles = StyleSheet.create({
+  header: { height: 52, paddingHorizontal: 24, justifyContent: 'center' },
+  content: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 },
+  hero: { paddingTop: 6, paddingBottom: 24 },
+  kicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1, textTransform: 'uppercase' },
+  title: { marginTop: 5, fontSize: 38, lineHeight: 42, fontWeight: '900', letterSpacing: -1.8 },
+  heroMeta: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  date: { fontSize: 14, fontWeight: '700', letterSpacing: -.15 },
+  recordPill: { borderRadius: 20, paddingHorizontal: 9, paddingVertical: 5 },
+  recordPillText: { fontSize: 10, fontWeight: '900' },
+  totals: { flexDirection: 'row', gap: 8 },
+  statLabel: { marginTop: 3, fontSize: 10, fontWeight: '800', textAlign: 'center' },
+  training: { marginTop: 28 },
+  sectionTitle: { marginBottom: 8, fontSize: 10, fontWeight: '900', letterSpacing: .8, textTransform: 'uppercase' },
+  exercise: { paddingBottom: 16, marginBottom: 10 },
+  exerciseHeading: { minHeight: 56, flexDirection: 'row', alignItems: 'center' },
+  exerciseActions: { marginTop: 10, flexDirection: 'row', gap: 8 },
+  exerciseAction: { minHeight: 44, borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  exerciseActionText: { fontSize: 12, fontWeight: '800' },
+  exerciseCopy: { flex: 1, minWidth: 0, paddingRight: 8 },
+  sets: { marginLeft: 31 },
+  setRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  setLabel: { fontSize: 12, fontWeight: '700' },
+  setValue: { fontSize: 13, fontWeight: '800', letterSpacing: -.2 },
+  pressed: { opacity: .65 },
+  missing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
+  missingText: { fontSize: 22, fontWeight: '900' },
+  backText: { fontSize: 15, fontWeight: '800' },
+  deleteTrigger: { marginTop: 24, minHeight: 52, borderTopWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  deleteText: { color: '#D43A2F', fontSize: 14, fontWeight: '800' },
+  modalOverlay: { flex: 1, backgroundColor: '#0009', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  modalCard: { width: '100%', maxWidth: 400, borderRadius: 20, padding: 24 },
+  modalTitle: { fontSize: 24, fontWeight: '900' },
+  modalCopy: { marginTop: 10, marginBottom: 20, fontSize: 14, lineHeight: 21 },
+  confirmDelete: { minHeight: 52, borderRadius: 12, backgroundColor: '#D43A2F', alignItems: 'center', justifyContent: 'center' },
+  confirmDeleteText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  cancelDelete: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  cancelDeleteText: { fontSize: 14, fontWeight: '800' },
+});

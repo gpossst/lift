@@ -2,15 +2,16 @@ import * as SplashScreen from 'expo-splash-screen';
 import { router, Tabs, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Easing, LogBox, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Alert, AppState, LogBox, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppearanceProvider, useAppearance } from '@/components/appearance-provider';
 import { AuthFlow, PasswordResetFlow, VerificationPrompt } from '@/components/auth-flow';
 import { BottomNavigation } from '@/components/bottom-navigation';
+import { FlexAnimation } from '@/components/flex-animation';
 import { dismissFirstWorkoutPreview, FirstWorkoutPreview, hasDismissedFirstWorkoutPreview } from '@/components/first-workout-preview';
 import { OnboardingFlow } from '@/components/onboarding';
-import { createWorkout, getRecommendedWorkoutSplit, getWorkoutSplitDefinition, prepareCloudSyncForUser } from '@/db';
+import { createWorkout, getRecommendedWorkoutSplit, getRejectedCloudSyncChanges, getWorkoutSplitDefinition, prepareCloudSyncForUser } from '@/db';
 import { setCloudSyncUser, syncWorkoutData } from '@/lib/cloud-sync';
 import { clearPendingOnboarding, submitOnboarding, takePendingOnboarding } from '@/lib/onboarding';
 import { authClient } from '@/lib/auth-client';
@@ -55,12 +56,28 @@ function CloudSyncLifecycle() {
       return;
     }
     setCloudSyncUser(userId);
-    const synchronize = () => { void syncWorkoutData().catch(() => undefined); };
+    let active = true;
+    let lastNotice = '';
+    const synchronize = () => {
+      void syncWorkoutData().then(() => {
+        if (!active) return;
+        const issues = getRejectedCloudSyncChanges();
+        const notice = JSON.stringify(issues.map(({ entity, key, reason }) => [entity, key, reason]));
+        if (!issues.length) { lastNotice = ''; return; }
+        if (notice === lastNotice) return;
+        lastNotice = notice;
+        Alert.alert('Some changes need attention', 'Some changes could not sync and are kept on this device. Review them in Settings.', [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Review', onPress: () => router.push('/settings') },
+        ]);
+      }).catch(() => undefined);
+    };
     synchronize();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') synchronize();
     });
     return () => {
+      active = false;
       subscription.remove();
       setCloudSyncUser(null);
     };
@@ -103,19 +120,13 @@ function AppNavigator() {
 
 function AppStack() {
   const { colors } = useAppearance();
-  const { width } = useWindowDimensions();
-  return <Tabs tabBar={(props) => <BottomNavigation {...props} />} screenOptions={({ route }) => ({
+  // Keep tab visibility independent of interrupted animations around nested stacks.
+  return <Tabs tabBar={(props) => <BottomNavigation {...props} />} screenOptions={{
     headerShown: false,
-    animation: ['index', 'stats', 'start', 'friends', 'settings'].includes(route.name) ? 'shift' : 'none',
+    animation: 'none',
     sceneStyle: { backgroundColor: colors.background },
-    transitionSpec: { animation: 'timing', config: { duration: 280, easing: Easing.inOut(Easing.cubic) } },
-    sceneStyleInterpolator: ({ current }) => ({
-      sceneStyle: {
-        transform: [{ translateX: current.progress.interpolate({ inputRange: [-1, 0, 1], outputRange: [-width, 0, width] }) }],
-      },
-    }),
-  })}>
-    <Tabs.Screen name="index" />
+  }}>
+    <Tabs.Screen name="(home)" />
     <Tabs.Screen name="stats" />
     <Tabs.Screen name="start" options={{ href: null }} />
     <Tabs.Screen name="friends" />
@@ -123,9 +134,6 @@ function AppStack() {
     <Tabs.Screen name="exercises" options={{ href: null }} />
     <Tabs.Screen name="workout" options={{ href: null }} />
     <Tabs.Screen name="summary" options={{ href: null }} />
-    <Tabs.Screen name="history-detail" options={{ href: null }} />
-    <Tabs.Screen name="history-edit" options={{ href: null }} />
-    <Tabs.Screen name="history" options={{ href: null }} />
     <Tabs.Screen name="explore" options={{ href: null }} />
     <Tabs.Screen name="reset-password" options={{ href: null }} />
     <Tabs.Screen name="auth/verified" options={{ href: null }} />
@@ -138,7 +146,8 @@ function VerifiedEmailScreen() {
 }
 
 function LoadingScreen() {
-  return <View style={styles.loading}><ActivityIndicator size="large" color="#17180F" /></View>;
+  const { colors } = useAppearance();
+  return <View style={[styles.loading, { backgroundColor: colors.background }]}><FlexAnimation style={styles.loadingAnimation} /></View>;
 }
 
 function SignedInApp({ userId, email, emailVerified }: { userId: string; email: string; emailVerified: boolean }) {
@@ -186,5 +195,6 @@ function SignedInApp({ userId, email, emailVerified }: { userId: string; email: 
 const styles = StyleSheet.create({
   root: { flex: 1 },
   navigator: { flex: 1 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9F9F7' },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingAnimation: { width: '100%', aspectRatio: 16 / 9 },
 });

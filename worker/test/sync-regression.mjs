@@ -95,7 +95,12 @@ if (recovered.response.status !== 200 || !(await row('before-explosion')) || !(a
 const first = await send('retry', [workout('retry')]);
 const retry = await send('retry', [workout('retry')]);
 const retryChanges = await DB.prepare("SELECT COUNT(*) AS count FROM sync_changes WHERE user_id = 'user' AND record_key = 'retry'").first();
-if (first.body.revision !== retry.body.revision || retryChanges.count !== 1) throw new Error('Retry was not idempotent.');
+if (first.body.revision !== retry.body.revision || retryChanges.count !== 1 || JSON.stringify(first.body.results) !== JSON.stringify(retry.body.results)) throw new Error('Retry was not idempotent.');
+if (first.body.results[0].status !== 'accepted' || first.body.results[0].revision !== first.body.revision) throw new Error('Accepted per-record revision missing from receipt.');
+const laterRetryEdit = workout('retry'); laterRetryEdit.baseRevision = first.body.revision; laterRetryEdit.record.split = 'pull';
+await send('retry-later-edit', [laterRetryEdit]);
+const oldRetry = await send('retry', [workout('retry')]);
+if (JSON.stringify(oldRetry.body.results) !== JSON.stringify(first.body.results) || (await row('retry')).split !== 'pull') throw new Error('Historical receipt changed or retried payload overwrote a newer edit.');
 
 // Every mutation shape executes without per-record reads; a maximal set still
 // stays inside the three-record chunk's statement budget.
@@ -139,8 +144,14 @@ if ((await row('clock')).split !== 'pull') throw new Error('Device clock incorre
 // Two devices editing the same base revision converge on the first accepted server revision.
 const deviceA = workout('simultaneous'); deviceA.record.split = 'legs';
 const deviceB = workout('simultaneous'); deviceB.record.split = 'pull';
-await send('device-a', [deviceA]);
-await send('device-b', [deviceB]);
+const deviceAReceipt = await send('device-a', [deviceA]);
+const deviceBReceipt = await send('device-b', [deviceB]);
+if (deviceAReceipt.body.results[0].status !== 'accepted' || deviceBReceipt.body.results[0].status !== 'conflict' || deviceBReceipt.body.results[0].revision !== undefined) throw new Error('Conflicted mutation was acknowledged as accepted.');
+const mixed = await send('mixed-conflict', [deviceB, workout('mixed-valid')]);
+if (mixed.body.results[0].status !== 'conflict' || mixed.body.results[1].status !== 'accepted') throw new Error('Mixed receipt did not distinguish accepted and conflicted records.');
+const invalidSet = { entity: 'set', key: 'children\u001fbench\u001f1', operation: 'upsert', baseRevision: children.body.revision, record: { workoutId: 'children', exerciseId: 'bench', setNumber: 1, weight: 100.123, reps: 8, completedAt: 20, muscles: [] } };
+const invalidSibling = await send('invalid-sibling', [invalidSet, workout('invalid-sibling-valid')]);
+if (invalidSibling.response.status !== 400 || invalidSibling.body.invalidChanges?.length !== 1 || invalidSibling.body.invalidChanges[0].key !== invalidSet.key || await row('invalid-sibling-valid')) throw new Error('Invalid batch was not atomic or did not identify the rejected mutation.');
 if ((await row('simultaneous')).split !== 'legs') throw new Error('Stale simultaneous edit overwrote a server revision.');
 
 // Deletes are durable changes and appear in cursor pagination.

@@ -1,0 +1,81 @@
+- main [ref=e2]:
+  - navigation "Primary navigation" [ref=e3]:
+    - link "Lift home" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - img "Lift" [ref=e5]
+    - generic [ref=e121]:
+      - button "Sign in" [ref=e122] [cursor=pointer]
+      - button "Create account" [active] [ref=e123] [cursor=pointer]
+  - generic [ref=e11]:
+    - generic [ref=e12]:
+      - paragraph [ref=e13]: Your training, remembered.
+      - heading "A workout log that learns your rhythm." [level=1] [ref=e14]
+      - paragraph [ref=e15]: Lift keeps every set close, tracks recovery across sessions, and helps you choose what to train next without turning fitness into homework.
+      - button "Start with Lift" [ref=e16] [cursor=pointer]
+    - img "Lift app home screen" [ref=e18]:
+      - generic [ref=e20]:
+        - generic [ref=e21]: Home
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - text: "128"
+              - emphasis [ref=e25]: LB
+            - generic [ref=e26]: +12% from last week
+          - generic [ref=e27]: Weekly volume
+          - generic [ref=e33]:
+            - generic [ref=e34]: All
+            - generic [ref=e35]: Push
+            - generic [ref=e36]: Pull
+            - generic [ref=e37]: Legs
+        - generic [ref=e39]:
+          - strong [ref=e40]: September activity
+          - generic [ref=e41]: 11 DAYS
+        - generic [ref=e78]:
+          - text: YOUR NEXT WORKOUT
+          - strong [ref=e79]: Pull · Back and biceps
+  - region "What Lift does" [ref=e80]:
+    - generic [ref=e81]:
+      - paragraph [ref=e82]: What you get
+      - heading "Everything you need to train with context." [level=2] [ref=e83]
+    - generic [ref=e84]:
+      - article [ref=e85]:
+        - strong [ref=e89]: Log fast
+        - paragraph [ref=e90]: Sets, reps, weight, and effort without breaking the flow of a workout.
+      - article [ref=e91]:
+        - strong [ref=e95]: Recover intelligently
+        - paragraph [ref=e96]: Recent muscle fatigue changes recommendations until your body catches up.
+      - article [ref=e97]:
+        - strong [ref=e102]: Own the history
+        - paragraph [ref=e103]: Your account keeps training consistent across devices and remains exportable.
+  - generic [ref=e104]:
+    - generic [ref=e105]:
+      - heading "Your next session starts here." [level=2] [ref=e106]
+      - paragraph [ref=e107]: Free to start, and your training history stays yours.
+    - button "Start with Lift" [ref=e108] [cursor=pointer]
+  - generic [ref=e109]:
+    - img "Lift" [ref=e111]
+    - generic [ref=e117]:
+      - link "Privacy" [ref=e118] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/privacy
+      - link "Terms" [ref=e119] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/terms
+      - link "Support" [ref=e120] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/support
+  - dialog [ref=e125]:
+    - button "Close" [ref=e126] [cursor=pointer]: ×
+    - img "Lift" [ref=e127]
+    - heading "Create your account" [level=2] [ref=e133]
+    - generic [ref=e134]:
+      - generic [ref=e135]:
+        - text: Name
+        - textbox "Name" [ref=e136]
+      - generic [ref=e137]:
+        - text: Email
+        - textbox "Email" [ref=e138]
+      - generic [ref=e139]:
+        - text: Password
+        - textbox "Password" [ref=e140]
+      - button "Create account" [ref=e141] [cursor=pointer]
+    - paragraph [ref=e142]:
+      - text: Already have an account?
+      - button "Sign in" [ref=e143] [cursor=pointer]

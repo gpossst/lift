@@ -4,8 +4,9 @@ import { ArrowLeft } from 'react-native-feather';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppearance } from '@/components/appearance-provider';
-import { getExercises, getWorkoutHistory, updateWorkoutSet, type WorkoutHistoryPoint } from '@/db';
+import { getExercises, getRejectedCloudSyncChanges, getWorkoutHistory, updateWorkoutSet, type WorkoutHistoryPoint } from '@/db';
 import { exerciseRequiresWeight } from '@/db/exercise-catalog';
+import { isValidWorkoutSetValues } from '@/lib/workout-set-validation';
 import { ui } from '@/styles/primitives';
 
 type EditableSet = { original: WorkoutHistoryPoint; weight: string; reps: string };
@@ -18,11 +19,11 @@ export default function HistoryEditScreen() {
   const [sets, setSets] = useState<EditableSet[]>(() => exerciseId && workoutId
     ? getWorkoutHistory(exerciseId).filter((set) => set.workoutId === workoutId).map((set) => ({ original: set, weight: String(set.weight), reps: String(set.reps) }))
     : []);
+  const syncIssues = getRejectedCloudSyncChanges().filter((item) => item.entity === 'set' && item.key.startsWith(`${workoutId}\u001f${exerciseId}\u001f`));
   const valid = sets.length > 0 && sets.every((set) => {
     const weight = Number(set.weight);
     const reps = Number(set.reps);
-    return set.weight.trim() !== '' && Number.isFinite(weight) && weight >= 0 && (!requiresWeight || weight > 0)
-      && set.reps.trim() !== '' && Number.isInteger(reps) && reps > 0;
+    return set.weight.trim() !== '' && set.reps.trim() !== '' && isValidWorkoutSetValues({ weight, reps }) && (!requiresWeight || weight > 0);
   });
 
   function change(index: number, field: 'weight' | 'reps', value: string) {
@@ -34,7 +35,7 @@ export default function HistoryEditScreen() {
     for (const set of sets) {
       const weight = Number(set.weight);
       const reps = Number(set.reps);
-      if (weight !== set.original.weight || reps !== set.original.reps) updateWorkoutSet(exerciseId, set.original, { weight, reps });
+      if (weight !== set.original.weight || reps !== set.original.reps || syncIssues.some((item) => item.key.endsWith(`\u001f${set.original.setNumber}`))) updateWorkoutSet(exerciseId, set.original, { weight, reps });
     }
     router.back();
   }
@@ -45,6 +46,7 @@ export default function HistoryEditScreen() {
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={[styles.kicker, { color: colors.mutedText }]}>EDIT WORKOUT SETS</Text>
         <Text style={[styles.title, { color: colors.text }]}>{exercise?.name ?? 'Exercise unavailable'}</Text>
+        {syncIssues.map((issue) => <Text key={issue.key} style={[styles.error, { color: colors.mutedText }]}>{issue.reason}{issue.record ? ` Attempted set: ${issue.record.weight} lb × ${issue.record.reps} reps.` : ''} Save these sets to resolve the issue.</Text>)}
         {sets.map((set, index) => <View key={set.original.setNumber} style={[styles.row, { borderColor: colors.surfaceStrong }]}>
           <Text style={[styles.setNumber, { color: colors.text }]}>Set {set.original.setNumber}</Text>
           <View style={styles.inputs}>
@@ -53,7 +55,7 @@ export default function HistoryEditScreen() {
           </View>
         </View>)}
         {!sets.length && <Text style={[styles.empty, { color: colors.mutedText }]}>No sets found for this exercise in this workout.</Text>}
-        {sets.length > 0 && !valid && <Text style={[styles.error, { color: colors.mutedText }]}>Enter a valid weight and a whole number of reps for each set.</Text>}
+        {sets.length > 0 && !valid && <Text style={[styles.error, { color: colors.mutedText }]}>Use up to 10,000 lb with at most two decimal places and 1–10,000 whole reps for each set.</Text>}
       </ScrollView>
       <View style={styles.footer}><Pressable onPress={save} disabled={!valid} style={({ pressed }) => [styles.saveButton, { backgroundColor: valid ? colors.accent : colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Save edited sets" accessibilityState={{ disabled: !valid }}><Text style={[styles.saveText, { color: valid ? colors.accentText : colors.subtleText }]}>Save sets</Text></Pressable></View>
     </KeyboardAvoidingView>

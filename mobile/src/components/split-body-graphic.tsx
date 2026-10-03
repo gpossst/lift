@@ -113,7 +113,7 @@ export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split,
       ...primaryParts.map((part) => ({ ...part, color: colors.accent })),
     ];
   };
-  const sharedProps = { gender: 'male' as const, scale: 0.62, border: 'none' as const, defaultFill: '#3A3D35', defaultStroke: 'none' };
+  const sharedProps = { gender: 'male' as const, scale: 0.62, border: 'none' as const, defaultFill: colors.surfaceStrong, defaultStroke: 'none' };
 
   return <View pointerEvents="none" style={styles.coveragePair} accessibilityLabel="Workout muscle coverage. Bright yellow indicates primary muscles trained; muted yellow indicates secondary muscles trained; red indicates a target muscle not yet trained.">
     <Body key={`front-${coverageKey}`} {...sharedProps} data={coverage(primary.front, secondary.front, targets.front)} side="front" />
@@ -123,7 +123,7 @@ export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split,
 
 const splitTargets: Record<SplitId, readonly string[]> = {
   push: ['chest', 'shoulders', 'triceps', 'abdominals', 'obliques'],
-  pull: ['biceps', 'lats', 'middle back', 'traps', 'forearms', 'lower back'],
+  pull: ['biceps', 'lats', 'middle back', 'traps', 'forearms', 'lower back', 'neck'],
   chest: ['chest', 'shoulders', 'triceps'],
   back: ['lats', 'middle back', 'traps', 'lower back', 'biceps', 'forearms'],
   legs: ['quadriceps', 'glutes', 'hamstrings', 'adductors', 'abductors', 'calves'],

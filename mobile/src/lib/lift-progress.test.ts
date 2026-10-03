@@ -1,4 +1,4 @@
-import { progressFor } from './lift-progress';
+import { comparePeriods, progressFor } from './lift-progress';
 
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 
@@ -23,3 +23,18 @@ assert(progressFor(differentBestSets, true)[0].bestSet.setNumber === 2, 'estimat
 assert(progressFor(differentBestSets, true, 'maxWeight')[0].bestSet.setNumber === 1, 'max weight uses the heaviest logged set');
 assert(progressFor(differentBestSets, true, 'maxWeight')[0].value === 150, 'max weight charts the logged weight');
 assert(progressFor([{ workoutId: 'decimal', setNumber: 1, weight: 52.5, reps: 8, completedAt: newer }], true, 'maxWeight')[0].value === 52.5, 'max weight keeps fractional pounds');
+assert(progressFor(differentBestSets, true, 'volume')[0].value === 2150, 'volume sums every set in the workout');
+assert(progressFor(differentBestSets, true, 'volume')[0].bestSet.setNumber === 2, 'volume retains the largest contributing set');
+assert(progressFor(differentBestSets, false, 'totalReps')[0].value === 15, 'bodyweight workout reps sum every set');
+assert(progress[0].personalBest === false && progress[1].personalBest === true, 'first workout is a baseline and a later record is marked');
+const periodHistory = [
+  ['older-1', '2026-07-10', 100], ['older-2', '2026-07-20', 100],
+  ['previous-1', '2026-08-10', 100], ['previous-2', '2026-08-20', 100],
+  ['current-1', '2026-09-10', 120], ['current-2', '2026-09-20', 120],
+].map(([workoutId, date, weight]) => ({ workoutId: String(workoutId), setNumber: 1, weight: Number(weight), reps: 1, completedAt: new Date(`${date}T12:00:00Z`) }));
+const periodPoints = progressFor(periodHistory, true, 'maxWeight');
+assert(comparePeriods(periodPoints, 4, new Date('2026-09-29T12:00:00Z')).change === 20, 'compares average workout values with preceding period');
+assert(comparePeriods(periodPoints.slice(0, -1), 4, new Date('2026-09-29T12:00:00Z')).change === null, 'one current workout does not yield a percentage');
+assert(comparePeriods(periodPoints, 12, new Date('2026-09-29T12:00:00Z')).current.length === 6, 'twelve-week view includes older workouts');
+assert(comparePeriods(periodPoints, 13, new Date('2026-09-29T12:00:00Z')).current.length === 6, 'three-month view includes older workouts');
+assert(comparePeriods(periodPoints, null, new Date('2026-09-29T12:00:00Z')).current.length === 6 && comparePeriods(periodPoints, null, new Date('2026-09-29T12:00:00Z')).change === null, 'all-time view shows every workout without a prior-period comparison');

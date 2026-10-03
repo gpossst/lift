@@ -42,7 +42,7 @@ const ratingKey = (rating: Pick<SyncRating, 'workoutId' | 'muscle'>) => `${ratin
 const feedbackKey = (feedback: Pick<SyncFeedback, 'workoutId' | 'exerciseId' | 'action'>) => `${feedback.workoutId}\u001f${feedback.exerciseId}\u001f${feedback.action}`;
 const customSplitId = (id: string) => /^custom:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 const splitMuscles = new Set(['abdominals', 'abductors', 'adductors', 'biceps', 'calves', 'chest', 'forearms', 'glutes', 'hamstrings', 'lats', 'lower back', 'middle back', 'neck', 'quadriceps', 'shoulders', 'traps', 'triceps']);
-const maxSyncChunk = 3; // Three eight-muscle sets use 40 batch statements (42 for the request with user setup).
+const maxSyncChunk = 3; // Three eight-muscle sets use 41 batch statements (43 for the request with user setup).
 const maxRequestBodyBytes = 64 * 1024;
 const deletionVerificationSeconds = 24 * 60 * 60;
 const deletionRetentionSeconds = 30 * 24 * 60 * 60;
@@ -346,7 +346,11 @@ function mutationStatements(env: Env, userId: string, batchId: string, hash: str
 
 async function pushSyncChunk(request: Request, env: Env, userId: string) {
   const body: unknown = await request.json().catch(() => null);
-  if (!validChunk(body)) return json({ error: `A sync batch must contain 1-${maxSyncChunk} valid changes.` }, 400);
+  if (!validChunk(body)) {
+    const changes = (body as { changes?: unknown[] } | null)?.changes;
+    const invalidChanges = Array.isArray(changes) ? changes.filter((change) => !validMutation(change)).map((change) => ({ entity: (change as Partial<SyncMutation> | null)?.entity, key: (change as Partial<SyncMutation> | null)?.key })) : undefined;
+    return json({ error: `A sync batch must contain 1-${maxSyncChunk} valid changes.`, invalidChanges }, 400);
+  }
   const hash = await sha256(JSON.stringify(body.changes));
   const statements: D1PreparedStatement[] = [
     env.DB.prepare('INSERT OR IGNORE INTO sync_accounts (user_id, revision) VALUES (?, 0)').bind(userId),
@@ -355,10 +359,18 @@ async function pushSyncChunk(request: Request, env: Env, userId: string) {
   ];
   for (const change of body.changes) statements.push(...mutationStatements(env, userId, body.batchId, hash, change));
   statements.push(env.DB.prepare('SELECT revision, request_hash AS requestHash FROM sync_batches WHERE user_id = ? AND batch_id = ?').bind(userId, body.batchId));
-  const results = await env.DB.batch<{ revision?: number; requestHash?: string }>(statements);
-  const receipt = results.at(-1)?.results?.[0];
+  // The durable change log reconstructs the same receipt after a lost response,
+  // even if another device has subsequently changed the accepted record.
+  statements.push(env.DB.prepare('SELECT entity, record_key AS key FROM sync_changes WHERE user_id = ? AND revision = (SELECT revision FROM sync_batches WHERE user_id = ? AND batch_id = ?)').bind(userId, userId, body.batchId));
+  const results = await env.DB.batch<{ revision?: number; requestHash?: string; entity?: SyncEntity; key?: string }>(statements);
+  const receipt = results.at(-2)?.results?.[0];
   if (!receipt || receipt.requestHash !== hash) return json({ error: 'Idempotency key was already used for another batch.' }, 409);
-  return json({ batchId: body.batchId, revision: receipt.revision });
+  const accepted = new Set(results.at(-1)?.results?.map((change) => `${change.entity}\u0000${change.key}`));
+  const mutationResults = body.changes.map((change) => ({ entity: change.entity, key: change.key,
+    status: accepted.has(`${change.entity}\u0000${change.key}`) ? 'accepted' : 'conflict',
+    ...(accepted.has(`${change.entity}\u0000${change.key}`) ? { revision: receipt.revision } : {}),
+  }));
+  return json({ batchId: body.batchId, revision: receipt.revision, results: mutationResults });
 }
 
 async function pullSyncChanges(env: Env, userId: string, url: URL) {

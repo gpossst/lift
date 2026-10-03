@@ -14,7 +14,7 @@ check(db.getRecommendedWorkoutSplit(new Date(), true) === split.id);
 check(db.getRecommendedWorkoutSplit(new Date(), false) === 'push');
 const created = db.getCloudSyncBatch();
 check(created?.changes.some((change) => change.entity === 'split' && change.record?.name === 'Upper'));
-db.acknowledgeCloudSyncBatch(created!.batchId, 1);
+db.acknowledgeCloudSyncBatch(created!.batchId, 1, created!.changes.map((change) => ({ entity: change.entity, key: change.key, status: 'accepted', revision: 1 })));
 db.deleteCustomSplit(split.id);
 check(db.getCustomSplits().length === 0);
 check(db.getCloudSyncBatch()?.changes.some((change) => change.entity === 'split' && change.operation === 'delete'));
