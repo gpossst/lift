@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native';
 export const ui = StyleSheet.create({
   screen: { flex: 1 },
   header: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  eyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1, textTransform: 'uppercase' },
   title: { fontSize: 28, fontWeight: '900', letterSpacing: -1.2 },
   backButton: { width: 38, height: 38, marginLeft: -9, alignItems: 'center', justifyContent: 'center' },
   primaryButton: { minHeight: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },

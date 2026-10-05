@@ -1,7 +1,9 @@
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
 import { usePathname } from 'expo-router';
 import { BarChart2, Home, Plus, Settings, Users } from 'react-native-feather';
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -46,22 +48,50 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
       </Svg>}
       <View style={styles.tabRow} accessibilityRole="tablist">
         {tabs.slice(0, 2).map((tab) => <TabButton key={tab.route} tab={tab} active={activeRoute === tab.route} onPress={() => selectTab(tab.route)} />)}
-        <Pressable
-          onPress={() => navigation.navigate('start')}
-          style={({ pressed }) => [styles.startButton, { backgroundColor: colors.accent }, pressed && styles.startPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Start workout">
-          <Plus width={28} height={28} color={colors.accentText} strokeWidth={3} />
-        </Pressable>
+        <StartButton onPress={() => navigation.navigate('start')} />
         {tabs.slice(2).map((tab) => <TabButton key={tab.route} tab={tab} active={activeRoute === tab.route} onPress={() => selectTab(tab.route)} />)}
       </View>
     </View>
   );
 }
 
+function StartButton({ onPress }: { onPress: () => void }) {
+  const { colors } = useAppearance();
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => { scale.set(withSpring(0.9, { duration: 140, dampingRatio: 0.7 })); }}
+      onPressOut={() => { scale.set(withSpring(1, { duration: 320, dampingRatio: 0.45 })); }}
+      style={styles.startPressable}
+      accessibilityRole="button"
+      accessibilityLabel="Start workout">
+      <Animated.View style={[styles.startButton, { backgroundColor: colors.accent }, animatedStyle]}>
+        <Plus width={28} height={28} color={colors.accentText} strokeWidth={3} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 function TabButton({ tab, active, onPress }: { tab: Tab; active: boolean; onPress: () => void }) {
   const { colors } = useAppearance();
   const { Icon } = tab;
+  const scale = useSharedValue(1);
+  const mounted = useRef(false);
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  useEffect(() => {
+    // Pop only on tab changes, not when the nav (re)mounts.
+    if (mounted.current && active) {
+      scale.set(withSequence(
+        withSpring(1.18, { duration: 160, dampingRatio: 0.5 }),
+        withSpring(1, { duration: 280, dampingRatio: 0.6 }),
+      ));
+    }
+    mounted.current = true;
+  }, [active, scale]);
+
   return (
     <Pressable
       onPress={onPress}
@@ -69,7 +99,9 @@ function TabButton({ tab, active, onPress }: { tab: Tab; active: boolean; onPres
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={tab.label}>
-      <Icon width={21} height={21} color={active ? colors.text : colors.subtleText} strokeWidth={active ? 2.7 : 2.2} />
+      <Animated.View style={iconStyle}>
+        <Icon width={21} height={21} color={active ? colors.text : colors.subtleText} strokeWidth={active ? 2.7 : 2.2} />
+      </Animated.View>
       <Text style={[styles.tabLabel, { color: active ? colors.text : colors.subtleText }]}>{tab.label}</Text>
     </Pressable>
   );
@@ -81,7 +113,7 @@ const styles = StyleSheet.create({
   tabRow: { height: 62, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tabButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 3, position: 'relative' },
   tabLabel: { fontSize: 11, lineHeight: 14, fontWeight: '700' },
-  startButton: { width: 58, height: 58, marginHorizontal: 5, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 0 },
+  startPressable: { marginHorizontal: 5 },
+  startButton: { width: 58, height: 58, borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 0 },
   pressed: { opacity: .62 },
-  startPressed: { opacity: .82, transform: [{ scale: .94 }] },
 });

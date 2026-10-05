@@ -18,9 +18,8 @@ import { authClient } from '@/lib/auth-client';
 
 SplashScreen.preventAutoHideAsync();
 
-// Third-party noise: react-native-graph still calls the deprecated SkPath
-// API and trips Reanimated's inline-style heuristic internally.
-LogBox.ignoreLogs(['[react-native-skia]', "shared value's .value inside reanimated inline style"]);
+// react-native-graph trips Reanimated's inline-style heuristic internally.
+LogBox.ignoreLogs(["shared value's .value inside reanimated inline style"]);
 
 export default function RootLayout() {
   const hideNativeSplash = useCallback(() => {

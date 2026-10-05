@@ -10,6 +10,5 @@ export default function StatsLayout() {
     <Stack.Screen name="(history)" options={{ gestureEnabled: true }} />
     <Stack.Screen name="progress" options={{ gestureEnabled: true, fullScreenGestureEnabled: true }} />
     <Stack.Screen name="muscles" options={{ gestureEnabled: true, fullScreenGestureEnabled: true }} />
-    <Stack.Screen name="exercises" options={{ gestureEnabled: true, fullScreenGestureEnabled: true }} />
   </Stack>;
 }

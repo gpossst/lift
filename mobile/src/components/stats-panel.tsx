@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line, Polyline } from 'react-native-svg';
-import { Trash2 } from 'react-native-feather';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { getExercises, getWorkoutHistory, type WorkoutHistoryPoint } from '@/db';
 import { exerciseRequiresWeight } from '@/db/exercise-catalog';
 import { useAppearance } from '@/components/appearance-provider';
+import { ExerciseDetailSheet } from '@/components/exercise-detail-sheet';
 import { SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
 import { comparePeriods, progressFor, type LiftProgress, type ProgressMetric } from '@/lib/lift-progress';
@@ -32,7 +32,7 @@ const repMetrics: MetricOption[] = [
 const axisWidth = 40;
 const axisValue = (value: number) => value >= 10_000 ? `${Math.round(value / 1_000)}k` : value >= 1_000 ? `${(value / 1_000).toFixed(1)}k` : String(Math.round(value * 10) / 10);
 
-export function StatsPanel({ initialExerciseId, history, onDeleteSet, embedded = false }: { initialExerciseId?: string; history?: WorkoutHistoryPoint[]; onDeleteSet?: (set: WorkoutHistoryPoint) => void; embedded?: boolean }) {
+export function StatsPanel({ initialExerciseId, history, onDeleteSet, embedded = false, onBack }: { initialExerciseId?: string; history?: WorkoutHistoryPoint[]; onDeleteSet?: (set: WorkoutHistoryPoint) => void; embedded?: boolean; onBack?: () => void }) {
   const { colors } = useAppearance();
   const [metric, setMetric] = useState<ProgressMetric>('estimated1RM');
   const [range, setRange] = useState<TimeRange>('4');
@@ -48,15 +48,14 @@ export function StatsPanel({ initialExerciseId, history, onDeleteSet, embedded =
   const activeMetric = options.some((option) => option.value === metric) ? metric : options[0].value;
   const points = selected ? progressFor(selected.history, requiresWeight, activeMetric) : [];
   const period = comparePeriods(points, weeks);
-
-  if (selected && !selected.history.length) return <View style={[styles.content, embedded && styles.embeddedContent]}>{!embedded && <Text style={[styles.exerciseName, { color: colors.text }]}>{selected.name}</Text>}<View style={[styles.card, { backgroundColor: colors.surface }]}><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>No workouts logged for this exercise yet.</Text></View></View>;
-  return selected ? <ScrollView style={styles.body} contentContainerStyle={[styles.content, embedded && styles.embeddedContent]} showsVerticalScrollIndicator={false}>
-    {!embedded && <Text style={[styles.exerciseName, { color: colors.text }]}>{selected.name}</Text>}
-    <LiftSummary points={period.current} metric={activeMetric} metricOptions={options} onMetricChange={setMetric} range={range} weeks={weeks} change={period.change} onRangeChange={setRange} colors={colors} onDeleteSet={onDeleteSet} gutter={embedded ? 24 : 20} />
-  </ScrollView> : <View style={styles.empty}><Text style={[styles.emptyTitle, { color: colors.text }]}>No stats yet</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Log an exercise to start seeing your growth.</Text></View>;
+  if (!selected) return <View style={styles.empty}><Text style={[styles.emptyTitle, { color: colors.text }]}>No stats yet</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Log an exercise to start seeing your growth.</Text></View>;
+  const summary = selected.history.length ? <LiftSummary points={period.current} metric={activeMetric} metricOptions={options} onMetricChange={setMetric} range={range} weeks={weeks} change={period.change} onRangeChange={setRange} colors={colors} onDeleteSet={onDeleteSet} gutter={embedded ? 24 : 20} embedded={embedded} /> : <View style={[styles.card, { backgroundColor: colors.surface }]}><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>No workouts logged for this exercise yet.</Text></View>;
+  if (embedded) return <ScrollView style={styles.body} contentContainerStyle={[styles.content, styles.embeddedContent]} showsVerticalScrollIndicator={false}>{summary}</ScrollView>;
+  return <ExerciseDetailSheet key={selected.id} exercise={selected} onDismiss={onBack} headingDetails={<Text style={[styles.sessionCount, { color: colors.mutedText }]}>{new Set(selected.history.map((point) => point.workoutId)).size} {new Set(selected.history.map((point) => point.workoutId)).size === 1 ? 'workout' : 'workouts'} logged</Text>}>{summary}</ExerciseDetailSheet>;
 }
 
-function LiftSummary({ points, metric, metricOptions, onMetricChange, range, weeks, change, onRangeChange, colors, onDeleteSet, gutter }: {
+
+function LiftSummary({ points, metric, metricOptions, onMetricChange, range, weeks, change, onRangeChange, colors, onDeleteSet, gutter, embedded }: {
   points: LiftProgress[];
   metric: ProgressMetric;
   metricOptions: MetricOption[];
@@ -68,10 +67,11 @@ function LiftSummary({ points, metric, metricOptions, onMetricChange, range, wee
   colors: ReturnType<typeof useAppearance>['colors'];
   onDeleteSet?: (set: WorkoutHistoryPoint) => void;
   gutter: number;
+  embedded: boolean;
 }) {
   const { width } = useWindowDimensions();
   // Screen gutters + card padding + the fixed y-axis leave this much for the scrolling plot.
-  const viewportWidth = width - gutter * 2 - 36 - axisWidth;
+  const viewportWidth = Math.max(1, width - gutter * 2 - (embedded ? 36 : 0) - axisWidth);
   const pointSpacing = Math.max(44, (viewportWidth - 32) / Math.max(points.length - 1, 1));
   const chartWidth = Math.max(viewportWidth, 32 + (points.length - 1) * pointSpacing);
   const chartScroll = useRef<ScrollView>(null);
@@ -94,7 +94,7 @@ function LiftSummary({ points, metric, metricOptions, onMetricChange, range, wee
   const selectedCoordinate = activePoint ? coordinates[points.indexOf(activePoint)] : null;
 
   return <>
-    <View style={[styles.card, { backgroundColor: colors.surface }]}>
+    <View style={[styles.card, !embedded && styles.analysisChart, { backgroundColor: embedded ? colors.surface : colors.background }]}>
       <SegmentedPicker options={metricOptions} selected={metric} onSelect={onMetricChange} compact />
       <View style={styles.valueRow}>
         <View accessible accessibilityLabel={`${title}, ${activePoint ? `${displayValue(activePoint.value)} ${unit}, ${formatDate(activePoint.date)}` : 'no workouts in this period'}`}>
@@ -110,7 +110,7 @@ function LiftSummary({ points, metric, metricOptions, onMetricChange, range, wee
           <ScrollView ref={chartScroll} horizontal style={styles.chart} onContentSizeChange={() => chartScroll.current?.scrollToEnd({ animated: false })} onScroll={(event) => setScrollOffset(event.nativeEvent.contentOffset.x)} scrollEventThrottle={32} showsHorizontalScrollIndicator={false}>
             <Svg width={chartWidth} height={174} viewBox={`0 0 ${chartWidth} 174`} accessibilityLabel="Exercise progress chart">
               {ticks.map(({ y }) => <Line key={y} x1="0" x2={chartWidth} y1={y} y2={y} stroke={colors.surfaceStrong} strokeWidth="1" />)}
-              <Polyline points={coordinates.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke={colors.text} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+              <Polyline points={coordinates.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke={colors.accent} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
               {selectedCoordinate && <Line x1={selectedCoordinate.x} x2={selectedCoordinate.x} y1={selectedCoordinate.y + 10} y2="144" stroke={colors.subtleText} strokeWidth="1" strokeDasharray="3 4" />}
               {points.map((point, index) => <Circle key={point.workoutId} cx={coordinates[index].x} cy={coordinates[index].y} r={point.workoutId === activePoint.workoutId ? 7 : 5} fill={point.personalBest ? colors.accent : colors.text} stroke={colors.surface} strokeWidth="2" />)}
               {points.map((point, index) => <Circle key={`${point.workoutId}-touch`} cx={coordinates[index].x} cy={coordinates[index].y} r={20} fill="transparent" onPress={() => setActiveWorkoutId(point.workoutId)} accessibilityLabel={`${formatDate(point.date)}, ${displayValue(point.value)} ${unit}${point.personalBest ? ', personal best' : ''}. Show sets`} />)}
@@ -126,8 +126,9 @@ function LiftSummary({ points, metric, metricOptions, onMetricChange, range, wee
       <SectionHeader title={`${formatDate(activePoint.date)} workout`} />
       <View style={[styles.card, styles.setCard, { backgroundColor: colors.surface }]}>
         {activePoint.sets.map((set, index) => {
-          const row = <View style={[styles.setRow, index < activePoint.sets.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.surfaceStrong }]}><Text style={[styles.setNumber, { color: colors.mutedText }]}>{String(set.setNumber).padStart(2, '0')}</Text><Text style={[styles.setValue, { color: colors.text }]}>{setValue(set)}</Text>{activePoint.sets.length > 1 && set === activePoint.bestSet && metric !== 'volume' && metric !== 'totalReps' && <Text style={[styles.topSet, { color: colors.mutedText }]}>Top set</Text>}</View>;
-          return onDeleteSet ? <Swipeable key={`${set.workoutId}-${set.setNumber}`} friction={2} rightThreshold={44} overshootRight={false} renderRightActions={() => <Pressable onPress={() => onDeleteSet(set)} style={styles.deleteAction} accessibilityRole="button" accessibilityLabel={`Delete set ${set.setNumber}`}><Trash2 width={19} height={19} color="#FFFFFF" strokeWidth={2.5} /></Pressable>}>{row}</Swipeable> : <View key={`${set.workoutId}-${set.setNumber}`}>{row}</View>;
+          const divider = index < activePoint.sets.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.surfaceStrong };
+          const row = <View style={[styles.setRow, { backgroundColor: colors.surface }]}><Text style={[styles.setNumber, { color: colors.mutedText }]}>{String(set.setNumber).padStart(2, '0')}</Text><Text style={[styles.setValue, { color: colors.text }]}>{setValue(set)}</Text>{activePoint.sets.length > 1 && set === activePoint.bestSet && metric !== 'volume' && metric !== 'totalReps' && <Text style={[styles.topSet, { color: colors.mutedText }]}>Top set</Text>}</View>;
+          return onDeleteSet ? <Swipeable key={`${set.workoutId}-${set.setNumber}`} containerStyle={divider} friction={1.6} rightThreshold={40} overshootRight={false} renderRightActions={() => <Pressable onPress={() => onDeleteSet(set)} style={({ pressed }) => [styles.deleteAction, pressed && { opacity: 0.8 }]} accessibilityRole="button" accessibilityLabel={`Delete set ${set.setNumber}`}><Text style={styles.deleteActionText}>Delete</Text></Pressable>}>{row}</Swipeable> : <View key={`${set.workoutId}-${set.setNumber}`} style={divider}>{row}</View>;
         })}
       </View>
     </>}
@@ -137,12 +138,12 @@ function LiftSummary({ points, metric, metricOptions, onMetricChange, range, wee
 function formatDate(date: Date) { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date); }
 
 const styles = StyleSheet.create({
-  body: { flex: 1 }, content: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 44 }, embeddedContent: { paddingHorizontal: 0, paddingTop: 0 }, exerciseName: { marginHorizontal: 4, marginBottom: 18, fontSize: 25, lineHeight: 30, fontWeight: '900', letterSpacing: -.9 },
+  body: { flex: 1 }, content: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 100 }, embeddedContent: { paddingHorizontal: 0, paddingTop: 0 }, sessionCount: { marginTop: 14, fontSize: 12, fontWeight: '600' }, analysisChart: { paddingHorizontal: 0, paddingTop: 0, borderRadius: 0 },
   card: { padding: 18, borderRadius: 24, borderCurve: 'continuous' },
   valueRow: { marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, valueLabel: { fontSize: 13, fontWeight: '800' }, metricValue: { fontSize: 46, lineHeight: 53, fontWeight: '900', letterSpacing: -2.4, fontVariant: ['tabular-nums'] }, metricUnit: { fontSize: 17, fontWeight: '800', letterSpacing: -.3 }, valueMeta: { fontSize: 12, fontWeight: '700' }, bestTag: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7 }, bestTagText: { fontSize: 11, fontWeight: '900' },
   chartRow: { marginTop: 6, flexDirection: 'row' }, axis: { width: axisWidth, height: 174 }, axisLabel: { position: 'absolute', left: 0, right: 8, fontSize: 10, lineHeight: 14, fontWeight: '800', textAlign: 'right', fontVariant: ['tabular-nums'] },
   chart: { flex: 1, height: 174 }, chartLabels: { marginTop: -12, marginLeft: axisWidth, flexDirection: 'row', justifyContent: 'space-between' }, chartDate: { fontSize: 10, fontWeight: '800' }, chartEmpty: { height: 174, marginTop: 6, alignItems: 'center', justifyContent: 'center' },
   rangePicker: { marginTop: 16 }, comparison: { marginTop: 12, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  setCard: { paddingVertical: 4, paddingHorizontal: 0, overflow: 'hidden' }, setRow: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center' }, setNumber: { width: 35, fontSize: 12, fontWeight: '800', fontVariant: ['tabular-nums'] }, setValue: { flex: 1, fontSize: 15, fontWeight: '800' }, topSet: { fontSize: 11, fontWeight: '700' }, deleteAction: { width: 62, minHeight: 54, backgroundColor: '#D84C41', alignItems: 'center', justifyContent: 'center' },
+  setCard: { paddingVertical: 0, paddingHorizontal: 0, overflow: 'hidden' }, setRow: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center' }, setNumber: { width: 35, fontSize: 12, fontWeight: '800', fontVariant: ['tabular-nums'] }, setValue: { flex: 1, fontSize: 15, fontWeight: '800' }, topSet: { fontSize: 11, fontWeight: '700' }, deleteAction: { width: 80, backgroundColor: '#D9433F', alignItems: 'center', justifyContent: 'center' }, deleteActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }, emptyTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.9 }, emptyCopy: { marginTop: 7, fontSize: 14, textAlign: 'center', fontWeight: '600' },
 });

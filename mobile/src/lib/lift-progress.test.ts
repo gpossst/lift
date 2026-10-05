@@ -1,4 +1,4 @@
-import { comparePeriods, progressFor } from './lift-progress';
+import { comparePeriods, exerciseHistories, progressFor } from './lift-progress';
 
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 
@@ -38,3 +38,10 @@ assert(comparePeriods(periodPoints.slice(0, -1), 4, new Date('2026-09-29T12:00:0
 assert(comparePeriods(periodPoints, 12, new Date('2026-09-29T12:00:00Z')).current.length === 6, 'twelve-week view includes older workouts');
 assert(comparePeriods(periodPoints, 13, new Date('2026-09-29T12:00:00Z')).current.length === 6, 'three-month view includes older workouts');
 assert(comparePeriods(periodPoints, null, new Date('2026-09-29T12:00:00Z')).current.length === 6 && comparePeriods(periodPoints, null, new Date('2026-09-29T12:00:00Z')).change === null, 'all-time view shows every workout without a prior-period comparison');
+
+const histories = exerciseHistories(
+  [{ workout: { id: 'w2', split: 'push', createdAt: older, endedAt: newer } }, { workout: { id: 'w1', split: 'push', createdAt: older, endedAt: older } }],
+  new Map([['w1', [{ id: 'bench', sets: [{ number: 1, weight: 100, reps: 5 }] }]], ['w2', [{ id: 'bench', sets: [{ number: 1, weight: 110, reps: 5 }] }, { id: 'dip', sets: [{ number: 1, weight: 0, reps: 12 }] }]]]),
+);
+assert(histories.get('bench')?.length === 2 && histories.get('dip')?.length === 1, 'groups completed sets by exercise');
+assert(progressFor(histories.get('bench')!, true).at(-1)?.bestSet.weight === 110, 'dates sets by workout end so the latest session sorts last');

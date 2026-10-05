@@ -1,5 +1,5 @@
 import { ui } from '@/styles/primitives';
-import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
+import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { ArrowLeft, Edit2, TrendingUp } from 'react-native-feather';
 import { useCallback, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -9,6 +9,7 @@ import { exerciseRequiresWeight } from '@/db/exercise-catalog';
 import { useAppearance } from '@/components/appearance-provider';
 import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { syncWorkoutData } from '@/lib/cloud-sync';
+import { useWorkoutData } from '@/hooks/use-workout-data';
 
 const formatDate = (date: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }).format(date);
 const formatVolume = (volume: number) => volume >= 10_000 ? `${Math.round(volume / 1000)}k` : volume >= 1_000 ? `${(volume / 1000).toFixed(1)}k` : String(volume);
@@ -16,6 +17,7 @@ const formatDuration = (ms: number) => {
   const minutes = Math.max(0, Math.round(ms / 60_000));
   return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m` : `${minutes}m`;
 };
+const requiresWeight = new Map(getExercises().map((exercise) => [exercise.id, exerciseRequiresWeight(exercise)]));
 
 export default function HistoryDetailScreen() {
   const { colors } = useAppearance();
@@ -24,12 +26,13 @@ export default function HistoryDetailScreen() {
   const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState(false);
-  const [, refresh] = useState(0);
-  useFocusEffect(useCallback(() => { refresh((value) => value + 1); }, []));
-  const visit = workoutId ? getWorkoutVisitSummary(workoutId) : null;
-  const exercises = workoutId ? getWorkoutVisitExerciseDetails(workoutId) : [];
-  const records = new Map((workoutId ? getWorkoutAchievements(workoutId) : []).filter((item) => item.level === 'gold').map((item) => [item.exerciseId, item]));
-  const requiresWeight = new Map(getExercises().map((exercise) => [exercise.id, exerciseRequiresWeight(exercise)]));
+  const load = useCallback(() => ({
+    visit: workoutId ? getWorkoutVisitSummary(workoutId) : null,
+    exercises: workoutId ? getWorkoutVisitExerciseDetails(workoutId) : [],
+    achievements: workoutId ? getWorkoutAchievements(workoutId) : [],
+  }), [workoutId]);
+  const { visit, exercises, achievements } = useWorkoutData(load);
+  const records = new Map(achievements.filter((item) => item.level === 'gold').map((item) => [item.exerciseId, item]));
   const back = () => router.dismissTo(historyPath);
   const remove = () => {
     if (!workoutId) return;
@@ -54,7 +57,7 @@ export default function HistoryDetailScreen() {
     <View style={styles.header}><Pressable onPress={back} hitSlop={10} style={ui.backButton} accessibilityRole="button" accessibilityLabel="Back to workout history"><ArrowLeft width={22} height={22} color={colors.text} strokeWidth={2.5} /></Pressable></View>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
-        <Text style={[styles.kicker, { color: colors.mutedText }]}>{formatDate(date)}</Text>
+        <Text style={[ui.eyebrow, { color: colors.mutedText }]}>{formatDate(date)}</Text>
         <Text style={[styles.title, { color: colors.text }]}>{split} workout</Text>
         {(duration || records.size > 0) && <View style={styles.heroMeta}>
           {duration && <Text style={[styles.date, { color: colors.mutedText }]}>{duration}</Text>}
@@ -67,7 +70,7 @@ export default function HistoryDetailScreen() {
         <Stat label="Exercises" value={String(visit.exercises)} colors={colors} />
       </View>
       <View style={styles.training}>
-        <Text style={[styles.sectionTitle, { color: colors.mutedText }]}>Exercises</Text>
+        <Text style={[ui.eyebrow, styles.sectionTitle, { color: colors.mutedText }]}>Exercises</Text>
         {exercises.map((exercise, index) => {
           const required = requiresWeight.get(exercise.id) ?? true;
           const weighted = required || exercise.sets.some((set) => set.weight > 0);
@@ -111,7 +114,6 @@ const styles = StyleSheet.create({
   header: { height: 52, paddingHorizontal: 24, justifyContent: 'center' },
   content: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 },
   hero: { paddingTop: 6, paddingBottom: 24 },
-  kicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1, textTransform: 'uppercase' },
   title: { marginTop: 5, fontSize: 38, lineHeight: 42, fontWeight: '900', letterSpacing: -1.8 },
   heroMeta: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   date: { fontSize: 14, fontWeight: '700', letterSpacing: -.15 },
@@ -120,7 +122,7 @@ const styles = StyleSheet.create({
   totals: { flexDirection: 'row', gap: 8 },
   statLabel: { marginTop: 3, fontSize: 10, fontWeight: '800', textAlign: 'center' },
   training: { marginTop: 28 },
-  sectionTitle: { marginBottom: 8, fontSize: 10, fontWeight: '900', letterSpacing: .8, textTransform: 'uppercase' },
+  sectionTitle: { marginBottom: 8 },
   exercise: { paddingBottom: 16, marginBottom: 10 },
   exerciseHeading: { minHeight: 56, flexDirection: 'row', alignItems: 'center' },
   exerciseActions: { marginTop: 10, flexDirection: 'row', gap: 8 },

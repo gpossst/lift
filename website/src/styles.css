@@ -15,6 +15,7 @@
   --inverse-text: #FFFFFF;
   --accent: #FFCC4A;
   --accent-text: #17180F;
+  --glow: 42%;
   --font: Spline Sans, Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg);
   font-family: var(--font);
@@ -30,6 +31,7 @@
     --subtle: #747B70;
     --inverse: #F7F8F2;
     --inverse-text: #17180F;
+    --glow: 16%;
   }
 }
 * { box-sizing: border-box; }
@@ -52,7 +54,7 @@ h1 { max-width: 700px; margin: 0; font-size: clamp(46px, 6.6vw, 88px); line-heig
 .hero-button { margin-top: 32px; min-height: 58px; padding: 0 28px; border-radius: 18px; background: var(--accent); color: var(--accent-text); font-size: 17px; }
 .connected { width: fit-content; margin: 32px 0 0; padding: 14px 18px; border-left: 4px solid var(--accent); border-radius: 0 14px 14px 0; background: var(--surface); font-weight: 800; }
 .hero-visual { position: relative; display: grid; place-items: center; }
-.hero-visual::before { content: ''; position: absolute; inset: -6% -16%; border-radius: 50%; background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 68%); }
+.hero-visual::before { content: ''; position: absolute; inset: -10% -20%; background: radial-gradient(closest-side at 50% 45%, color-mix(in srgb, var(--accent) var(--glow), transparent), transparent); pointer-events: none; }
 .phone { position: relative; width: min(300px, 100%); padding: 12px; border-radius: 46px; background: var(--inverse); box-shadow: 0 40px 80px rgba(17, 18, 15, .28); }
 .phone-island { position: absolute; top: 22px; left: 50%; z-index: 2; width: 76px; height: 22px; border-radius: 12px; background: var(--inverse); transform: translateX(-50%); }
 .phone-screen { display: flex; flex-direction: column; gap: 18px; min-height: 552px; padding: 44px 20px 20px; border-radius: 36px; background: var(--bg); color: var(--text); }
@@ -113,7 +115,8 @@ body:has(.auth-dialog[open]) { overflow: hidden; }
 .auth-submit { width: 100%; margin-top: 12px; background: var(--accent); color: var(--accent-text); }
 .auth-note, .auth-message { color: var(--muted); font-size: 14px; line-height: 1.5; }
 .auth-message { margin: 18px 0; padding: 14px 16px; border-radius: 14px; background: var(--surface); color: var(--text); font-weight: 700; }
-.auth-options { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; }
+.auth-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 18px; margin-top: 16px; font-size: 14px; }
+.auth-options .text-button, .auth-options .auth-note { margin: 0; padding: 8px 0; font-size: 14px; line-height: 1.5; }
 .auth-feature { margin: 16px 0; padding: 18px; border-radius: 18px; background: var(--surface); }
 .auth-feature p { margin: 0 0 8px; color: var(--muted); font-size: 14px; line-height: 1.45; }
 .auth-feature code { display: block; overflow-wrap: anywhere; margin: 12px 0; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }

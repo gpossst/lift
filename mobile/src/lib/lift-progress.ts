@@ -1,4 +1,4 @@
-import type { WorkoutHistoryPoint } from '@/db';
+import type { WorkoutHistoryPoint, WorkoutVisitExerciseDetail, WorkoutVisitSummary } from '@/db';
 
 export type LiftProgress = {
   workoutId: string;
@@ -49,4 +49,18 @@ export function comparePeriods(points: LiftProgress[], weeks: number | null, now
   const average = (items: LiftProgress[]) => items.reduce((total, point) => total + point.value, 0) / items.length;
   return { current, previous, change: current.length >= 2 && previous.length >= 2 && average(previous) > 0
     ? (average(current) - average(previous)) / average(previous) * 100 : null };
+}
+
+/** Per-exercise set history for completed workouts, built from the bulk queries so a whole-catalog list costs two reads. */
+export function exerciseHistories(visits: Pick<WorkoutVisitSummary, 'workout'>[], details: Map<string, Pick<WorkoutVisitExerciseDetail, 'id' | 'sets'>[]>) {
+  const histories = new Map<string, WorkoutHistoryPoint[]>();
+  for (const { workout } of visits) {
+    const completedAt = workout.endedAt ?? workout.createdAt;
+    for (const exercise of details.get(workout.id) ?? []) {
+      const history = histories.get(exercise.id) ?? [];
+      history.push(...exercise.sets.map((set) => ({ workoutId: workout.id, setNumber: set.number, weight: set.weight, reps: set.reps, completedAt })));
+      histories.set(exercise.id, history);
+    }
+  }
+  return histories;
 }

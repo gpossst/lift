@@ -8,8 +8,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
 import { authClient } from '@/lib/auth-client';
+import { syncWorkoutData } from '@/lib/cloud-sync';
+import { cloudSyncIssueDescription } from '@/lib/cloud-sync-issue';
 import { getProfile } from '@/lib/profile';
-import { getExercises, getRejectedCloudSyncChanges, type CloudSyncRejectedChange } from '@/db';
+import { getExercises, getRejectedCloudSyncChanges, hasPendingCloudSync, resubmitCloudSyncChange, type CloudSyncRejectedChange } from '@/db';
 
 const groups = [
   { title: 'Appearance', description: 'Set your background and primary color.', path: '/settings/appearance', Icon: Sliders },
@@ -20,6 +22,8 @@ const groups = [
 export default function SettingsScreen() {
   const { colors } = useAppearance();
   const { data: session } = authClient.useSession();
+  const [resubmitting, setResubmitting] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [syncIssues, setSyncIssues] = useState<CloudSyncRejectedChange[]>([]);
   useFocusEffect(useCallback(() => {
@@ -37,6 +41,28 @@ export default function SettingsScreen() {
     if (issue.entity === 'split') router.push('/settings/workouts');
     else if (issue.entity === 'set') router.push({ pathname: '/history-edit', params: { workoutId, exerciseId } });
     else router.push({ pathname: '/history-detail', params: { workoutId } });
+  }
+
+  async function resubmit(issue: CloudSyncRejectedChange) {
+    if (resubmitting || !session?.user) return;
+    setResubmitting(JSON.stringify([issue.entity, issue.key]));
+    setSyncMessage('');
+    try {
+      if (!resubmitCloudSyncChange(issue.entity, issue.key)) {
+        setSyncMessage('Open this change to review it before resubmitting.');
+        return;
+      }
+      await syncWorkoutData();
+      const remaining = getRejectedCloudSyncChanges();
+      setSyncMessage(remaining.some((item) => item.entity === issue.entity && item.key === issue.key)
+        ? 'This change still could not be uploaded. Review it and correct its values before trying again.'
+        : hasPendingCloudSync() ? 'Change queued. It will sync when connected.' : 'Change synced.');
+    } catch {
+      setSyncMessage('Could not connect. Your change is saved and will retry automatically when connected.');
+    } finally {
+      setSyncIssues(getRejectedCloudSyncChanges());
+      setResubmitting(null);
+    }
   }
 
   return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
@@ -58,16 +84,24 @@ export default function SettingsScreen() {
       </View>
       {syncIssues.length > 0 && <View style={styles.syncIssues}>
         <Text style={[styles.rowTitle, { color: colors.text }]}>Changes need attention</Text>
-        <Text style={[styles.rowDescription, { color: colors.mutedText }]}>These changes are kept on this device. Review them before switching accounts.</Text>
+        <Text style={[styles.rowDescription, { color: colors.mutedText }]}>These changes have not synced. Resubmit to try again, or open a change to review it.</Text>
         {syncIssues.map((issue) => {
           const [, exerciseId, setNumber] = issue.key.split('\u001f');
           const title = issue.entity === 'set' ? `${exerciseNames.get(exerciseId) ?? 'Exercise'} · set ${setNumber}` : issue.entity === 'split' ? 'Workout split' : 'Workout changes';
-          return <Pressable key={JSON.stringify([issue.entity, issue.key])} onPress={() => reviewSyncIssue(issue)} style={({ pressed }) => [styles.row, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Review ${title}: ${issue.reason}`}>
-            <View style={styles.rowCopy}><Text style={[styles.rowTitle, { color: colors.text }]}>{title}</Text><Text style={[styles.rowDescription, { color: colors.mutedText }]}>{issue.reason}</Text></View>
-            <ChevronRight width={19} height={19} color={colors.subtleText} strokeWidth={2.4} />
-          </Pressable>;
+          const id = JSON.stringify([issue.entity, issue.key]);
+          const description = cloudSyncIssueDescription(issue);
+          return <View key={id} style={[styles.syncIssue, { borderBottomColor: colors.surfaceStrong }]}>
+            <Pressable onPress={() => reviewSyncIssue(issue)} style={({ pressed }) => [styles.syncReview, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Review ${title}: ${description}`}>
+              <View style={styles.rowCopy}><Text style={[styles.rowTitle, { color: colors.text }]}>{title}</Text><Text style={[styles.rowDescription, { color: colors.mutedText }]}>{description}</Text></View>
+              <ChevronRight width={19} height={19} color={colors.subtleText} strokeWidth={2.4} />
+            </Pressable>
+            {!issue.conflict && <Pressable onPress={() => { void resubmit(issue); }} disabled={resubmitting !== null || !session?.user} style={({ pressed }) => [styles.resubmitButton, { backgroundColor: colors.accent }, (pressed || resubmitting !== null || !session?.user) && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Resubmit ${title}`} accessibilityState={{ disabled: resubmitting !== null || !session?.user }}>
+              <Text style={[styles.resubmitText, { color: colors.accentText }]}>{resubmitting === id ? 'Resubmitting…' : 'Resubmit'}</Text>
+            </Pressable>}
+          </View>;
         })}
       </View>}
+      {!!syncMessage && <Text accessibilityLiveRegion="polite" style={[styles.rowDescription, { color: colors.mutedText }]}>{syncMessage}</Text>}
       <Text style={[styles.version, { color: colors.mutedText }]}>Lift version {Constants.expoConfig?.version}</Text>
     </ScrollView>
   </SafeAreaView>;
@@ -84,6 +118,10 @@ const styles = StyleSheet.create({
   profileEmail: { marginTop: 4, fontSize: 12, fontWeight: '700' },
   list: { marginTop: 20 },
   syncIssues: { marginTop: 28 },
+  syncIssue: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, gap: 12 },
+  syncReview: { flexDirection: 'row', alignItems: 'center', gap: 13 },
+  resubmitButton: { alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', borderRadius: 12 },
+  resubmitText: { fontSize: 13, fontWeight: '800' },
   row: { minHeight: 76, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 },
   icon: { width: 28, alignItems: 'center' },
   rowCopy: { flex: 1 },

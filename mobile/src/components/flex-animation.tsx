@@ -1,6 +1,7 @@
 import LottieView, { type AnimationObject } from 'lottie-react-native';
 import { useMemo } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useAppearance } from '@/components/appearance-provider';
 
 // flex.json's only visible paint is a #5194FF fill (the Blue accent); strokes are
@@ -37,5 +38,7 @@ function tintFlexFills(source: AnimationObject, hex: string): AnimationObject {
 export function FlexAnimation({ style }: { style?: StyleProp<ViewStyle> }) {
   const { colors } = useAppearance();
   const source = useMemo(() => tintFlexFills(require('../../assets/flex.json'), colors.accent), [colors.accent]);
-  return <LottieView autoPlay loop resizeMode="contain" source={source} style={style} />;
+  const reducedMotion = useReducedMotion();
+  // Reduced motion: hold a still mid-loop frame instead of looping.
+  return <LottieView autoPlay={!reducedMotion} loop={!reducedMotion} progress={reducedMotion ? 0.5 : undefined} resizeMode="contain" source={source} style={style} />;
 }

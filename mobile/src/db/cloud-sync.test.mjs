@@ -97,7 +97,17 @@ try {
     assert.equal(local.getWorkoutHistory(exerciseId)[0].weight, 100.123);
     assert.equal(local.prepareCloudSyncForUser('someone-else'), false);
     assert.ok(await DB.prepare('SELECT 1 FROM workouts WHERE user_id = ? AND local_id = ?').bind(name, other.id).first(), 'invalid record does not block later uploads');
-    edit(110);
+    const rejectedSet = local.getRejectedCloudSyncChanges()[0];
+    assert.equal(local.resubmitCloudSyncChange('set', rejectedSet.key), true);
+    await syncWorkoutData();
+    assert.equal(local.getRejectedCloudSyncChanges().length, 1, 'invalid resubmission returns to review without looping');
+    // Rebuild from the current local value rather than replaying a stale refused payload.
+    if (name === 'web') {
+      const sets = JSON.parse(values.get('lift-preview-sets')); sets[0].weight = 110;
+      values.set('lift-preview-sets', JSON.stringify(sets));
+    } else connection.query('UPDATE workout_sets SET weight = 110 WHERE workout_id = ?').run(workout.id);
+    assert.equal(local.resubmitCloudSyncChange('set', rejectedSet.key), true);
+    assert.equal(local.getCloudSyncBatch().changes[0].record.weight, 110);
     await syncWorkoutData();
     assert.equal(local.getRejectedCloudSyncChanges().length, 0);
     assert.equal((await DB.prepare('SELECT weight FROM workout_sets WHERE user_id = ?').bind(name).first()).weight, 110);
@@ -125,6 +135,7 @@ try {
     assert.equal(local.getWorkoutHistory(exerciseId)[0].weight, 120);
     assert.equal(local.getRejectedCloudSyncChanges()[0].record.weight, 125);
     assert.equal(local.getRejectedCloudSyncChanges()[0].conflict, true);
+    assert.equal(local.resubmitCloudSyncChange('set', local.getRejectedCloudSyncChanges()[0].key), false, 'resubmission cannot silently overwrite a device conflict');
     // A remote parent deletion keeps attempted child values reachable for review.
     const parentRevision = await DB.prepare('SELECT sync_revision AS revision FROM workouts WHERE user_id = ? AND local_id = ?').bind(name, workout.id).first();
     await push(new Request('https://sync.test/v1/sync', { method: 'POST', body: JSON.stringify({ batchId: `${name}-peer-delete`, changes: [{ entity: 'workout', key: workout.id, operation: 'delete', baseRevision: parentRevision.revision }] }) }), { DB }, name);

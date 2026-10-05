@@ -56,6 +56,20 @@ run(db, "UPDATE user_info SET height_inches = 70, gym_id = 'other' WHERE user_id
 if (recommendationRows().length) throw new Error('Explicit gym mismatch was relaxed.');
 run(db, "UPDATE user_info SET gym_id = NULL WHERE user_id != 'peer5'; UPDATE user_info SET goals = NULL WHERE user_id = 'own'");
 if (recommendationRows().length !== 18) throw new Error('Clearing optional goals should remove the goal restriction.');
+run(db, `INSERT INTO workouts (user_id, local_id, split, created_at, ended_at, updated_at) VALUES ('peer1', 'active', 'push', ${timestamp - 1}, NULL, ${timestamp - 1});
+  INSERT INTO workout_sets (user_id, workout_local_id, exercise_id, set_number, weight, reps, completed_at, updated_at) VALUES ('peer1', 'active', 'e', 1, 10, 10, ${timestamp - 1}, ${timestamp - 1});
+  INSERT INTO set_muscles VALUES ('peer1', 'active', 'e', 1, 'chest');`);
+if (recommendationRows().find((row) => row.muscle === 'chest')?.peerSets !== 1) throw new Error('Unfinished peer workouts leaked into comparisons.');
+run(db, `INSERT INTO workouts (user_id, local_id, split, created_at, ended_at, updated_at) VALUES ('own', 'own-active', 'push', ${timestamp - 1}, NULL, ${timestamp - 1});
+  INSERT INTO workout_sets (user_id, workout_local_id, exercise_id, set_number, weight, reps, completed_at, updated_at) VALUES ('own', 'own-active', 'e', 1, 10, 10, ${timestamp - 1}, ${timestamp - 1});
+  INSERT INTO set_muscles VALUES ('own', 'own-active', 'e', 1, 'chest');`);
+const ownTotalMatch = source.match(/const ownTotal = \(await env\.DB\.prepare\(`([^`]*)`\)/);
+if (!ownTotalMatch) throw new Error('Own total query changed; update this regression.');
+const ownValues = [sqlString('own'), since, timestamp]; let ownIndex = 0;
+if (rows(db, ownTotalMatch[1].replace(/\?/g, () => String(ownValues[ownIndex++])))[0]?.total !== 0) throw new Error('Requester unfinished workout counted toward own total.');
+if (recommendationRows().find((row) => row.muscle === 'chest')?.mySets !== 0) throw new Error('Requester unfinished workout counted toward muscle sets.');
+run(db, "UPDATE workouts SET ended_at = NULL WHERE user_id LIKE 'peer%'");
+if (recommendationRows().length) throw new Error('Peers with only unfinished workouts formed a cohort.');
 
 const { __testUpdateProfile, __testValidOnboarding, __testValidPayload } = await import('../src/index.ts');
 const syncPayload = {
@@ -77,7 +91,7 @@ const database = {
       if (sql.startsWith('UPDATE user_info')) return { run: async () => {
         const names = [...sql.matchAll(/([a-z_]+) = \?/g)].map((match) => match[1]);
         for (const [index, name] of names.entries()) {
-          const key = { favorite_exercise_ids: 'favoriteExerciseIds', gym_id: 'gymId', similar_users_opt_in: 'optInSimilarUsers' }[name] ?? name;
+          const key = { routine_exercise_ids_by_split: 'routineExerciseIdsBySplit', favorite_exercise_ids: 'favoriteExerciseIds', gym_id: 'gymId', similar_users_opt_in: 'optInSimilarUsers' }[name] ?? name;
           profileRow[key] = values[index];
         }
       } };
@@ -92,5 +106,15 @@ if ((await patch({ recommendationPreferences: { gymId: '' } })).status !== 400) 
 const favorites = await patch({ recommendationPreferences: { favoriteExerciseIds: ['bench', 'squat'] } });
 if (favorites.status !== 200 || profileRow.favoriteExerciseIds !== '["bench","squat"]') throw new Error('Favorite exercises were not persisted.');
 if ((await patch({ recommendationPreferences: { favoriteExerciseIds: Array(21).fill('bench') } })).status !== 400) throw new Error('Too many favorite exercises were accepted.');
+
+
+const routines = { push: ['bench', 'fly'], pull: ['row'], 'custom:upper': ['press'] };
+const routineResponse = await patch({ recommendationPreferences: { routineExerciseIdsBySplit: routines } });
+if (routineResponse.status !== 200 || JSON.stringify((await routineResponse.json()).profile.recommendationPreferences.routineExerciseIdsBySplit) !== JSON.stringify(routines)) throw new Error('Split routines did not round-trip.');
+if (profileRow.favoriteExerciseIds !== '["bench","squat"]') throw new Error('Saving routines overwrote existing preferences.');
+for (const invalid of [{ push: [] }, { push: ['bench', 'bench'] }, { push: Array(21).fill('bench') }, { unknown: ['bench'] }, { push: [42] }, []]) {
+  if ((await patch({ recommendationPreferences: { routineExerciseIdsBySplit: invalid } })).status !== 400) throw new Error('Invalid split routine accepted.');
+}
+if ((await patch({ recommendationPreferences: { routineExerciseIdsBySplit: null } })).status !== 200 || profileRow.routineExerciseIdsBySplit !== null) throw new Error('Split routines could not be cleared.');
 
 console.log('Worker recommendation and profile preference regressions passed.');

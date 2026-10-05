@@ -1,15 +1,17 @@
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated as NativeAnimated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Circle } from '@shopify/react-native-skia';
 import { ChevronRight, Clock } from 'react-native-feather';
 import { LineGraph, type SelectionDotProps } from 'react-native-graph';
-import Animated, { FadeIn, SlideInDown, useDerivedValue } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, interpolate, SlideInDown, SlideOutDown, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
+import { useSheetPresence } from '@/hooks/use-sheet-presence';
 import Svg, { Defs, Line, LinearGradient, Polygon, Polyline, Stop } from 'react-native-svg';
-import { closeExpiredWorkouts, getActiveWorkout, getExercises, getWorkoutHistory, getWorkoutSplitTrends, getWorkoutVisitExerciseDetails, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
+import { closeExpiredWorkouts, getActiveWorkout, getCompletedWorkoutExerciseDetails, getExercises, getWorkoutHistories, getWorkoutSplitTrends, getWorkoutVisitExerciseDetails, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
+import { SplitRoutinePrompt } from '@/components/split-routine-prompt';
 import { SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
 import { weekStreak } from '@/lib/training-overview';
@@ -28,6 +30,7 @@ const calendarGap = 6;
 const contentPadding = 20;
 const notificationGap = 10;
 const notificationPeek = 44;
+const exerciseNames = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
 
 function formatVolume(volume: number) {
 	if (volume >= 10_000) return `${Math.round(volume / 1000)}k`;
@@ -41,15 +44,24 @@ function formatWeekOf(date: Date) { return `WEEK OF ${new Intl.DateTimeFormat('e
 
 type VolumePoint = { volume: number; date: Date };
 
+function loadHomeData() {
+	const activeWorkout = getActiveWorkout();
+	return {
+		activeWorkout,
+		activeExercises: activeWorkout ? getWorkoutVisitExerciseDetails(activeWorkout.id) : [],
+		visits: getWorkoutVisits(),
+		trends: getWorkoutSplitTrends(8),
+	};
+}
+
 export default function HomeScreen() {
 	const { colors } = useAppearance();
 	const { data: session } = authClient.useSession();
 	const userId = session?.user.id;
 	const [expiredWorkoutCount] = useState(() => closeExpiredWorkouts());
 	const [now] = useState(() => Date.now());
-	const activeWorkout = getActiveWorkout();
-	const visits = getWorkoutVisits();
-	const trends = getWorkoutSplitTrends(8);
+	const [{ activeWorkout, activeExercises, visits, trends }, setHomeData] = useState(loadHomeData);
+	const firstHomeFocus = useRef(true);
 	const [selectedSplit, setSelectedSplit] = useState<'ALL' | 'PUSH' | 'PULL' | 'LEGS'>('ALL');
 	const [selectedPoint, setSelectedPoint] = useState<VolumePoint | null>(null);
 	const [friendRecords, setFriendRecords] = useState<FriendPersonalRecord[]>([]);
@@ -59,7 +71,6 @@ export default function HomeScreen() {
 	const [trainingDays, setTrainingDays] = useState<number | null>(null);
 	const [profilePreferences, setProfilePreferences] = useState<RecommendationPreferences | null>(null);
 	const { width: windowWidth } = useWindowDimensions();
-	const exerciseNames = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
 	const recentEvents = [
 		...ownRecords.map((record) => ({ key: `own:${record.exerciseId}:${record.completedAt.getTime()}`, kicker: `NEW PR · ${record.weight} LB`, title: record.name, time: record.completedAt.getTime(), onPress: () => router.push({ pathname: '/stats/progress', params: { exerciseId: record.exerciseId } }) })),
 		...friendRecords.filter((record) => record.completedAt * 1000 >= now - 14 * 86_400_000).map((record) => ({ key: `friend:${record.id}:${record.exerciseId}:${record.completedAt}`, kicker: `FRIEND PR · ${record.displayName.toUpperCase()} · ${record.weight} LB`, title: exerciseNames.get(record.exerciseId) ?? 'An exercise', time: record.completedAt * 1000, onPress: () => router.push('/friends') })),
@@ -69,10 +80,15 @@ export default function HomeScreen() {
 		...recentEvents.map((event) => ({ ...event, accent: false })),
 		...(friendCount === 0 ? [{ key: 'friends', kicker: 'FRIENDS', title: 'Add friends to see updates', onPress: () => router.push('/friends'), accent: false }] : []),
 		...(profilePreferences && profilePreferences.weightLb == null && profilePreferences.heightInches == null ? [{ key: 'measurements', kicker: 'BODY MEASUREMENTS', title: 'Add your height and weight', onPress: () => router.push('/settings/profile'), accent: false }] : []),
-		...(profilePreferences && !profilePreferences.favoriteExerciseIds?.length ? [{ key: 'favorites', kicker: 'FAVORITE EXERCISES', title: 'Pick the exercises you love', onPress: () => router.push('/settings/workouts'), accent: false }] : []),
 	];
+	const activeSetCount = activeExercises.reduce((total, exercise) => total + exercise.sets.length, 0);
+	const activeMeta = activeWorkout && [`Started ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(activeWorkout.createdAt)}`, ...(activeSetCount ? [`${activeExercises.length} exercise${activeExercises.length === 1 ? '' : 's'}`, `${activeSetCount} set${activeSetCount === 1 ? '' : 's'}`] : [])].join(' · ');
 	// A lone card fills the row; with more, each is narrowed so the next one peeks in.
 	const notificationWidth = windowWidth - contentPadding * 2 - (notifications.length > 1 ? notificationPeek : 0);
+	useFocusEffect(useCallback(() => {
+		if (firstHomeFocus.current) { firstHomeFocus.current = false; return; }
+		setHomeData(loadHomeData());
+	}, []));
 	useFocusEffect(useCallback(() => { setReturnPlan(session?.user.id ? getReturnPlan(session.user.id) : null); }, [session]));
 	useFocusEffect(useCallback(() => {
 		if (!userId) return;
@@ -91,21 +107,16 @@ export default function HomeScreen() {
 	}, [userId]));
 	useFocusEffect(useCallback(() => {
 		const since = Date.now() - 14 * 86_400_000;
-		const exerciseIds = new Set(getWorkoutVisits().filter(({ workout }) => !workout.id.startsWith(demoWorkoutIdPrefix) && (workout.endedAt ?? workout.createdAt).getTime() >= since).flatMap(({ workout }) => getWorkoutVisitExerciseDetails(workout.id).map((exercise) => exercise.id)));
-		const names = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
-		setOwnRecords(recentPersonalRecords([...exerciseIds].map((exerciseId) => ({ exerciseId, name: names.get(exerciseId) ?? 'Exercise', sets: getWorkoutHistory(exerciseId).filter((set) => !set.workoutId.startsWith(demoWorkoutIdPrefix)) })), since));
-	}, []));
-	useFocusEffect(useCallback(() => {
-		const workout = getActiveWorkout();
-		if (!workout) return;
-		router.replace({ pathname: '/exercises', params: { split: workout.split, workoutId: workout.id } });
+		const details = getCompletedWorkoutExerciseDetails();
+		const exerciseIds = new Set(getWorkoutVisits().filter(({ workout }) => !workout.id.startsWith(demoWorkoutIdPrefix) && (workout.endedAt ?? workout.createdAt).getTime() >= since).flatMap(({ workout }) => details.get(workout.id)?.map((exercise) => exercise.id) ?? []));
+		const histories = getWorkoutHistories([...exerciseIds]);
+		setOwnRecords(recentPersonalRecords([...exerciseIds].map((exerciseId) => ({ exerciseId, name: exerciseNames.get(exerciseId) ?? 'Exercise', sets: (histories.get(exerciseId) ?? []).filter((set) => !set.workoutId.startsWith(demoWorkoutIdPrefix)) })), since));
 	}, []));
 	useEffect(() => {
 		if (!expiredWorkoutCount) return;
 		void syncWorkoutData().catch(() => { /* Local timeout completion is never blocked by sync availability. */ });
 	}, [expiredWorkoutCount]);
 
-	if (activeWorkout) return null;
 	const today = new Date(now);
 	const weekDays = Array.from({ length: 7 }, (_, index) => new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() + index));
 	const trainedVisits = visits.filter((visit) => visit.sets > 0);
@@ -123,13 +134,14 @@ export default function HomeScreen() {
 		: null;
 	const trendContext = selectedPoint ? formatWeekOf(selectedPoint.date) : selectedSplit === 'ALL' ? 'Weekly volume · 8 weeks' : 'Average session volume · 8 weeks';
 	return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
+		{userId && <SplitRoutinePrompt key={userId} userId={userId} />}
 		<View style={ui.header}>
-			<View><Text style={[styles.dateLine, { color: colors.mutedText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(today).toUpperCase()}</Text><Text style={[ui.title, { color: colors.text }]}>Home</Text></View>
+			<Text style={[ui.title, { color: colors.text }]}>Home</Text>
 			<Pressable onPress={() => router.push('/history')} style={({ pressed }) => [styles.historyAction, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Workout history"><Clock width={15} height={15} color={colors.text} strokeWidth={2.4} /><Text style={[styles.historyActionText, { color: colors.text }]}>History</Text></Pressable>
 		</View>
 		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-			{notifications.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={notificationWidth + notificationGap} decelerationRate="fast" style={styles.notificationScroll} contentContainerStyle={styles.notificationRow}>
-				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}><View style={styles.notificationCopy}><Text style={[styles.notificationKicker, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
+			{activeWorkout ? <ResumeCard title={`${workoutSplitLabel(activeWorkout.split)} workout`} meta={activeMeta || ''} colors={colors} onPress={() => router.navigate({ pathname: '/exercises', params: { split: activeWorkout.split, workoutId: activeWorkout.id } })} /> : notifications.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={notificationWidth + notificationGap} decelerationRate="fast" style={styles.notificationScroll} contentContainerStyle={styles.notificationRow}>
+				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}><View style={styles.notificationCopy}><Text style={[ui.eyebrow, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
 			</ScrollView>}
 
 			<MonthActivity visits={visits} colors={colors} goal={goal} daysThisWeek={daysThisWeek} streak={streak} />
@@ -139,7 +151,7 @@ export default function HomeScreen() {
 				{activeTrend ? <>
 					<SegmentedPicker options={[...trends].sort((a, b) => Number(b.split === 'ALL') - Number(a.split === 'ALL')).map((trend) => ({ value: trend.split, label: trend.split === 'ALL' ? 'All' : trend.split[0] + trend.split.slice(1).toLowerCase(), accessibilityLabel: `Show ${trend.split.toLowerCase()} volume` }))} selected={activeTrend.split} onSelect={(split) => { setSelectedSplit(split); setSelectedPoint(null); }} compact />
 					<View style={styles.totalRow}>
-						<Text style={[styles.totalValue, { color: colors.text }]}>{formatVolume(displayedPoint?.volume ?? 0)}<Text style={[styles.totalUnit, { color: colors.mutedText }]}> lb</Text></Text>
+						<AnimatedVolume volume={displayedPoint?.volume ?? 0} colors={colors} />
 						{!selectedPoint && volumeChange !== null && <Text style={[styles.totalDelta, { color: volumeChange > 0 ? '#5194FF' : volumeChange < 0 ? '#FF5151' : colors.mutedText }]} accessibilityLabel={`${volumeChange >= 0 ? 'Up' : 'Down'} ${Math.abs(volumeChange)} percent from last week`}>{volumeChange === 0 ? '±0%' : `${volumeChange > 0 ? '▲' : '▼'} ${Math.abs(volumeChange)}%`}</Text>}
 					</View>
 					<Text style={[styles.totalMeta, { color: colors.mutedText }]}>{trendContext}</Text>
@@ -153,6 +165,49 @@ export default function HomeScreen() {
 
 type AppColors = ReturnType<typeof useAppearance>['colors'];
 type VolumeChartProps = { points: VolumePoint[]; onSelect: (point: VolumePoint) => void; onInteractionEnd: () => void; colors: AppColors };
+
+// The whole card is the hit target; pressing it springs the card and visibly presses its Resume button.
+function ResumeCard({ title, meta, colors, onPress }: { title: string; meta: string; colors: AppColors; onPress: () => void }) {
+	const reduceMotion = useReducedMotion();
+	const press = useSharedValue(0);
+	const pulse = useSharedValue(1);
+	useEffect(() => { if (!reduceMotion) pulse.value = withRepeat(withTiming(.25, { duration: 900 }), -1, true); }, [pulse, reduceMotion]);
+	const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: interpolate(press.value, [0, 1], [1, .98]) }] }));
+	const buttonStyle = useAnimatedStyle(() => ({ opacity: interpolate(press.value, [0, 1], [1, .82]), transform: [{ scale: interpolate(press.value, [0, 1], [1, .9]) }] }));
+	const dotStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+	const spring = (value: number) => { press.set(reduceMotion ? value : withSpring(value, { duration: value ? 140 : 320, dampingRatio: value ? 1 : .55 })); };
+	return <Animated.View entering={FadeInDown.springify().damping(16)} style={[styles.resumeWrap, cardStyle]}>
+		<Pressable onPress={onPress} onPressIn={() => spring(1)} onPressOut={() => spring(0)} style={[styles.resume, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel={`Resume ${title}. ${meta}`}>
+			<View style={styles.notificationCopy}>
+				<View style={styles.resumeKicker}><Animated.View style={[styles.resumeDot, { backgroundColor: colors.accentText }, dotStyle]} /><Text style={[ui.eyebrow, { color: colors.accentText }]}>IN PROGRESS</Text></View>
+				<Text style={[styles.resumeTitle, { color: colors.accentText }]} numberOfLines={1}>{title}</Text>
+				<Text style={[styles.resumeMeta, { color: colors.accentText }]} numberOfLines={1}>{meta}</Text>
+			</View>
+			<Animated.View style={[styles.resumeButton, { backgroundColor: colors.accentText }, buttonStyle]}><Text style={[styles.resumeButtonText, { color: colors.accent }]}>Resume</Text><ChevronRight width={16} height={16} color={colors.accent} strokeWidth={3} /></Animated.View>
+		</Pressable>
+	</Animated.View>;
+}
+
+function AnimatedVolume({ volume, colors }: { volume: number; colors: AppColors }) {
+	const [animatedVolume] = useState(() => new NativeAnimated.Value(volume));
+	const [displayedVolume, setDisplayedVolume] = useState(volume);
+	const reducedMotion = useReducedMotion();
+	useEffect(() => {
+		const listener = animatedVolume.addListener(({ value }) => setDisplayedVolume(Math.round(value)));
+		const animation = NativeAnimated.timing(animatedVolume, {
+			toValue: volume,
+			duration: reducedMotion ? 0 : 240,
+			useNativeDriver: false,
+			isInteraction: false,
+		});
+		animation.start();
+		return () => {
+			animation.stop();
+			animatedVolume.removeListener(listener);
+		};
+	}, [animatedVolume, reducedMotion, volume]);
+	return <Text style={[styles.totalValue, { color: colors.text, fontVariant: ['tabular-nums'] }]} accessibilityLabel={`${formatVolume(volume)} lb`}>{formatVolume(displayedVolume)}<Text style={[styles.totalUnit, { color: colors.mutedText }]}> lb</Text></Text>;
+}
 
 function HeroStat({ value, unit, label, colors}: { value: string; unit?: string; label: string; colors: AppColors }) {
 	return <View style={styles.heroStat} accessible accessibilityLabel={`${label} ${value}${unit ? ` ${unit}` : ''}`}>
@@ -209,6 +264,7 @@ function WebLineGraph({ points, onSelect, onInteractionEnd, colors }: VolumeChar
 
 function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits: WorkoutVisitSummary[]; colors: AppColors; goal: number | null; daysThisWeek: number; streak: number }) {
 	const [workoutPicker, setWorkoutPicker] = useState<{ date: Date; visits: WorkoutVisitSummary[] } | null>(null);
+	const workoutPickerVisible = useSheetPresence(workoutPicker !== null);
 	const [gridWidth, setGridWidth] = useState(0);
 	const month = new Date();
 	const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -244,7 +300,7 @@ function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits:
 				<HeroStat value={String(streak)} unit={streak === 1 ? 'wk' : 'wks'} label="Streak" colors={colors} />
 			</View>
 			<View style={styles.calendarRow}>{'SMTWTFS'.split('').map((letter, index) => <Text key={index} style={[styles.calendarWeekday, { width: cellWidth, color: colors.subtleText }]}>{letter}</Text>)}</View>
-			<View style={[styles.calendarGrid, !gridWidth && { opacity: 0 }]} onLayout={({ nativeEvent: { layout } }) => setGridWidth((width) => width === layout.width ? width : layout.width)}>{rows.map((week, rowIndex) => <View key={rowIndex} style={styles.calendarRow}>{week.map((day) => {
+			<View style={styles.calendarGrid} onLayout={({ nativeEvent: { layout } }) => setGridWidth((width) => width === layout.width ? width : layout.width)}>{!!gridWidth && rows.map((week, rowIndex) => <View key={rowIndex} style={styles.calendarRow}>{week.map((day, columnIndex) => {
 				const isThisMonth = day.getMonth() === month.getMonth();
 				const dayVisits = visitsByDate.get(dateKey(day));
 				const sets = dayVisits?.sets ?? 0;
@@ -255,28 +311,30 @@ function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits:
 					if (dayVisits.visits.length === 1) router.push({ pathname: '/history-detail', params: { workoutId: dayVisits.visits[0].workout.id } }, { withAnchor: true });
 					else setWorkoutPicker({ date: day, visits: dayVisits.visits });
 				};
-				return <Pressable key={dateKey(day)} disabled={!isThisMonth || !dayVisits} onPress={selectDay} style={({ pressed }) => [styles.calendarCell, { width: cellWidth, height: cellWidth }, !isThisMonth && styles.calendarCellOutside, { backgroundColor: goalMet && sets > 0 ? goalGold : activityColor(sets, colors) }, isToday && { borderWidth: 2, borderColor: colors.text, paddingTop: 2, paddingLeft: 3 }, pressed && styles.calendarCellPressed]} accessibilityRole={isThisMonth && dayVisits ? 'button' : undefined} accessibilityLabel={isThisMonth && dayVisits ? `${dayVisits.visits.length} workout${dayVisits.visits.length === 1 ? '' : 's'} on ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(day)}${goalMet ? ', weekly goal met' : ''}` : undefined}>
+				return <Animated.View key={dateKey(day)} entering={FadeIn.duration(260).delay((rowIndex + columnIndex) * 30)}><Pressable disabled={!isThisMonth || !dayVisits} onPress={selectDay} style={({ pressed }) => [styles.calendarCell, { width: cellWidth, height: cellWidth }, !isThisMonth && styles.calendarCellOutside, { backgroundColor: goalMet && sets > 0 ? goalGold : activityColor(sets, colors) }, isToday && { borderWidth: 2, borderColor: colors.text, paddingTop: 2, paddingLeft: 3 }, pressed && styles.calendarCellPressed]} accessibilityRole={isThisMonth && dayVisits ? 'button' : undefined} accessibilityLabel={isThisMonth && dayVisits ? `${dayVisits.visits.length} workout${dayVisits.visits.length === 1 ? '' : 's'} on ${new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(day)}${goalMet ? ', weekly goal met' : ''}` : undefined}>
 					{isThisMonth && <Text style={[styles.calendarDay, { color: sets > 0 && (goalMet || sets >= 3) ? colors.accentText : colors.text }]}>{day.getDate()}</Text>}
-				</Pressable>;
+				</Pressable></Animated.View>;
 			})}</View>)}</View>
 			<View style={styles.legend}>
 				<View style={styles.legendScale}><Text style={[styles.legendText, { color: colors.subtleText }]}>Fewer sets</Text>{[0, 1, 2, 3].map((sets) => <View key={sets} style={[styles.legendSwatch, { backgroundColor: activityColor(sets, colors) }]} />)}<Text style={[styles.legendText, { color: colors.subtleText }]}>More</Text></View>
 				{goal != null && <View style={styles.legendScale}><View style={[styles.legendSwatch, { backgroundColor: goalGold }]} /><Text style={[styles.legendText, { color: colors.subtleText }]}>Goal week</Text></View>}
 			</View>
 		</View>
-		<Modal visible={workoutPicker !== null} transparent animationType="none" onRequestClose={() => setWorkoutPicker(null)}>
+		<Modal visible={workoutPickerVisible} transparent animationType="none" onRequestClose={() => setWorkoutPicker(null)}>
 			<View style={styles.sheetOverlay}>
-				<Animated.View entering={FadeIn.duration(180)} style={styles.sheetBackdrop}>
+				{workoutPicker && <>
+				<Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.sheetBackdrop}>
 					<Pressable onPress={() => setWorkoutPicker(null)} style={StyleSheet.absoluteFill} accessibilityLabel="Close workout picker" />
 				</Animated.View>
-				<Animated.View entering={SlideInDown.duration(280)} style={[styles.workoutSheet, { backgroundColor: colors.background }]}>
+				<Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} style={[styles.workoutSheet, { backgroundColor: colors.background }]}>
 					<View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
 					<Text style={[styles.sheetTitle, { color: colors.text }]}>Choose a workout</Text>
-					{workoutPicker && <><Text style={[styles.sheetDate, { color: colors.mutedText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(workoutPicker.date)}</Text>
+					<Text style={[styles.sheetDate, { color: colors.mutedText }]}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(workoutPicker.date)}</Text>
 						{workoutPicker.visits.map((visit) => <Pressable key={visit.workout.id} onPress={() => { setWorkoutPicker(null); router.push({ pathname: '/history-detail', params: { workoutId: visit.workout.id } }, { withAnchor: true }); }} style={({ pressed }) => [styles.workoutOption, { borderColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`View ${workoutSplitLabel(visit.workout.split)} workout`}>
 							<View><Text style={[styles.workoutOptionTitle, { color: colors.text }]}>{workoutSplitLabel(visit.workout.split)} workout</Text><Text style={[styles.workoutOptionMeta, { color: colors.mutedText }]}>{visit.exercises} exercises  ·  {visit.sets} sets  ·  {visit.volume ? `${formatVolume(visit.volume)} lb` : `${visit.reps} reps`}</Text></View>
-						</Pressable>)}</>}
+						</Pressable>)}
 				</Animated.View>
+				</>}
 			</View>
 		</Modal>
 	</>;
@@ -292,10 +350,10 @@ function activityColor(sets: number, colors: AppColors) {
 
 const styles = StyleSheet.create({
 	content: { paddingHorizontal: contentPadding, paddingTop: 4, paddingBottom: 40 },
-	dateLine: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
 	historyAction: { height: 36, paddingHorizontal: 13, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 6 }, historyActionText: { fontSize: 13, fontWeight: '800' },
 	card: { padding: 18, borderRadius: 24, borderCurve: 'continuous' },
-	notificationScroll: { marginHorizontal: -contentPadding, marginBottom: -8 }, notificationRow: { paddingHorizontal: contentPadding, gap: notificationGap }, notification: { minHeight: 66, paddingVertical: 12, paddingLeft: 18, paddingRight: 14, borderRadius: 20, borderCurve: 'continuous', flexDirection: 'row', alignItems: 'center', gap: 8 }, notificationCopy: { flex: 1, minWidth: 0 }, notificationKicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, notificationText: { marginTop: 3, fontSize: 16, fontWeight: '900', letterSpacing: -.4 },
+	notificationScroll: { marginHorizontal: -contentPadding, marginBottom: -8 }, notificationRow: { paddingHorizontal: contentPadding, gap: notificationGap }, notification: { minHeight: 66, paddingVertical: 12, paddingLeft: 18, paddingRight: 14, borderRadius: 20, borderCurve: 'continuous', flexDirection: 'row', alignItems: 'center', gap: 8 }, notificationCopy: { flex: 1, minWidth: 0 }, notificationText: { marginTop: 3, fontSize: 16, fontWeight: '900', letterSpacing: -.4 },
+	resumeWrap: { marginBottom: -8 }, resume: { paddingVertical: 16, paddingLeft: 18, paddingRight: 14, borderRadius: 22, borderCurve: 'continuous', flexDirection: 'row', alignItems: 'center', gap: 12 }, resumeKicker: { flexDirection: 'row', alignItems: 'center', gap: 6 }, resumeDot: { width: 7, height: 7, borderRadius: 4 }, resumeTitle: { marginTop: 4, fontSize: 22, fontWeight: '900', letterSpacing: -.7 }, resumeMeta: { marginTop: 2, fontSize: 12, fontWeight: '700', opacity: .8 }, resumeButton: { height: 38, paddingLeft: 14, paddingRight: 10, borderRadius: 19, flexDirection: 'row', alignItems: 'center', gap: 2 }, resumeButtonText: { fontSize: 14, fontWeight: '900' },
 	statRow: { marginBottom: 18, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center' }, statDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginHorizontal: 14 },
 	heroStat: { flex: 1 }, heroStatValue: { fontSize: 22, fontWeight: '900', letterSpacing: -.6, fontVariant: ['tabular-nums'] }, heroStatUnit: { fontSize: 12, fontWeight: '800', letterSpacing: 0 }, heroStatLabel: { marginTop: 1, fontSize: 11, fontWeight: '700' },
 	totalRow: { marginTop: 20, flexDirection: 'row', alignItems: 'baseline', gap: 10 },

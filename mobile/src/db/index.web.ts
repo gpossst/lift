@@ -5,7 +5,7 @@ import { assertValidWorkoutSet } from '@/lib/workout-set-validation';
 // This tiny browser adapter keeps the preview usable while the native app uses Drizzle.
 import { exerciseCatalog, type Exercise, workoutSplitForExercise } from './exercise-catalog';
 import { buildDemoWorkoutSets, demoWorkoutIdPrefix, isDemoDataEnabled } from './demo-data';
-import { defaultWorkoutSplits, getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRankedExercises as rankCatalogExercises, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
+import { defaultWorkoutSplits, getExerciseRecoveryExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRankedExercises as rankCatalogExercises, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedback, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 export type { RecommendationContext, RecommendationFeedback, RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
@@ -35,6 +35,7 @@ export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; confli
 const key = 'lift-preview-sets';
 const workoutsKey = 'lift-preview-workouts';
 const ratingsKey = 'lift-preview-muscle-ratings';
+const ratingsScaleKey = 'lift-preview-muscle-ratings-scale';
 const recommendationFeedbackKey = 'lift-preview-recommendation-feedback';
 const customSplitsKey = 'lift-preview-custom-splits';
 const trackingVersionKey = 'lift-preview-tracking-schema-version';
@@ -59,6 +60,13 @@ const storage = typeof globalThis.localStorage?.getItem === 'function'
 if (storage?.getItem(trackingVersionKey) !== trackingVersion) {
   storage?.removeItem(key);
   storage?.setItem(trackingVersionKey, trackingVersion);
+}
+
+// Muscle check-ins moved from 1–4 labels to a 0–10 slider.
+if (storage && storage.getItem(ratingsScaleKey) !== '10') {
+  const legacy: Record<string, Record<string, number>> = JSON.parse(storage.getItem(ratingsKey) ?? '{}');
+  storage.setItem(ratingsKey, JSON.stringify(Object.fromEntries(Object.entries(legacy).map(([workoutId, ratings]) => [workoutId, Object.fromEntries(Object.entries(ratings).map(([muscle, value]) => [muscle, Math.round((Math.min(value, 5) - 1) * 2.5)]))]))));
+  storage.setItem(ratingsScaleKey, '10');
 }
 
 const read = (): StoredSet[] => JSON.parse(storage?.getItem(key) ?? '[]').map((set: StoredSet) => ({ ...set, completedAt: new Date(set.completedAt) }));
@@ -274,8 +282,9 @@ export function getWorkoutVisitExerciseDetails(workoutId: string): WorkoutVisitE
 export function getWorkoutAchievements(workoutId: string): WorkoutAchievement[] {
   const names = new Map(exerciseCatalog.map((exercise) => [exercise.id, exercise.name]));
   const currentExercises = new Set(read().filter((set) => set.workoutId === workoutId).map((set) => set.exerciseId));
+  const histories = getWorkoutHistories([...currentExercises]);
   return [...currentExercises].flatMap<WorkoutAchievement>((exerciseId) => {
-    const history = read().filter((set) => set.exerciseId === exerciseId);
+    const history = histories.get(exerciseId) ?? [];
     const current = history.filter((set) => set.workoutId === workoutId);
     // Only earlier sets count, so a past workout keeps the PRs it earned at the time.
     const start = Math.min(...current.map((set) => set.completedAt.getTime()));
@@ -454,24 +463,34 @@ export function getWorkoutSplitTrends(weeks = 8): WorkoutSplitTrend[] {
   });
 }
 
-export function getWorkoutHistory(exerciseId: string) {
+export function getWorkoutHistory(exerciseId: string, options: { completedOnly?: boolean } = {}) {
+  const completedIds = options.completedOnly ? new Set(readWorkouts().filter((workout) => workout.endedAt !== null).map((workout) => workout.id)) : undefined;
   return read()
-    .filter((set) => set.exerciseId === exerciseId)
+    .filter((set) => set.exerciseId === exerciseId && (!completedIds || completedIds.has(set.workoutId)))
     .sort((a, b) => new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime())
     .map((set) => ({ ...set, completedAt: new Date(set.completedAt) }));
 }
 
+export function getWorkoutHistories(exerciseIds: readonly string[], options: { completedOnly?: boolean } = {}) {
+  const ids = new Set(exerciseIds);
+  const histories = new Map([...ids].map((id) => [id, [] as WorkoutHistoryPoint[]]));
+  if (!ids.size) return histories;
+  const completedIds = options.completedOnly ? new Set(readWorkouts().filter((workout) => workout.endedAt !== null).map((workout) => workout.id)) : undefined;
+  const sets = read()
+    .filter((set) => ids.has(set.exerciseId) && (!completedIds || completedIds.has(set.workoutId)))
+    .sort((a, b) => a.exerciseId.localeCompare(b.exerciseId) || a.completedAt.getTime() - b.completedAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.setNumber - b.setNumber);
+  for (const set of sets) histories.get(set.exerciseId)!.push({ workoutId: set.workoutId, setNumber: set.setNumber, weight: set.weight, reps: set.reps, completedAt: new Date(set.completedAt) });
+  return histories;
+}
+
 export function getRecentExerciseExhaustion(exerciseId: string, excludingWorkoutId: string, now = new Date()): number | undefined {
   const exercise = exerciseCatalog.find((item) => item.id === exerciseId);
-  let muscles: string[] = [];
-  try { muscles = JSON.parse(exercise?.detailsJson ?? '{}').primaryMuscles ?? []; } catch { /* Missing catalog metadata means there is no safe fatigue match. */ }
-  const target = new Set(muscles);
-  const recent = readWorkouts()
-    .filter((workout) => workout.id !== excludingWorkoutId && now.getTime() - (workout.endedAt ?? workout.createdAt).getTime() <= 14 * 86_400_000)
-    .sort((a, b) => (b.endedAt ?? b.createdAt).getTime() - (a.endedAt ?? a.createdAt).getTime())
-    .map((workout) => Object.entries(readRatings()[workout.id] ?? {}).filter(([muscle]) => target.has(muscle)).map(([, value]) => getEffectiveExhaustion(value, workout.endedAt ?? workout.createdAt, now)))
-    .find((ratings) => ratings.length);
-  return recent ? Math.max(...recent) : undefined;
+  if (!exercise) return undefined;
+  const ratingsByWorkout = readRatings();
+  const ratings = readWorkouts().flatMap((workout) => Object.entries(ratingsByWorkout[workout.id] ?? {}).map(([muscle, exhaustion]) => ({
+    workoutId: workout.id, split: workout.split, muscle, exhaustion, completedAt: workout.endedAt ?? workout.createdAt,
+  }))).sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.muscle.localeCompare(b.muscle));
+  return getExerciseRecoveryExhaustion(exercise, ratings, now, excludingWorkoutId);
 }
 
 export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint) {
@@ -623,6 +642,13 @@ export function rejectCloudSyncBatch(batchId: string, reason: string, invalidCha
   }
   writeRejectedChanges(rejected);
   writeOutbox(remaining);
+}
+/** Rebuild a refused upload from current local data, with a fresh batch ID. */
+export function resubmitCloudSyncChange(entity: CloudSyncEntity, key: string): boolean {
+  const issue = getRejectedCloudSyncChanges().find((item) => item.entity === entity && item.key === key);
+  if (!issue || issue.conflict || (issue.operation === 'upsert' && !localSyncRecord(entity, key))) return false;
+  enqueueCloudSync(entity, key, issue.operation);
+  return true;
 }
 export function getCloudSyncCursor() { return Number(storage?.getItem(cursorKey) ?? 0); }
 function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: string) {

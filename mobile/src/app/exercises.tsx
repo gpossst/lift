@@ -1,44 +1,33 @@
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import * as SecureStore from 'expo-secure-store';
-import { Check, ChevronDown, ChevronRight, Search, X } from 'react-native-feather';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, ChevronRight, Home, Plus, Search, X } from 'react-native-feather';
+import Animated, { FadeIn, FadeOut, FadeOutLeft, LinearTransition, SlideInDown } from 'react-native-reanimated';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { endWorkout, getExerciseRecommendations, getRankedExercises, getExercises, getWorkoutSplitDefinition, getWorkoutVisits, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type RecommendationContext, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
+import { endWorkout, getExerciseRecommendations, getRankedExercises, getExercises, getWorkoutSplitDefinition, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
 import { syncWorkoutData } from '@/lib/cloud-sync';
-import { getProfile, updateProfile } from '@/lib/profile';
-import { takePendingOnboarding, type Onboarding } from '@/lib/onboarding';
-import { authClient } from '@/lib/auth-client';
+import { searchExercises } from '@/lib/exercise-search';
+import { useRecommendationContext } from '@/hooks/use-recommendation-context';
+import { ExerciseThumb } from '@/components/exercise-thumb';
 import { MuscleCoverageGraphic } from '@/components/split-body-graphic';
 import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { useAppearance } from '@/components/appearance-provider';
 
 const exercises = getExercises();
+type ExerciseMetadata = { primaryMuscles: string[]; secondaryMuscles: string[]; force?: string };
+const exerciseMetadata = new WeakMap<Exercise, ExerciseMetadata>();
 type Sort = 'ranked' | 'az' | 'area' | 'equipment';
 const staticFilter = '__static__';
 const meaningfulExposureMs = 10_000;
 
 const sortLabels: Record<Sort, string> = { ranked: 'For you', az: 'Name', area: 'Muscle group', equipment: 'Equipment' };
 
-function contextFromOnboarding(value: unknown): RecommendationContext {
-  if (!value || typeof value !== 'object') return {};
-  const onboarding = value as Partial<Onboarding>;
-  return {
-    goals: Array.isArray(onboarding.goals) ? onboarding.goals.filter((goal): goal is string => typeof goal === 'string') : undefined,
-    experience: onboarding.experience === 'new' || onboarding.experience === 'some' || onboarding.experience === 'experienced' ? onboarding.experience : undefined,
-    favoriteExerciseIds: Array.isArray(onboarding.favoriteExerciseIds) ? onboarding.favoriteExerciseIds.filter((id): id is string => typeof id === 'string') : undefined,
-    trainingDays: typeof onboarding.trainingDays === 'number' && Number.isFinite(onboarding.trainingDays) ? onboarding.trainingDays : undefined,
-    weightLb: typeof onboarding.weightLb === 'number' && Number.isFinite(onboarding.weightLb) ? onboarding.weightLb : undefined,
-  };
-}
 
 export default function ExerciseLibraryScreen() {
 	const { colors, showWorkoutRecommendations } = useAppearance();
-	const { data: session } = authClient.useSession();
 	const { split, workoutId } = useLocalSearchParams<{ split?: string; workoutId?: string }>();
   const [visit, setVisit] = useState<WorkoutVisitSummary | null>(() => workoutId ? getWorkoutVisitSummary(workoutId) : null);
   const [workoutExercises, setWorkoutExercises] = useState<WorkoutVisitExercise[]>(() => workoutId ? getWorkoutVisitExercises(workoutId) : []);
@@ -54,26 +43,23 @@ export default function ExerciseLibraryScreen() {
   const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
   const [fallbackWorkoutId] = useState(() => `workout-${Date.now()}`);
   const [sheetHeight, setSheetHeight] = useState(0);
-  const [recommendationContext, setRecommendationContext] = useState<RecommendationContext>({});
-  const [favoritePrompt, setFavoritePrompt] = useState<{ ids: string[]; selected: string[] } | null>(null);
-  const [favoriteQuery, setFavoriteQuery] = useState('');
-  const [favoriteError, setFavoriteError] = useState('');
-  const [favoriteSaving, setFavoriteSaving] = useState(false);
+  const { context: recommendationContext } = useRecommendationContext();
+  const splitDefinition = useMemo(() => split ? getWorkoutSplitDefinition(split as WorkoutSplit) : null, [split]);
+  const workoutSplit = splitDefinition ? split as WorkoutSplit : undefined;
   const recommendationExposure = useRef<{
     workoutId?: string; impressions: Map<string, number>; timers: Map<string, { rank: number; timeout: ReturnType<typeof setTimeout> }>;
   }>({ workoutId, impressions: new Map(), timers: new Map() });
   const skippedExerciseIds = useMemo(() => skipped.workoutId === workoutId ? skipped.ids : [], [skipped, workoutId]);
   const workoutExerciseIds = useMemo(() => workoutExercises.map((exercise) => exercise.id), [workoutExercises]);
-  const splitExercises = useMemo(() => exercises.filter((exercise) => matchesSplit(exercise, split)), [split]);
+  const splitExercises = useMemo(() => exercises.filter((exercise) => matchesSplit(exercise, split, splitDefinition?.muscles)), [split, splitDefinition]);
   const muscleOptions = useMemo(() => uniqueSorted(splitExercises.flatMap(getPrimaryMuscles)), [splitExercises]);
   const equipmentOptions = useMemo(() => [...uniqueSorted(splitExercises.map((exercise) => exercise.equipment)), staticFilter], [splitExercises]);
-  const matchingResults = useMemo(() => {
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return exercises.filter((exercise) => {
-      const searchable = `${exercise.name} ${exercise.area} ${exercise.equipment} ${exercise.detailsJson ?? ''}`.toLowerCase();
-      return matchesSplit(exercise, split) && matchesMuscle(exercise, muscleFilters) && matchesEquipment(exercise, equipmentFilters) && terms.every((term) => searchable.includes(term));
-    });
-  }, [equipmentFilters, muscleFilters, query, split]);
+  const matchingExercises = useMemo(() => {
+    return exercises.filter((exercise) =>
+      // A typed name searches everything (abs on push day); browsing stays scoped to the split.
+      (query.trim() !== '' || matchesSplit(exercise, split, splitDefinition?.muscles)) && matchesMuscle(exercise, muscleFilters) && matchesEquipment(exercise, equipmentFilters)
+    );
+  }, [equipmentFilters, muscleFilters, query, split, splitDefinition]);
 
   const hasActiveFilters = Boolean(query || muscleFilters.length || equipmentFilters.length);
   const workoutExerciseKey = workoutExerciseIds.slice().sort().join('|');
@@ -84,26 +70,24 @@ export default function ExerciseLibraryScreen() {
   const coverage = useMemo(() => getWorkoutCoverage(workoutExerciseIds), [workoutExerciseIds]);
   const recommendations = useMemo(() => {
     void workoutExerciseKey; void workoutSetRevision;
-    if (!showWorkoutRecommendations || !workoutId || !isWorkoutSplit(split)) return [];
-    return getExerciseRecommendations(workoutId, split, 3, { ...recommendationContext, excludedExerciseIds: skippedExerciseIds });
-  }, [recommendationContext, skippedExerciseIds, showWorkoutRecommendations, split, workoutExerciseKey, workoutId, workoutSetRevision]);
+    if (!showWorkoutRecommendations || !workoutId || !workoutSplit) return [];
+    return getExerciseRecommendations(workoutId, workoutSplit, 3, { ...recommendationContext, excludedExerciseIds: skippedExerciseIds });
+  }, [recommendationContext, skippedExerciseIds, showWorkoutRecommendations, workoutExerciseKey, workoutId, workoutSetRevision, workoutSplit]);
   const rankedExerciseScores = useMemo(() => {
     void workoutExerciseKey; void workoutSetRevision;
-    if (!showWorkoutRecommendations || !workoutId || !isWorkoutSplit(split)) return new Map<string, number>();
-    // Score visible movements without reserving planned workout time or dose.
-    const visibleIds = new Set(matchingResults.map((exercise) => exercise.id));
-    return new Map(getRankedExercises(workoutId, split, {
-      ...recommendationContext,
-      excludedExerciseIds: exercises.filter((exercise) => !visibleIds.has(exercise.id)).map((exercise) => exercise.id),
-    }).map(({ exercise }, index) => [exercise.id, -index]));
-  }, [recommendationContext, showWorkoutRecommendations, split, workoutExerciseKey, workoutId, workoutSetRevision, matchingResults]);
-  const results = useMemo(() => matchingResults.slice().sort((a, b) => {
+    if (!showWorkoutRecommendations || !workoutId || !workoutSplit) return new Map<string, number>();
+    // Cache the full ranking for this workout revision/context; search and
+    // filters reuse its order without reading history or rescoring movements.
+    return new Map(getRankedExercises(workoutId, workoutSplit, recommendationContext)
+      .map(({ exercise }, index) => [exercise.id, -index]));
+  }, [recommendationContext, showWorkoutRecommendations, workoutExerciseKey, workoutId, workoutSetRevision, workoutSplit]);
+  const results = useMemo(() => searchExercises(matchingExercises, query, (a, b) => {
     if (sort === 'ranked') {
       const difference = (rankedExerciseScores.get(b.id) ?? -Infinity) - (rankedExerciseScores.get(a.id) ?? -Infinity);
       if (difference) return difference;
     }
     return sort === 'area' ? a.area.localeCompare(b.area) || a.name.localeCompare(b.name) : sort === 'equipment' ? a.equipment.localeCompare(b.equipment) || a.name.localeCompare(b.name) : a.name.localeCompare(b.name);
-  }), [matchingResults, rankedExerciseScores, sort]);
+  }), [matchingExercises, query, rankedExerciseScores, sort]);
 
   const refreshVisit = useCallback(() => {
     if (!workoutId) return;
@@ -134,74 +118,6 @@ export default function ExerciseLibraryScreen() {
     return () => subscription.remove();
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    let active = true;
-    void (async () => {
-      const onboardingContext = contextFromOnboarding(await takePendingOnboarding().catch(() => null));
-      if (!active) return;
-      setRecommendationContext(onboardingContext);
-      const profile = await getProfile().catch(() => null);
-      if (!active || !profile) return;
-      const preferences = profile.recommendationPreferences ?? {};
-      setRecommendationContext({
-        goals: preferences.goals ?? onboardingContext.goals,
-        experience: preferences.experience ?? onboardingContext.experience,
-        favoriteExerciseIds: preferences.favoriteExerciseIds ?? onboardingContext.favoriteExerciseIds,
-        trainingDays: preferences.trainingDays ?? onboardingContext.trainingDays,
-        sessionMinutes: preferences.sessionMinutes ?? onboardingContext.sessionMinutes,
-        weightLb: preferences.weightLb ?? onboardingContext.weightLb,
-      });
-    })().catch(() => { /* Recommendations keep their local defaults offline. */ });
-    return () => { active = false; };
-  }, []));
-
-  useFocusEffect(useCallback(() => {
-    const userId = session?.user.id;
-    if (!userId || !isWorkoutSplit(split) || !screenFocused) return;
-    let active = true;
-    void (async () => {
-      try {
-        const key = `lift-split-favorites:${userId}:${split}`;
-        const asked = Platform.OS === 'web' ? globalThis.localStorage?.getItem(key) === 'true' : await SecureStore.getItemAsync(key) === 'true';
-        if (asked || !active || getWorkoutVisits().some(({ workout }) => workout.split === split)) return;
-        const profile = await getProfile().catch(() => null);
-        const experience = profile?.recommendationPreferences?.experience ?? recommendationContext.experience;
-        if (!active || (experience !== 'some' && experience !== 'experienced')) return;
-        const ids = exercises.filter((exercise) => matchesSplit(exercise, split)).sort((a, b) => b.isFeatured - a.isFeatured || a.name.localeCompare(b.name)).map(({ id }) => id);
-        const current = profile?.recommendationPreferences?.favoriteExerciseIds ?? [];
-        setFavoritePrompt({ ids, selected: current.filter((id) => ids.includes(id)).slice(0, 5) });
-        setFavoriteQuery('');
-        setFavoriteError('');
-      } catch { /* Profile or local storage failures never interrupt a workout. */ }
-    })();
-    return () => { active = false; };
-  }, [recommendationContext.experience, screenFocused, session?.user.id, split]));
-
-  const finishFavoritePrompt = async (save: boolean) => {
-    if (!favoritePrompt) return;
-    const prompt = favoritePrompt;
-    const userId = session?.user.id;
-    if (!userId || !isWorkoutSplit(split)) return;
-    setFavoriteSaving(true);
-    setFavoriteError('');
-    try {
-      if (save) {
-        const latest = await getProfile();
-        const existing = latest.recommendationPreferences?.favoriteExerciseIds ?? [];
-        const keep = existing.filter((id) => !prompt.ids.includes(id));
-        const favorites = [...prompt.selected, ...keep].slice(0, 20);
-        await updateProfile({ recommendationPreferences: { favoriteExerciseIds: favorites } });
-        setRecommendationContext((current) => ({ ...current, favoriteExerciseIds: favorites }));
-      }
-      const key = `lift-split-favorites:${userId}:${split}`;
-      if (Platform.OS === 'web') globalThis.localStorage?.setItem(key, 'true');
-      else await SecureStore.setItemAsync(key, 'true');
-      setFavoritePrompt(null);
-    } catch {
-      if (save) setFavoriteError('Could not save your favorites. Check your connection and try again.');
-      else setFavoritePrompt(null);
-    } finally { setFavoriteSaving(false); }
-  };
 
   useEffect(() => {
     const exposure = recommendationExposure.current;
@@ -242,7 +158,7 @@ export default function ExerciseLibraryScreen() {
     router.push({ pathname: '/workout', params: {
       ...exercise,
       workoutId: workoutId ?? fallbackWorkoutId,
-      ...(recommendation && { recommendedSets: recommendation.sets, recommendedRepMin: recommendation.reps.min, recommendedRepMax: recommendation.reps.max, recommendedRestSeconds: recommendation.restSeconds }),
+      ...(recommendation && { recommendedSets: recommendation.sets }),
     } });
   }, [fallbackWorkoutId, workoutId]);
   const chooseExercise = useCallback((exercise: Exercise) => openExercise(exercise, 'manual'), [openExercise]);
@@ -268,23 +184,30 @@ export default function ExerciseLibraryScreen() {
     router.replace({ pathname: '/summary', params: { workoutId } });
   };
 
+  const doneCount = workoutExercises.length;
   return <SafeAreaView onTouchStart={() => { if (openSwipeId) setOpenSwipeId(null); }} style={[styles.safeArea, { backgroundColor: colors.background }]}>
     <ScrollView style={styles.recommendationScroll} contentContainerStyle={[styles.recommendationContent, { paddingBottom: sheetHeight + 31 }]} showsVerticalScrollIndicator={false}>
-      <Text style={[styles.heroTitle, { color: colors.text }]}>Active workout</Text>
-      <View style={styles.recommendationList}>
-        {recommendations.map((recommendation, index) => <Fragment key={recommendation.exercise.id}>{index === 1 && <Text style={[styles.swapLabel, { color: colors.mutedText }]}>Or swap for</Text>}<RecommendationCard recommendation={recommendation} featured={index === 0} open={openSwipeId === recommendation.exercise.id} onSwipeOpen={() => setOpenSwipeId(recommendation.exercise.id)} onDismiss={() => setOpenSwipeId(null)} onOpen={() => openExercise(recommendation.exercise, 'recommended', recommendation)} onSkip={() => skipRecommendation(recommendation.exercise.id)} /></Fragment>)}
+      <View style={styles.heroRow}>
+        <Text style={[styles.heroTitle, { color: colors.text }]}>Active workout</Text>
+        <Pressable onPress={() => router.navigate('/')} hitSlop={4} style={({ pressed }) => [styles.homeAction, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Go home. Your workout keeps running." accessibilityHint="Resume it from Home or the plus button"><Home width={15} height={15} color={colors.text} strokeWidth={2.4} /><Text style={[styles.homeActionText, { color: colors.text }]}>Home</Text></Pressable>
       </View>
-      <Pressable onPress={() => setCatalogOpen(true)} style={({ pressed }) => [styles.browseButton, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Browse all exercises"><View style={[styles.browseIcon, { backgroundColor: colors.surfaceStrong }]}><Search width={17} height={17} color={colors.text} strokeWidth={2.5} /></View><View style={styles.rowCopy}><Text style={[styles.browseTitle, { color: colors.text }]}>Browse all exercises</Text><Text style={[styles.browseCopy, { color: colors.mutedText }]}>Search, filter, or choose something else</Text></View><ChevronRight width={18} height={18} color={colors.mutedText} strokeWidth={2.5} /></Pressable>
-      <View style={styles.completedSection}>
-        <View style={styles.completedHeading}><Text style={[styles.completedTitle, { color: colors.text }]}>Completed</Text>{workoutExercises.length > 0 && <Text style={[styles.completedCount, { color: colors.mutedText }]}>{workoutExercises.length}</Text>}</View>
-        {workoutExercises.length > 0
-          ? <View style={[styles.completedList, { backgroundColor: colors.surface }]}>{workoutExercises.map((completed, index) => <Pressable key={completed.id} onPress={() => { const exercise = exercises.find(({ id }) => id === completed.id); if (exercise) openExercise(exercise, 'completed'); }} style={({ pressed }) => [styles.completedRow, index > 0 && styles.completedDivider, { borderColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${completed.name}, ${completed.sets} completed ${completed.sets === 1 ? 'set' : 'sets'}`} accessibilityHint="Opens the exercise to add sets"><View style={[styles.completedCheck, { backgroundColor: colors.surfaceStrong }]}><Check width={14} height={14} color={colors.accent} strokeWidth={3} /></View><Text numberOfLines={1} style={[styles.completedName, { color: colors.text }]}>{completed.name}</Text><Text style={[styles.completedSets, { color: colors.mutedText }]}>{completed.sets} {completed.sets === 1 ? 'set' : 'sets'}</Text><ChevronRight width={16} height={16} color={colors.mutedText} strokeWidth={2.5} /></Pressable>)}</View>
-          : <Text style={[styles.completedEmpty, { color: colors.mutedText }]}>Complete an exercise to see it here.</Text>}
+      <View style={styles.statStrip}>
+        {[[visit?.sets ?? 0, 'sets'], [Math.round(visit?.volume ?? 0).toLocaleString(), 'lb moved'], [doneCount, doneCount === 1 ? 'exercise' : 'exercises']].map(([value, label], index) => <View key={label} style={[styles.statCell, index > 0 && [styles.statDivider, { borderColor: colors.surfaceStrong }]]}><Text style={[styles.statValue, { color: colors.text }]}>{value}</Text><Text style={[styles.statLabel, { color: colors.mutedText }]}>{label}</Text></View>)}
       </View>
+      <Pressable onPress={() => setCatalogOpen(true)} style={({ pressed }) => [styles.searchPill, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="search" accessibilityLabel="Search all exercises"><Search width={18} height={18} color={colors.mutedText} strokeWidth={2.5} /><Text style={[styles.searchPillText, { color: colors.subtleText }]}>Search {splitExercises.length} exercises</Text></Pressable>
+      {recommendations.length > 0 && <View collapsable={false} style={styles.recommendationList}>
+        {recommendations.map((recommendation, index) => <Animated.View key={recommendation.exercise.id} entering={FadeIn} exiting={FadeOutLeft} layout={LinearTransition}>{index === 1 && <SectionLabel title="Or swap for" hint="Swipe to skip" />}<RecommendationCard recommendation={recommendation} featured={index === 0} open={openSwipeId === recommendation.exercise.id} onSwipeOpen={() => setOpenSwipeId(recommendation.exercise.id)} onDismiss={() => setOpenSwipeId(null)} onOpen={() => openExercise(recommendation.exercise, 'recommended', recommendation)} onSkip={() => skipRecommendation(recommendation.exercise.id)} /></Animated.View>)}
+      </View>}
+      <Animated.View layout={LinearTransition} style={styles.completedSection}>
+        <SectionLabel title="Done today" hint={doneCount > 0 ? String(doneCount) : undefined} />
+        {doneCount > 0
+          ? workoutExercises.map((completed) => { const exercise = exercises.find(({ id }) => id === completed.id); return <Animated.View key={completed.id} entering={FadeIn} layout={LinearTransition}><Pressable onPress={() => { if (exercise) openExercise(exercise, 'completed'); }} style={({ pressed }) => [styles.listRow, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${completed.name}, ${completed.sets} completed ${completed.sets === 1 ? 'set' : 'sets'}`} accessibilityHint="Opens the exercise to add sets"><ExerciseThumb exercise={exercise} size={52} done /><View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.recommendationName, { color: colors.text }]}>{completed.name}</Text><Text style={[styles.recommendationMeta, { color: colors.mutedText }]}>{completed.sets} {completed.sets === 1 ? 'set' : 'sets'}{completed.volume > 0 ? ` · ${Math.round(completed.volume).toLocaleString()} lb` : ''}</Text></View><Plus width={18} height={18} color={colors.mutedText} strokeWidth={2.5} /></Pressable></Animated.View>; })
+          : <Text style={[styles.completedEmpty, { color: colors.mutedText }]}>Log a set and it lands here.</Text>}
+      </Animated.View>
     </ScrollView>
-    {favoritePrompt && <Modal visible transparent animationType="fade" onRequestClose={() => { void finishFavoritePrompt(false); }}><View style={styles.favoriteOverlay}><View style={[styles.favoriteSheet, { backgroundColor: colors.background }]}><Text style={[styles.favoriteTitle, { color: colors.text }]}>What do you usually enjoy on {getWorkoutSplitDefinition(split as WorkoutSplit)?.name ?? 'this'} day?</Text><Text style={[styles.favoriteSubtitle, { color: colors.mutedText }]}>Choose exercises that should shape your recommendations.</Text><Text style={[styles.favoriteCount, { color: colors.mutedText }]}>{favoritePrompt.selected.length} of 5 selected</Text><View style={[styles.favoriteSearch, { backgroundColor: colors.surface }]}><Search width={17} height={17} color={colors.mutedText} /><TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} placeholder="Search exercises" placeholderTextColor={colors.subtleText} autoCapitalize="none" autoCorrect={false} style={[styles.favoriteSearchInput, { color: colors.text }]} accessibilityLabel="Search split exercises" /></View><ScrollView style={styles.favoriteChoices}>{favoritePrompt.ids.filter((id) => { const exercise = exercises.find((item) => item.id === id); return exercise && (!favoriteQuery.trim() ? favoritePrompt.ids.indexOf(id) < 12 : exercise.name.toLowerCase().includes(favoriteQuery.trim().toLowerCase())); }).map((id) => { const exercise = exercises.find((item) => item.id === id); if (!exercise) return null; const selected = favoritePrompt.selected.includes(id); const atLimit = favoritePrompt.selected.length >= 5; return <Pressable key={id} disabled={!selected && atLimit || favoriteSaving} onPress={() => setFavoritePrompt((current) => current && ({ ...current, selected: selected ? current.selected.filter((value) => value !== id) : [...current.selected, id] }))} style={[styles.favoriteChoice, { borderColor: colors.surfaceStrong }, !selected && atLimit && styles.favoriteChoiceDisabled]} accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled: !selected && atLimit }}><Text style={[styles.favoriteChoiceText, { color: colors.text }]}>{exercise.name}</Text>{selected && <Check width={18} height={18} color={colors.accent} strokeWidth={3} />}</Pressable>; })}</ScrollView>{favoriteError ? <Text style={[styles.favoriteError, { color: '#C43F36' }]}>{favoriteError}</Text> : null}<Pressable disabled={favoriteSaving} onPress={() => { void finishFavoritePrompt(true); }} style={[styles.favoriteSave, { backgroundColor: colors.accent }, favoriteSaving && styles.favoriteChoiceDisabled]}><Text style={[styles.favoriteSaveText, { color: colors.accentText }]}>{favoriteSaving ? 'Saving…' : 'Save favorites'}</Text></Pressable><Pressable disabled={favoriteSaving} onPress={() => { void finishFavoritePrompt(false); }} style={styles.favoriteSkip}><Text style={[styles.favoriteSkipText, { color: colors.mutedText }]}>Skip</Text></Pressable></View></View></Modal>}
+
     <ExerciseCatalog visible={catalogOpen} query={query} onQueryChange={setQuery} muscleOptions={muscleOptions} muscleFilters={muscleFilters} onMuscleFiltersChange={setMuscleFilters} equipmentOptions={equipmentOptions} equipmentFilters={equipmentFilters} onEquipmentFiltersChange={setEquipmentFilters} results={results} hasActiveFilters={hasActiveFilters} sort={sort} showSorts={showSorts} onToggleSorts={() => setShowSorts((visible) => !visible)} onSort={(next) => { setSort(next); setShowSorts(false); }} onClear={() => { setQuery(''); setMuscleFilters([]); setEquipmentFilters([]); }} onChoose={chooseExercise} onClose={() => { setShowSorts(false); setCatalogOpen(false); }} />
-    <CurrentVisit visit={visit} coverage={coverage} onEnd={finishVisit} onRefresh={refreshVisit} onHeight={setSheetHeight} />
+    <CurrentVisit visit={visit} coverage={coverage} onEnd={finishVisit} onHeight={setSheetHeight} />
   </SafeAreaView>;
 }
 
@@ -295,12 +218,14 @@ function RecommendationCard({ recommendation, featured, open, onSwipeOpen, onDis
   const cancelTapRef = useRef(false);
   useEffect(() => { if (!open) swipeRef.current?.close(); }, [open]);
   const ink = featured ? colors.accentText : colors.text;
-  const metaStyle = [styles.recommendationMeta, featured ? [styles.heroMeta, { color: ink }] : { color: colors.mutedText }];
   const { min, max } = recommendation.reps;
-  const plan = [`${recommendation.sets} ${recommendation.sets === 1 ? 'set' : 'sets'}`, `${min === max ? min : `${min}–${max}`} reps`, `${recommendation.restSeconds}s rest`];
-  return <View style={[styles.recommendationShell, featured && styles.heroShell, { backgroundColor: colors.background }]}>
+  const reps = min === max ? String(min) : `${min}–${max}`;
+  const plan = [[String(recommendation.sets), recommendation.sets === 1 ? 'set' : 'sets'], [reps, 'reps'], [`${recommendation.restSeconds}s`, 'rest']];
+  const meta = `${exerciseMuscleLabel(exercise)} · ${exercise.equipment}`;
+  return <View style={{ backgroundColor: colors.background }}>
     <Swipeable
       ref={swipeRef}
+      containerStyle={styles.recommendationShell}
       friction={1.6}
       rightThreshold={48}
       overshootRight={false}
@@ -311,35 +236,51 @@ function RecommendationCard({ recommendation, featured, open, onSwipeOpen, onDis
       <Pressable
         onTouchStart={() => { if (open) { cancelTapRef.current = true; onDismiss(); } }}
         onPress={() => { if (cancelTapRef.current) { cancelTapRef.current = false; return; } onOpen(); }}
-        style={({ pressed }) => [styles.recommendationCard, featured && styles.heroCard, { backgroundColor: featured ? colors.accent : colors.surface }, pressed && ui.pressed]}
+        style={({ pressed }) => [featured ? [styles.heroCard, { backgroundColor: colors.accent }] : [styles.listRow, { backgroundColor: colors.background }], pressed && ui.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={featured ? `Start ${exercise.name}, up next, ${plan.join(', ')}` : `Start ${exercise.name}`}
+        accessibilityLabel={featured ? `Start ${exercise.name}, up next, ${plan.map((item) => item.join(' ')).join(', ')}` : `Start ${exercise.name}`}
         accessibilityHint="Swipe left to reveal Skip"
       >
-        <View style={styles.rowCopy}>
-          {featured && <Text style={[styles.heroLabel, { color: ink }]}>Up next</Text>}
-          <Text style={[featured ? styles.heroName : styles.recommendationName, { color: ink }]}>{exercise.name}</Text>
-          <Text numberOfLines={1} style={metaStyle}>{exerciseMuscleLabel(exercise)} · {exercise.equipment}</Text>
-          {recommendation.relativeLoadPercent !== undefined && <Text style={metaStyle}>Last logged load: {recommendation.relativeLoadPercent}% of your bodyweight</Text>}
-          {featured && <View style={styles.heroPlan}>{plan.map((item) => <Text key={item} style={[styles.heroPlanText, { color: ink }]}>{item}</Text>)}</View>}
-        </View>
-        {!featured && <ChevronRight width={18} height={18} color={colors.mutedText} strokeWidth={2.5} />}
+        {featured ? <>
+          <View style={styles.heroTop}>
+            <View style={styles.rowCopy}>
+              <Text style={[styles.heroName, { color: ink }]}>{exercise.name}</Text>
+              <Text numberOfLines={1} style={[styles.recommendationMeta, styles.heroMeta, { color: ink }]}>{meta}</Text>
+            </View>
+            <ExerciseThumb exercise={exercise} size={88} />
+          </View>
+          <View style={styles.heroPlan}>{plan.map(([value, label]) => <View key={label} style={styles.heroPlanItem}><Text style={[styles.heroPlanValue, { color: ink }]}>{value}</Text><Text style={[styles.heroPlanLabel, { color: ink }]}>{label}</Text></View>)}</View>
+          {recommendation.relativeLoadPercent !== undefined && <Text style={[styles.recommendationMeta, styles.heroMeta, { color: ink }]}>Last load: {recommendation.relativeLoadPercent}% of bodyweight</Text>}
+          <View style={[styles.heroStart, { backgroundColor: colors.accentText }]}><Text style={[styles.heroStartText, { color: colors.accent }]}>Start</Text><ChevronRight width={18} height={18} color={colors.accent} strokeWidth={3} /></View>
+        </> : <>
+          <ExerciseThumb exercise={exercise} size={52} />
+          <View style={styles.rowCopy}>
+            <Text numberOfLines={1} style={[styles.recommendationName, { color: ink }]}>{exercise.name}</Text>
+            <Text numberOfLines={1} style={[styles.recommendationMeta, { color: colors.mutedText }]}>{meta}</Text>
+          </View>
+          <Text style={[styles.rowPlan, { color: colors.text }]}>{recommendation.sets}×{reps}</Text>
+        </>}
       </Pressable>
     </Swipeable>
   </View>;
 }
 
+function SectionLabel({ title, hint }: { title: string; hint?: string }) {
+  const { colors } = useAppearance();
+  return <View style={styles.sectionLabel}><Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>{!!hint && <Text style={[styles.sectionHint, { color: colors.subtleText }]}>{hint}</Text>}</View>;
+}
+
 function ExerciseCatalog({ visible, query, onQueryChange, muscleOptions, muscleFilters, onMuscleFiltersChange, equipmentOptions, equipmentFilters, onEquipmentFiltersChange, results, hasActiveFilters, sort, showSorts, onToggleSorts, onSort, onClear, onChoose, onClose }: { visible: boolean; query: string; onQueryChange: (value: string) => void; muscleOptions: string[]; muscleFilters: string[]; onMuscleFiltersChange: (values: string[]) => void; equipmentOptions: string[]; equipmentFilters: string[]; onEquipmentFiltersChange: (values: string[]) => void; results: Exercise[]; hasActiveFilters: boolean; sort: Sort; showSorts: boolean; onToggleSorts: () => void; onSort: (sort: Sort) => void; onClear: () => void; onChoose: (exercise: Exercise) => void; onClose: () => void }) {
   const { colors } = useAppearance();
   const renderItem = useCallback(({ item }: { item: Exercise }) => <ExerciseRow exercise={item} onChoose={onChoose} />, [onChoose]);
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.sheetOverlay}><Pressable onPress={onClose} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close exercise library" /><View style={[styles.sheet, { backgroundColor: colors.background }]}><View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} /><View style={styles.sheetHeader}><View><Text style={[styles.sheetTitle, { color: colors.text }]}>Exercise library</Text><Text style={[styles.sheetSubtitle, { color: colors.mutedText }]}>Find your own movement</Text></View><Pressable onPress={onClose} hitSlop={10} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close"><X width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable></View>
-    <View style={styles.searchWrap}><View style={[styles.searchBox, { backgroundColor: colors.surface }]}><Search width={19} height={19} color={colors.mutedText} strokeWidth={2.35} /><TextInput value={query} onChangeText={onQueryChange} placeholder="Search movements" placeholderTextColor={colors.subtleText} autoCapitalize="none" autoCorrect={false} returnKeyType="search" style={[styles.searchInput, { color: colors.text }]} accessibilityLabel="Search exercises" />{query.length > 0 && <Pressable onPress={() => onQueryChange('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Clear search"><X width={18} height={18} color={colors.mutedText} strokeWidth={2.5} /></Pressable>}</View><FilterRow options={muscleOptions} selected={muscleFilters} onSelect={onMuscleFiltersChange} /><FilterRow options={equipmentOptions} selected={equipmentFilters} onSelect={onEquipmentFiltersChange} /></View>
-    <FlatList data={results} keyExtractor={(exercise) => exercise.id} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.catalogList} ListHeaderComponentStyle={styles.listHeaderContainer} ListHeaderComponent={<View style={styles.listHeader}><Text style={[styles.listEyebrow, { color: colors.mutedText }]}>{hasActiveFilters ? `${results.length} ${results.length === 1 ? 'MOVEMENT' : 'MOVEMENTS'}` : 'ALL EXERCISES'}</Text><Pressable onPress={onToggleSorts} style={styles.sortButton} accessibilityRole="button" accessibilityLabel={`Sort by ${sortLabels[sort]}`} accessibilityState={{ expanded: showSorts }}><Text style={[styles.sortPrefix, { color: colors.subtleText }]}>SORT:</Text><Text style={[styles.sortValue, { color: colors.text }]}>{sortLabels[sort]}</Text><ChevronDown width={14} height={14} color={colors.text} strokeWidth={2.6} /></Pressable>{showSorts && <View style={[styles.sortMenu, { backgroundColor: colors.background, borderColor: colors.surfaceStrong }]}>{(Object.keys(sortLabels) as Sort[]).map((option) => <Pressable key={option} onPress={() => onSort(option)} style={styles.sortOption} accessibilityRole="button" accessibilityState={{ selected: option === sort }}><Text style={[styles.sortOptionText, { color: colors.mutedText }, option === sort && { color: colors.text }]}>{sortLabels[option]}</Text>{option === sort && <Check width={16} height={16} color={colors.text} strokeWidth={3} />}</Pressable>)}</View>}</View>} ListEmptyComponent={<EmptyState query={query} onClear={onClear} />} renderItem={renderItem} />
-  </View></View></Modal>;
+  return <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}><View style={styles.sheetOverlay}><Animated.View entering={FadeIn.duration(180)} style={styles.sheetBackdrop}><Pressable onPress={onClose} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close exercise library" /></Animated.View><Animated.View entering={SlideInDown.duration(280)} style={[styles.sheet, { backgroundColor: colors.background }]}><View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} /><View style={styles.sheetHeader}><View><Text style={[styles.sheetTitle, { color: colors.text }]}>Exercise library</Text><Text style={[styles.sheetSubtitle, { color: colors.mutedText }]}>Find your own movement</Text></View><Pressable onPress={onClose} hitSlop={10} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close"><X width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable></View>
+    <View style={styles.searchWrap}><View style={[styles.searchBox, { backgroundColor: colors.surface }]}><Search width={19} height={19} color={colors.mutedText} strokeWidth={2.35} /><TextInput value={query} onChangeText={onQueryChange} placeholder="Search names, aliases, or muscles" placeholderTextColor={colors.subtleText} autoCapitalize="none" autoCorrect={false} returnKeyType="search" style={[styles.searchInput, { color: colors.text }]} accessibilityLabel="Search exercises" />{query.length > 0 && <Pressable onPress={() => onQueryChange('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Clear search"><X width={18} height={18} color={colors.mutedText} strokeWidth={2.5} /></Pressable>}</View><FilterRow options={muscleOptions} selected={muscleFilters} onSelect={onMuscleFiltersChange} /><FilterRow options={equipmentOptions} selected={equipmentFilters} onSelect={onEquipmentFiltersChange} /></View>
+    <FlatList data={results} keyExtractor={(exercise) => exercise.id} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.catalogList} ListHeaderComponentStyle={styles.listHeaderContainer} ListHeaderComponent={<View style={styles.listHeader}><Text style={[ui.eyebrow, { color: colors.mutedText }]}>{hasActiveFilters ? `${results.length} ${results.length === 1 ? 'MOVEMENT' : 'MOVEMENTS'}` : 'ALL EXERCISES'}</Text><>{query.trim() ? <Text style={[styles.sortValue, { color: colors.mutedText }]}>Best match</Text> : <Pressable onPress={onToggleSorts} hitSlop={6} style={styles.sortButton} accessibilityRole="button" accessibilityLabel={`Sort by ${sortLabels[sort]}`} accessibilityState={{ expanded: showSorts }}><Text style={[styles.sortPrefix, { color: colors.subtleText }]}>SORT:</Text><Text style={[styles.sortValue, { color: colors.text }]}>{sortLabels[sort]}</Text><ChevronDown width={14} height={14} color={colors.text} strokeWidth={2.6} /></Pressable>}</>{!query.trim() && showSorts && <View style={[styles.sortMenu, { backgroundColor: colors.background, borderColor: colors.surfaceStrong }]}>{(Object.keys(sortLabels) as Sort[]).map((option) => <Pressable key={option} onPress={() => onSort(option)} style={styles.sortOption} accessibilityRole="button" accessibilityState={{ selected: option === sort }}><Text style={[styles.sortOptionText, { color: colors.mutedText }, option === sort && { color: colors.text }]}>{sortLabels[option]}</Text>{option === sort && <Check width={16} height={16} color={colors.text} strokeWidth={3} />}</Pressable>)}</View>}</View>} ListEmptyComponent={<EmptyState query={query} onClear={onClear} />} renderItem={renderItem} />
+  </Animated.View></View></Modal>;
 }
 
-function CurrentVisit({ visit, coverage, onEnd, onRefresh, onHeight }: { visit: WorkoutVisitSummary | null; coverage: ReturnType<typeof getWorkoutCoverage>; onEnd: () => void; onRefresh: () => void; onHeight: (height: number) => void }) {
-	const { colors, mode } = useAppearance();
+function CurrentVisit({ visit, coverage, onEnd, onHeight }: { visit: WorkoutVisitSummary | null; coverage: ReturnType<typeof getWorkoutCoverage>; onEnd: () => void; onHeight: (height: number) => void }) {
+	const { colors } = useAppearance();
   const { bottom } = useSafeAreaInsets();
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
@@ -351,12 +292,11 @@ function CurrentVisit({ visit, coverage, onEnd, onRefresh, onHeight }: { visit: 
     let timeout: ReturnType<typeof setTimeout>;
     const refreshTimer = () => {
       setNow(Date.now());
-      onRefresh();
       timeout = setTimeout(refreshTimer, 1_000 - (Date.now() % 1_000));
     };
     refreshTimer();
     return () => clearTimeout(timeout);
-  }, [onRefresh, visit?.workout.createdAt]);
+  }, [visit?.workout.createdAt]);
   useEffect(() => {
     if (!confirmEnd) return;
     const timeout = setTimeout(() => setConfirmEnd(false), 2_000);
@@ -372,8 +312,8 @@ function CurrentVisit({ visit, coverage, onEnd, onRefresh, onHeight }: { visit: 
   };
   return <View onLayout={(event) => onHeight(event.nativeEvent.layout.height)} style={[styles.visitCard, { bottom: bottom + 15, backgroundColor: colors.surface, borderColor: colors.surfaceStrong }]} accessibilityLabel={`Current ${workoutSplitLabel(visit.workout.split)} workout, duration ${duration}`}>
     <Pressable onPress={toggleExpanded} style={styles.visitHeading} accessibilityRole="button" accessibilityLabel="Show workout muscle coverage" accessibilityState={{ expanded }}><Text style={[styles.visitTitle, { color: colors.text }]}>{workoutSplitLabel(visit.workout.split)} day</Text><View style={styles.visitTime}><Text style={[styles.visitTimeText, { color: colors.text }]}>{duration}</Text><ChevronDown width={17} height={17} color={colors.mutedText} strokeWidth={2.7} style={[styles.visitChevron, expanded && styles.visitChevronExpanded]} /></View></Pressable>
-    {expanded && <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} targetMuscles={getWorkoutSplitDefinition(visit.workout.split)?.muscles} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: mode === 'dark' ? '#B34842' : '#FF7565' }]} /><Text style={[styles.missedLegendText, { color: colors.text }]}>Not trained yet</Text></View></Animated.View>}
-    <Pressable onPress={() => confirmEnd ? onEnd() : setConfirmEnd(true)} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.surfaceStrong }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel={confirmEnd ? 'Confirm end workout' : 'End workout'}><View pointerEvents="none" style={styles.endVisitLabel}><Animated.Text key={confirmEnd ? 'confirm' : 'end'} entering={FadeIn.duration(180)} exiting={FadeOut.duration(140)} style={[styles.endVisitText, { color: colors.text }]}>{confirmEnd ? 'Confirm' : 'End workout'}</Animated.Text></View></Pressable>
+    {expanded && <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} targetMuscles={getWorkoutSplitDefinition(visit.workout.split)?.muscles} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: colors.mutedText }]} /><Text style={[styles.missedLegendText, { color: colors.text }]}>Not trained yet</Text></View></Animated.View>}
+    <Pressable onPress={() => confirmEnd ? onEnd() : setConfirmEnd(true)} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.accent }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel={confirmEnd ? 'Confirm end workout' : 'End workout'}><View pointerEvents="none" style={styles.endVisitLabel}><Animated.Text key={confirmEnd ? 'confirm' : 'end'} entering={FadeIn.duration(180)} exiting={FadeOut.duration(140)} style={[styles.endVisitText, { color: colors.accentText }]}>{confirmEnd ? 'Confirm' : 'End workout'}</Animated.Text></View></Pressable>
   </View>;
 }
 
@@ -383,18 +323,16 @@ function getWorkoutCoverage(workoutExerciseIds: readonly string[]) {
   const secondary = new Set<string>();
   for (const exercise of exercises) {
     if (!visitExercises.has(exercise.id)) continue;
-    try {
-      const details = JSON.parse(exercise.detailsJson ?? '{}') as { primaryMuscles?: string[]; secondaryMuscles?: string[] };
-      details.primaryMuscles?.forEach((muscle) => primary.add(muscle));
-      details.secondaryMuscles?.forEach((muscle) => secondary.add(muscle));
-    } catch { /* A diagram is optional; malformed catalog metadata should not block the workout. */ }
+    const details = getExerciseMetadata(exercise);
+    details.primaryMuscles.forEach((muscle) => primary.add(muscle));
+    details.secondaryMuscles.forEach((muscle) => secondary.add(muscle));
   }
   return { primary: [...primary], secondary: [...secondary].filter((muscle) => !primary.has(muscle)) };
 }
 
 function EmptyState({ query, onClear }: { query: string; onClear: () => void }) { return <View style={styles.empty}><Text style={styles.emptyTitle}>Nothing found</Text><Text style={styles.emptyCopy}>{query ? `No movements match “${query}”.` : 'No movements match this focus.'}</Text><Pressable onPress={onClear} style={styles.resetButton}><Text style={styles.resetText}>Reset search</Text></Pressable></View>; }
 
-function FilterRow({ options, selected, onSelect }: { options: string[]; selected: string[]; onSelect: (values: string[]) => void }) { const { colors } = useAppearance(); const selectedValues = selected ?? []; return <View style={styles.filterGroup}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{options.map((option) => { const isSelected = selectedValues.includes(option); return <Pressable key={option} onPress={() => onSelect(isSelected ? selectedValues.filter((value) => value !== option) : [...selectedValues, option])} accessibilityRole="button" accessibilityState={{ selected: isSelected }} style={[styles.filterPill, { backgroundColor: isSelected ? colors.accent : colors.surface }]}><Text style={[styles.filterText, { color: isSelected ? colors.accentText : colors.mutedText }]}>{formatLabel(option)}</Text></Pressable>; })}</ScrollView></View>; }
+function FilterRow({ options, selected, onSelect }: { options: string[]; selected: string[]; onSelect: (values: string[]) => void }) { const { colors } = useAppearance(); const selectedValues = selected ?? []; return <View style={styles.filterGroup}><ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filters}>{options.map((option) => { const isSelected = selectedValues.includes(option); return <Pressable key={option} onPress={() => onSelect(isSelected ? selectedValues.filter((value) => value !== option) : [...selectedValues, option])} accessibilityRole="button" accessibilityState={{ selected: isSelected }} hitSlop={{ top: 4, bottom: 4 }} style={[styles.filterPill, { backgroundColor: isSelected ? colors.accent : colors.surface }]}><Text style={[styles.filterText, { color: isSelected ? colors.accentText : colors.mutedText }]}>{formatLabel(option)}</Text></Pressable>; })}</ScrollView></View>; }
 
 function matchesMuscle(exercise: Exercise, filters: string[] | null) { return !filters?.length || filters.some((filter) => getPrimaryMuscles(exercise).includes(filter)); }
 
@@ -406,10 +344,8 @@ function uniqueSorted(values: string[]) { return [...new Set(values.filter(Boole
 
 function formatLabel(value: string) { return value === staticFilter ? 'Static' : value.replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 
-function isWorkoutSplit(value?: string): value is WorkoutSplit { return !!value && !!getWorkoutSplitDefinition(value as WorkoutSplit); }
-
 function getPrimaryMuscles(exercise: Exercise): string[] {
-  try { return JSON.parse(exercise.detailsJson ?? '{}').primaryMuscles ?? []; } catch { return []; }
+  return getExerciseMetadata(exercise).primaryMuscles;
 }
 
 function exerciseMuscleLabel(exercise: Exercise) {
@@ -418,17 +354,16 @@ function exerciseMuscleLabel(exercise: Exercise) {
 }
 
 function isStaticExercise(exercise: Exercise) {
-  try { return JSON.parse(exercise.detailsJson ?? '{}').force === 'static'; } catch { return false; }
+  return getExerciseMetadata(exercise).force === 'static';
 }
 
-function matchesSplit(exercise: Exercise, split?: string) {
+function matchesSplit(exercise: Exercise, split?: string, splitMuscles?: string[]) {
   if (!split) return true;
-  let primaryMuscles: string[] = [];
-  try { primaryMuscles = JSON.parse(exercise.detailsJson ?? '{}').primaryMuscles ?? []; } catch { /* Catalog rows remain usable without details. */ }
+  const primaryMuscles = getPrimaryMuscles(exercise);
   const hasPrimary = (muscle: string) => primaryMuscles.includes(muscle);
-  if (split?.startsWith('custom:')) return hasPrimary('abdominals') || (getWorkoutSplitDefinition(split as WorkoutSplit)?.muscles.some(hasPrimary) ?? true);
+  if (split.startsWith('custom:')) return hasPrimary('abdominals') || (splitMuscles?.some(hasPrimary) ?? true);
   // Core work is a shared accessory across lifting splits.
-  if (isWorkoutSplit(split) && hasPrimary('abdominals')) return true;
+  if (splitMuscles && hasPrimary('abdominals')) return true;
   if (split === 'chest') return exercise.area === 'CHEST';
   if (split === 'back') return exercise.area === 'BACK';
   if (split === 'legs') return exercise.area === 'LEGS';
@@ -437,44 +372,62 @@ function matchesSplit(exercise: Exercise, split?: string) {
   return true;
 }
 
-const ExerciseRow = memo(function ExerciseRow({ exercise, onChoose }: { exercise: Exercise; onChoose: (exercise: Exercise) => void }) { const { colors } = useAppearance(); return <Pressable onPress={() => onChoose(exercise)} style={({ pressed }) => [styles.row, { borderColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name}`}><View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{exercise.name}</Text><View style={styles.metaRow}><Text numberOfLines={1} style={[styles.area, { color: colors.mutedText }]}>{exerciseMuscleLabel(exercise)}</Text><View style={[styles.metaDot, { backgroundColor: colors.subtleText }]} /><Text numberOfLines={1} style={[styles.equipment, { color: colors.mutedText }]}>{exercise.equipment}</Text></View></View></Pressable>; });
+function getExerciseMetadata(exercise: Exercise): ExerciseMetadata {
+  const cached = exerciseMetadata.get(exercise);
+  if (cached) return cached;
+  let parsed: Partial<ExerciseMetadata> = {};
+  try { parsed = JSON.parse(exercise.detailsJson ?? '{}'); } catch { /* Catalog rows remain usable without details. */ }
+  const metadata = {
+    primaryMuscles: Array.isArray(parsed.primaryMuscles) ? parsed.primaryMuscles : [],
+    secondaryMuscles: Array.isArray(parsed.secondaryMuscles) ? parsed.secondaryMuscles : [],
+    force: typeof parsed.force === 'string' ? parsed.force : undefined,
+  };
+  exerciseMetadata.set(exercise, metadata);
+  return metadata;
+}
+
+const ExerciseRow = memo(function ExerciseRow({ exercise, onChoose }: { exercise: Exercise; onChoose: (exercise: Exercise) => void }) { const { colors } = useAppearance(); return <Pressable onPress={() => onChoose(exercise)} style={({ pressed }) => [styles.row, { borderColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name}`}><ExerciseThumb exercise={exercise} size={46} /><View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{exercise.name}</Text><View style={styles.metaRow}><Text numberOfLines={1} style={[styles.area, { color: colors.mutedText }]}>{exerciseMuscleLabel(exercise)}</Text><View style={[styles.metaDot, { backgroundColor: colors.subtleText }]} /><Text numberOfLines={1} style={[styles.equipment, { color: colors.mutedText }]}>{exercise.equipment}</Text></View></View></Pressable>; });
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, position: 'relative', backgroundColor: '#F9F9F7' },
   recommendationScroll: { flex: 1 },
   recommendationContent: { paddingHorizontal: 24, paddingTop: 28 },
-  heroTitle: { maxWidth: 310, marginBottom: 24, fontSize: 36, lineHeight: 38, fontWeight: '900', letterSpacing: -1.8 },
-  recommendationList: { gap: 8 },
-  recommendationShell: { borderRadius: 16, overflow: 'hidden' },
-  recommendationCard: { minHeight: 64, paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  homeAction: { height: 36, paddingHorizontal: 13, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  homeActionText: { fontSize: 13, fontWeight: '800' },
+  heroTitle: { flexShrink: 1, fontSize: 36, lineHeight: 38, fontWeight: '900', letterSpacing: -1.8 },
+  statStrip: { marginTop: 18, flexDirection: 'row' },
+  statCell: { flex: 1, paddingLeft: 14 },
+  statDivider: { borderLeftWidth: StyleSheet.hairlineWidth },
+  statValue: { fontSize: 24, lineHeight: 28, fontWeight: '900', letterSpacing: -1, fontVariant: ['tabular-nums'] },
+  statLabel: { marginTop: 1, fontSize: 11, fontWeight: '800' },
+  searchPill: { height: 50, marginTop: 22, paddingHorizontal: 16, borderRadius: 25, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchPillText: { fontSize: 15, fontWeight: '800' },
+  recommendationList: { marginTop: 22 },
+  recommendationShell: { overflow: 'visible' },
+  listRow: { minHeight: 72, paddingVertical: 10, borderRadius: 16, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 14 },
   recommendationName: { fontSize: 16, lineHeight: 20, fontWeight: '900', letterSpacing: -.45 },
-  recommendationMeta: { marginTop: 4, fontSize: 11, lineHeight: 15, fontWeight: '700', textTransform: 'capitalize' },
-  heroShell: { borderRadius: 22 },
-  heroCard: { minHeight: 152, paddingHorizontal: 20, paddingVertical: 18 },
-  heroLabel: { fontSize: 12, lineHeight: 16, fontWeight: '900', letterSpacing: -.1 },
-  heroName: { marginTop: 6, fontSize: 28, lineHeight: 31, fontWeight: '900', letterSpacing: -1.1 },
-  heroMeta: { fontSize: 12, opacity: .72 },
-  heroPlan: { marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', columnGap: 18 },
-  heroPlanText: { fontSize: 15, lineHeight: 20, fontVariant: ['tabular-nums'], fontWeight: '900', letterSpacing: -.3 },
-  swapLabel: { marginTop: 10, fontSize: 12, lineHeight: 16, fontWeight: '800' },
+  recommendationMeta: { marginTop: 3, fontSize: 12, lineHeight: 16, fontWeight: '700', textTransform: 'capitalize' },
+  rowPlan: { fontSize: 14, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: -.3 },
+  heroCard: { padding: 20, gap: 18, borderRadius: 26, overflow: 'hidden' },
+  heroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  heroName: { fontSize: 28, lineHeight: 31, fontWeight: '900', letterSpacing: -1.1 },
+  heroMeta: { opacity: .72 },
+  heroPlan: { flexDirection: 'row' },
+  heroPlanItem: { flex: 1 },
+  heroPlanValue: { fontSize: 30, lineHeight: 34, fontVariant: ['tabular-nums'], fontWeight: '900', letterSpacing: -1.2 },
+  heroPlanLabel: { fontSize: 12, fontWeight: '800', opacity: .7 },
+  heroStart: { height: 52, borderRadius: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  heroStartText: { fontSize: 16, fontWeight: '900', letterSpacing: -.3 },
+  sectionLabel: { marginTop: 22, marginBottom: 2, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  sectionTitle: { fontSize: 17, lineHeight: 22, fontWeight: '900', letterSpacing: -.5 },
+  sectionHint: { fontSize: 12, fontWeight: '800', fontVariant: ['tabular-nums'] },
   swipeAction: { width: 80, marginLeft: 12, borderRadius: 17, backgroundColor: '#D9433F', alignItems: 'center', justifyContent: 'center' },
   swipeActionText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  browseButton: { minHeight: 64, marginTop: 18, paddingHorizontal: 14, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  browseIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  browseTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 },
-  browseCopy: { marginTop: 3, fontSize: 11, fontWeight: '700' },
-  completedSection: { marginTop: 24 },
-  completedHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  completedTitle: { fontSize: 16, lineHeight: 20, fontWeight: '900', letterSpacing: -.4 },
-  completedCount: { fontSize: 13, fontVariant: ['tabular-nums'], fontWeight: '800' },
-  completedEmpty: { marginTop: 7, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  completedList: { marginTop: 10, borderRadius: 16, overflow: 'hidden' },
-  completedRow: { minHeight: 54, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' },
-  completedDivider: { borderTopWidth: StyleSheet.hairlineWidth },
-  completedCheck: { width: 28, height: 28, marginRight: 10, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  completedName: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: '800', letterSpacing: -.2 },
-  completedSets: { marginLeft: 12, marginRight: 6, fontSize: 11, fontWeight: '800' },
-  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,.38)' },
+  completedSection: { marginTop: 4 },
+  completedEmpty: { marginTop: 7, fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
+  sheetBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,.38)' },
   sheet: { height: '92%', paddingTop: 9, borderTopLeftRadius: 26, borderTopRightRadius: 26, overflow: 'hidden' },
   sheetHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: 'center' },
   sheetHeader: { minHeight: 76, paddingHorizontal: 24, paddingTop: 17, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
@@ -485,27 +438,26 @@ const styles = StyleSheet.create({
   searchBox: { height: 52, paddingHorizontal: 16, borderRadius: 17, flexDirection: 'row', alignItems: 'center', gap: 10 },
   searchInput: { flex: 1, fontSize: 15, fontWeight: '800', height: '100%' },
   filterGroup: { marginTop: 8 },
-  filters: { gap: 7 },
+  filters: { gap: 7, paddingVertical: 4 }, filterScroll: { marginVertical: -4 },
   filterPill: { height: 32, paddingHorizontal: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   filterText: { fontSize: 12, fontWeight: '900' },
   catalogList: { paddingHorizontal: 24, paddingBottom: 38 },
   listHeaderContainer: { zIndex: 100, elevation: 100, overflow: 'visible' },
   listHeader: { position: 'relative', zIndex: 100, overflow: 'visible', height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  listEyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   sortButton: { height: 32, paddingHorizontal: 5, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 4 },
   sortPrefix: { fontSize: 9, fontWeight: '900', letterSpacing: .7 },
   sortValue: { fontSize: 11, fontWeight: '900' },
-  sortMenu: { position: 'absolute', zIndex: 1000, elevation: 1000, top: 34, right: 0, width: 180, borderRadius: 16, borderWidth: 1, paddingVertical: 5, shadowColor: '#213A28', shadowOpacity: .1, shadowRadius: 18, shadowOffset: { width: 0, height: 7 } },
+  sortMenu: { position: 'absolute', zIndex: 1000, elevation: 1000, top: 34, right: 0, width: 180, borderRadius: 16, borderWidth: 1, paddingVertical: 5, ...Platform.select({ web: { boxShadow: '0px 7px 18px rgba(33, 58, 40, 0.1)' }, default: { shadowColor: '#213A28', shadowOpacity: .1, shadowRadius: 18, shadowOffset: { width: 0, height: 7 } } }) },
   sortOption: { height: 43, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sortOptionText: { fontSize: 14, fontWeight: '700' },
-  row: { minHeight: 66, paddingVertical: 10, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center' },
+  row: { minHeight: 66, paddingVertical: 10, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowCopy: { flex: 1, minWidth: 0 },
   name: { fontSize: 16, fontWeight: '900', letterSpacing: -.45 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   area: { fontSize: 9, fontWeight: '900', letterSpacing: .8 },
   metaDot: { width: 3, height: 3, borderRadius: 2 },
   equipment: { flexShrink: 1, fontSize: 11, fontWeight: '700' },
-  visitCard: { position: 'absolute', zIndex: 1000, elevation: 20, left: 0, right: 0, overflow: 'hidden', marginHorizontal: 24, paddingTop: 16, paddingHorizontal: 16, borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, shadowColor: '#0C0E0A', shadowOpacity: .16, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
+  visitCard: { position: 'absolute', zIndex: 1000, elevation: 20, left: 0, right: 0, overflow: 'hidden', marginHorizontal: 24, paddingTop: 16, paddingHorizontal: 16, borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, ...Platform.select({ web: { boxShadow: '0px 8px 15px rgba(12, 14, 10, 0.16)' }, default: { shadowColor: '#0C0E0A', shadowOpacity: .16, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } } }) },
   visitHeading: { minHeight: 29, flexDirection: 'row', alignItems: 'center' },
   visitTime: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 },
   visitTimeText: { fontSize: 13, fontVariant: ['tabular-nums'], fontWeight: '900', letterSpacing: .15 },
@@ -520,22 +472,7 @@ const styles = StyleSheet.create({
   endVisitButtonPressed: { opacity: .78 },
   endVisitLabel: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
   endVisitText: { fontSize: 18, fontWeight: '800', letterSpacing: -.3 },
-  favoriteOverlay: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,.48)' },
-  favoriteSheet: { maxHeight: '82%', borderRadius: 24, padding: 22 },
-  favoriteTitle: { fontSize: 23, lineHeight: 28, fontWeight: '900', letterSpacing: -.5 },
-  favoriteSubtitle: { marginTop: 7, fontSize: 14, lineHeight: 20 },
-  favoriteCount: { marginTop: 12, fontSize: 12, fontWeight: '800' },
-  favoriteSearch: { height: 42, marginTop: 12, paddingHorizontal: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  favoriteSearchInput: { flex: 1, height: '100%', fontSize: 14 },
-  favoriteError: { marginTop: 10, fontSize: 12, fontWeight: '700' },
-  favoriteChoices: { marginTop: 16, flexGrow: 0 },
-  favoriteChoice: { minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  favoriteChoiceText: { fontSize: 14, fontWeight: '700' },
-  favoriteChoiceDisabled: { opacity: .45 },
-  favoriteSave: { minHeight: 52, marginTop: 16, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  favoriteSaveText: { fontSize: 15, fontWeight: '900' },
-  favoriteSkip: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  favoriteSkipText: { fontSize: 14, fontWeight: '700' },
+
 
   empty: { paddingTop: 43, alignItems: 'center' },
   emptyTitle: { fontSize: 18, fontWeight: '900', color: '#1B1C17' },

@@ -35,6 +35,7 @@ for (const file of readdirSync('migrations').filter((name) => name.endsWith('.sq
 }
 if (!(await DB.prepare("SELECT 1 FROM set_muscles WHERE user_id = 'migration-user' AND muscle = 'middle back'").first())
   || !(await DB.prepare("SELECT 1 FROM recommendation_feedback WHERE user_id = 'migration-user' AND action = 'accepted'").first())) throw new Error('Custom split migration failed to preserve workout relationships.');
+if ((await DB.prepare("SELECT exhaustion FROM workout_muscle_ratings WHERE user_id = 'migration-user'").first())?.exhaustion !== 8) throw new Error('Rating scale migration failed to rescale legacy check-ins.');
 const deletionPage = await handler.fetch(new Request('https://test/delete-account'), { DB, SUPPORT_EMAIL: 'support@lift.test' });
 if (deletionPage.status !== 200 || !(await deletionPage.text()).includes('Delete your Lift account')) throw new Error('Public deletion resource is unavailable.');
 let deletionRequestCount = 0;

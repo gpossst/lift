@@ -93,7 +93,7 @@ export function syncWorkoutData(): Promise<void> {
           } catch (error) {
             assertCurrent();
             if (error instanceof SyncRequestError && [400, 409, 413, 422].includes(error.status)) {
-              rejectCloudSyncBatch(batch.batchId, 'Cloud sync rejected this record. Review and save it again to correct its values.', error.invalidChanges);
+              rejectCloudSyncBatch(batch.batchId, 'This change could not be uploaded. It is saved on this device. Resubmit to try again.', error.invalidChanges);
               continue;
             }
             throw error;

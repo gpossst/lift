@@ -27,9 +27,9 @@ type AuthenticatedUser = { id: string; displayName: string; imageUrl: string | n
 type PreferenceGoal = 'Build muscle' | 'Get stronger' | 'Lose fat' | 'Feel healthier';
 type Experience = 'new' | 'some' | 'experienced';
 type TrainingLocation = 'gym' | 'home' | 'both';
-type RecommendationPreferences = { goals: PreferenceGoal[] | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string[] | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string[] | null; sessionMinutes: number | null; optInSimilarUsers: boolean };
+type RecommendationPreferences = { goals: PreferenceGoal[] | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string[] | null; routineExerciseIdsBySplit: Record<string, string[]> | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string[] | null; sessionMinutes: number | null; optInSimilarUsers: boolean };
 type UserProfile = { userId: string; displayName: string; hasChosenDisplayName: boolean; imageUrl: string | null; recommendationPreferences: RecommendationPreferences };
-type ProfileRow = Omit<UserProfile, 'recommendationPreferences' | 'hasChosenDisplayName'> & { hasChosenDisplayName: number; goals: string | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string | null; sessionMinutes: number | null; optInSimilarUsers: number };
+type ProfileRow = Omit<UserProfile, 'recommendationPreferences' | 'hasChosenDisplayName'> & { hasChosenDisplayName: number; goals: string | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string | null; routineExerciseIdsBySplit: string | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string | null; sessionMinutes: number | null; optInSimilarUsers: number };
 type Onboarding = { displayName?: string; goals: string[]; weightLb?: number; heightInches?: number; experience: 'new' | 'some' | 'experienced'; favoriteExerciseIds?: string[]; trainingLocation?: 'gym' | 'home' | 'both'; trainingDays: number };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
@@ -132,7 +132,7 @@ function validPayload(value: unknown): value is SyncPayload {
   const seenRatings = new Set<string>();
   if (!payload.muscleRatings.every((rating) => {
     const key = rating && typeof rating === 'object' ? ratingKey(rating) : '';
-    const okay = !!rating && typeof rating === 'object' && workoutIds.has(rating.workoutId) && isString(rating.workoutId) && isString(rating.muscle, 80) && Number.isInteger(rating.exhaustion) && rating.exhaustion >= 1 && rating.exhaustion <= 5 && isTimestamp(rating.createdAt) && isVersion(rating.updatedAt, rating.createdAt) && !seenRatings.has(key);
+    const okay = !!rating && typeof rating === 'object' && workoutIds.has(rating.workoutId) && isString(rating.workoutId) && isString(rating.muscle, 80) && Number.isInteger(rating.exhaustion) && rating.exhaustion >= 0 && rating.exhaustion <= 10 && isTimestamp(rating.createdAt) && isVersion(rating.updatedAt, rating.createdAt) && !seenRatings.has(key);
     seenRatings.add(key); return okay;
   })) return false;
   const feedbackActions = new Set<FeedbackAction>(['accepted', 'completed', 'impression', 'replaced', 'removed', 'skipped', 'manual']);
@@ -190,14 +190,15 @@ async function sha256(value: string) {
 async function recommendations(env: Env, userId: string) {
   const since = now() - 28 * 86_400;
   const timestamp = now();
-  const ownTotal = (await env.DB.prepare('SELECT COUNT(*) AS total FROM workout_sets WHERE user_id = ? AND completed_at BETWEEN ? AND ?').bind(userId, since, timestamp).first<{ total: number }>())?.total ?? 0;
+  // Only finished workouts count; an active session is not comparable history.
+  const ownTotal = (await env.DB.prepare(`SELECT COUNT(*) AS total FROM workout_sets ws WHERE ws.user_id = ? AND ws.completed_at BETWEEN ? AND ? AND EXISTS (SELECT 1 FROM workouts w WHERE w.user_id = ws.user_id AND w.local_id = ws.workout_local_id AND w.ended_at IS NOT NULL)`).bind(userId, since, timestamp).first<{ total: number }>())?.total ?? 0;
   const rows = await env.DB.prepare(`
     WITH muscles(muscle) AS (VALUES
       ('abdominals'), ('abductors'), ('adductors'), ('biceps'), ('calves'), ('chest'),
       ('forearms'), ('glutes'), ('hamstrings'), ('lats'), ('lower back'), ('middle back'),
       ('neck'), ('obliques'), ('quadriceps'), ('shoulders'), ('traps'), ('triceps')
     ), user_totals AS (
-      SELECT user_id, COUNT(*) AS set_count FROM workout_sets WHERE completed_at BETWEEN ? AND ? GROUP BY user_id
+      SELECT user_id, COUNT(*) AS set_count FROM workout_sets ws WHERE completed_at BETWEEN ? AND ? AND EXISTS (SELECT 1 FROM workouts w WHERE w.user_id = ws.user_id AND w.local_id = ws.workout_local_id AND w.ended_at IS NOT NULL) GROUP BY user_id
     ), me AS (
       SELECT goals, weight_lb, height_inches, experience, training_location, training_days, gym_id, similar_users_opt_in
       FROM user_info WHERE user_id = ?
@@ -219,13 +220,13 @@ async function recommendations(env: Env, userId: string) {
     ), peer_sets AS (
       SELECT cohort.user_id, muscles.muscle, COUNT(sm.muscle) AS sets
       FROM cohort CROSS JOIN muscles
-      LEFT JOIN workout_sets ws ON ws.user_id = cohort.user_id AND ws.completed_at BETWEEN ? AND ?
+      LEFT JOIN workout_sets ws ON ws.user_id = cohort.user_id AND ws.completed_at BETWEEN ? AND ? AND EXISTS (SELECT 1 FROM workouts w WHERE w.user_id = ws.user_id AND w.local_id = ws.workout_local_id AND w.ended_at IS NOT NULL)
       LEFT JOIN set_muscles sm ON sm.user_id = ws.user_id AND sm.workout_local_id = ws.workout_local_id AND sm.exercise_id = ws.exercise_id AND sm.set_number = ws.set_number AND sm.muscle = muscles.muscle
       GROUP BY cohort.user_id, muscles.muscle
     ), mine AS (
       SELECT muscles.muscle, COUNT(sm.muscle) AS sets
       FROM muscles
-      LEFT JOIN workout_sets ws ON ws.user_id = ? AND ws.completed_at BETWEEN ? AND ?
+      LEFT JOIN workout_sets ws ON ws.user_id = ? AND ws.completed_at BETWEEN ? AND ? AND EXISTS (SELECT 1 FROM workouts w WHERE w.user_id = ws.user_id AND w.local_id = ws.workout_local_id AND w.ended_at IS NOT NULL)
       LEFT JOIN set_muscles sm ON sm.user_id = ws.user_id AND sm.workout_local_id = ws.workout_local_id AND sm.exercise_id = ws.exercise_id AND sm.set_number = ws.set_number AND sm.muscle = muscles.muscle
       GROUP BY muscles.muscle
     )
@@ -422,17 +423,28 @@ async function friends(env: Env, userId: string) {
 
 async function profile(env: Env, userId: string) {
   const row = await env.DB.prepare(`SELECT auth_user_id AS userId, display_name AS displayName, has_chosen_display_name AS hasChosenDisplayName, image_url AS imageUrl,
-    goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation,
+    goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, routine_exercise_ids_by_split AS routineExerciseIdsBySplit, training_location AS trainingLocation,
     training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment,
     session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers
     FROM user_info WHERE user_id = ?`).bind(userId).first<ProfileRow>();
   if (!row) throw new Error('Profile not found.');
-  const { goals, favoriteExerciseIds, availableEquipment, optInSimilarUsers } = row;
+  const { goals, favoriteExerciseIds, routineExerciseIdsBySplit, availableEquipment, optInSimilarUsers } = row;
   return { userId: row.userId, displayName: row.displayName, hasChosenDisplayName: row.hasChosenDisplayName === 1, imageUrl: row.imageUrl, recommendationPreferences: {
-    goals: parseStringArray(goals), weightLb: row.weightLb, heightInches: row.heightInches, experience: row.experience, favoriteExerciseIds: parseStringArray(favoriteExerciseIds),
+    goals: parseStringArray(goals), weightLb: row.weightLb, heightInches: row.heightInches, experience: row.experience, favoriteExerciseIds: parseStringArray(favoriteExerciseIds), routineExerciseIdsBySplit: parseRoutines(routineExerciseIdsBySplit),
     trainingLocation: row.trainingLocation, trainingDays: row.trainingDays, gymId: row.gymId,
     availableEquipment: parseStringArray(availableEquipment), sessionMinutes: row.sessionMinutes, optInSimilarUsers: optInSimilarUsers === 1,
   } };
+}
+
+function validRoutines(value: unknown): value is Record<string, string[]> | null | undefined {
+  return value === undefined || value === null || (typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length <= 30 && Object.entries(value).every(([split, ids]) =>
+      /^(push|pull|legs|custom:[a-zA-Z0-9_-]{1,80})$/.test(split) && Array.isArray(ids)
+      && ids.length > 0 && ids.length <= 20 && new Set(ids).size === ids.length && ids.every((id) => isString(id, 80))));
+}
+function parseRoutines(value: string | null) {
+  try { const parsed: unknown = value && JSON.parse(value); return validRoutines(parsed) ? parsed ?? null : null; }
+  catch { return null; }
 }
 
 function parseStringArray(value: string | null) { try { const parsed: unknown = value && JSON.parse(value); return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string') ? parsed : null; } catch { return null; } }
@@ -448,7 +460,7 @@ async function updateProfile(request: Request, env: Env, userId: string) {
   const preferences = body.recommendationPreferences;
   if (preferences !== undefined && (!preferences || typeof preferences !== 'object' || Array.isArray(preferences))) return json({ error: 'Invalid recommendation preferences.' }, 400);
   const data = preferences as Record<string, unknown> | undefined;
-  const keys = ['goals', 'weightLb', 'heightInches', 'experience', 'favoriteExerciseIds', 'trainingLocation', 'trainingDays', 'gymId', 'availableEquipment', 'sessionMinutes', 'optInSimilarUsers'];
+  const keys = ['goals', 'weightLb', 'heightInches', 'experience', 'favoriteExerciseIds', 'routineExerciseIdsBySplit', 'trainingLocation', 'trainingDays', 'gymId', 'availableEquipment', 'sessionMinutes', 'optInSimilarUsers'];
   if (data && Object.keys(data).some((key) => !keys.includes(key))) return json({ error: 'Invalid recommendation preferences.' }, 400);
   const validExperience = data?.experience === undefined || data.experience === null || ['new', 'some', 'experienced'].includes(data.experience as string);
   const validLocation = data?.trainingLocation === undefined || data.trainingLocation === null || ['gym', 'home', 'both'].includes(data.trainingLocation as string);
@@ -457,19 +469,19 @@ async function updateProfile(request: Request, env: Env, userId: string) {
   const validPreferences = !data || (optionalStringArray(data.goals, goalValues)
     && optionalNumber(data.weightLb, 50, 1_000)
     && optionalNumber(data.heightInches, 36, 108, true)
-    && validExperience && optionalStringArray(data.favoriteExerciseIds, undefined, 20) && validLocation
+    && validRoutines(data.routineExerciseIdsBySplit) && validExperience && optionalStringArray(data.favoriteExerciseIds, undefined, 20) && validLocation
     && optionalNumber(data.trainingDays, 1, 7, true)
     && validGym && optionalStringArray(data.availableEquipment)
     && optionalNumber(data.sessionMinutes, 5, 300, true) && validOptIn);
   if (!validPreferences) return json({ error: 'Invalid recommendation preferences.' }, 400);
-  const columns: Record<string, string> = { goals: 'goals', weightLb: 'weight_lb', heightInches: 'height_inches', experience: 'experience', favoriteExerciseIds: 'favorite_exercise_ids', trainingLocation: 'training_location', trainingDays: 'training_days', gymId: 'gym_id', availableEquipment: 'available_equipment', sessionMinutes: 'session_minutes', optInSimilarUsers: 'similar_users_opt_in' };
+  const columns: Record<string, string> = { goals: 'goals', weightLb: 'weight_lb', heightInches: 'height_inches', experience: 'experience', favoriteExerciseIds: 'favorite_exercise_ids', routineExerciseIdsBySplit: 'routine_exercise_ids_by_split', trainingLocation: 'training_location', trainingDays: 'training_days', gymId: 'gym_id', availableEquipment: 'available_equipment', sessionMinutes: 'session_minutes', optInSimilarUsers: 'similar_users_opt_in' };
   const assignments: string[] = [];
   const values: unknown[] = [];
   if (displayName !== undefined) { assignments.push('display_name = ?', 'has_chosen_display_name = 1'); values.push(displayName); }
   for (const key of keys) if (data?.[key] !== undefined) {
     assignments.push(`${columns[key]} = ?`);
     const value = data[key];
-    values.push(key === 'goals' || key === 'favoriteExerciseIds' || key === 'availableEquipment' ? value === null ? null : JSON.stringify(value) : key === 'optInSimilarUsers' ? value ? 1 : 0 : value);
+    values.push(key === 'routineExerciseIdsBySplit' || key === 'goals' || key === 'favoriteExerciseIds' || key === 'availableEquipment' ? value === null ? null : JSON.stringify(value) : key === 'optInSimilarUsers' ? value ? 1 : 0 : value);
   }
   if (!assignments.length) return json({ error: 'Provide a profile field to update.' }, 400);
   assignments.push('updated_at = ?'); values.push(now(), userId);
@@ -699,7 +711,7 @@ async function deleteAccount(env: Env, userId: string) {
 
 async function exportAccount(env: Env, userId: string) {
   const [profileRow, workouts, sets, muscles, ratings, feedback, splits, connections, blocks] = await Promise.all([
-    env.DB.prepare('SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
+    env.DB.prepare('SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, routine_exercise_ids_by_split AS routineExerciseIdsBySplit, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
     env.DB.prepare('SELECT local_id AS id, split, created_at AS createdAt, ended_at AS endedAt FROM workouts WHERE user_id = ? ORDER BY created_at, local_id').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE user_id = ? ORDER BY completed_at, workout_local_id, exercise_id, set_number').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, muscle FROM set_muscles WHERE user_id = ? ORDER BY workout_local_id, exercise_id, set_number, muscle').bind(userId).all(),

@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ui } from '@/styles/primitives';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppearance } from '@/components/appearance-provider';
 import type { Onboarding } from '@/lib/onboarding';
@@ -34,12 +35,12 @@ export function FirstWorkoutPreview({ onboarding, splitName, onStart, onSkip }: 
 
   return <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
     <View style={styles.content}>
-      <Text style={[styles.eyebrow, { color: colors.mutedText }]}>YOUR PLAN IS READY</Text>
+      <Text style={[ui.eyebrow, { color: colors.mutedText }]}>YOUR PLAN IS READY</Text>
       <Text style={[styles.title, { color: colors.text }]}>Start with a workout made for you.</Text>
       <Text style={[styles.subtitle, { color: colors.mutedText }]}>Your first session is a simple way to put your {goal ? goal.toLowerCase() : 'training'} goal into motion.</Text>
 
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.cardLabel, { color: colors.mutedText }]}>FIRST WORKOUT</Text>
+        <Text style={[ui.eyebrow, { color: colors.mutedText }]}>FIRST WORKOUT</Text>
         <Text style={[styles.workout, { color: colors.text }]}>{splitName}</Text>
         <View style={styles.details}>
           <Text style={[styles.detail, { color: colors.mutedText }]}>{experience}</Text>
@@ -64,11 +65,9 @@ export function FirstWorkoutPreview({ onboarding, splitName, onStart, onSkip }: 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 28 },
-  eyebrow: { fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
   title: { maxWidth: 350, marginTop: 15, fontSize: 38, lineHeight: 41, fontWeight: '900', letterSpacing: -1.7 },
   subtitle: { maxWidth: 340, marginTop: 12, fontSize: 16, lineHeight: 23 },
   card: { marginTop: 30, padding: 22, borderRadius: 22 },
-  cardLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   workout: { marginTop: 8, fontSize: 27, fontWeight: '900', letterSpacing: -.8 },
   details: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
   detail: { fontSize: 13, fontWeight: '700' },

@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { Easing, FadeIn, FadeInDown, FadeInUp, interpolateColor, Layout, SlideInLeft, SlideInRight, ZoomIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, FadeInUp, Layout, SlideInLeft, SlideInRight, ZoomIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppearance } from '@/components/appearance-provider';
 import { FlexAnimation } from '@/components/flex-animation';
-import { SwipeWatermark } from '@/components/swipe-watermark';
+import { RulerSlider } from '@/components/ruler-slider';
 import { Wordmark } from '@/components/wordmark';
 import type { AppearanceColors } from '@/lib/appearance';
 import { savePendingOnboarding, type Onboarding } from '@/lib/onboarding';
@@ -15,7 +13,6 @@ type Props = { onSignIn: () => void; onSignUp: () => void };
 type Step = 'welcome' | 'goals' | 'experience' | 'routine';
 type Styles = ReturnType<typeof createStyles>;
 const steps: Step[] = ['welcome', 'goals', 'experience', 'routine'];
-const rulerTrackHeight = 66;
 const goals = ['Build muscle', 'Get stronger', 'Lose fat', 'Feel healthier'];
 const springify = <T,>(e: T) => (e as { springify: () => T }).springify();
 // Mobbin patterns (Tonal, Yazio, Strava, WHOOP, Equinox): thin top progress + step
@@ -89,7 +86,7 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
             detail={value === 'new' ? 'I’m learning the basics.' : value === 'some' ? 'I know my way around a workout.' : 'Training is already part of my routine.'} />)}
         </View></Question>}
         {step === 'routine' && <Question title="Let’s shape your routine." subtitle="How many days a week do you want to train?" styles={styles}>
-          <Animated.View entering={FadeInUp.delay(200).duration(350)} style={styles.routineBody}><DaysSlider value={days} onChange={setDays} styles={styles} colors={colors} /></Animated.View>
+          <Animated.View entering={FadeInUp.delay(200).duration(350)} style={styles.routineBody}><RulerSlider value={days} min={1} max={7} onChange={setDays} unit={`${days === 1 ? 'day' : 'days'} / week`} accessibilityLabel="Training days per week" accessibilityText={`${days} ${days === 1 ? 'day' : 'days'} per week`} /></Animated.View>
           {saveError && <Text accessibilityRole="alert" style={styles.saveError}>Could not save your answers. Try again.</Text>}
         </Question>}
       </Animated.View>
@@ -120,57 +117,6 @@ function Choice<T extends string | number>({ value, selected, onPress, label, de
   </Animated.View>;
 }
 
-// Ruler-tick slider (stoic's big readout, pushr's tick hump around the active value).
-// Ticks are uniform-width columns, so the touched x maps straight to a day.
-function DaysSlider({ value, onChange, styles, colors }: { value: number; onChange: (value: number) => void; styles: Styles; colors: AppearanceColors }) {
-  const [width, setWidth] = useState(0);
-  const [increasing, setIncreasing] = useState(true);
-  const [hintDismissed, setHintDismissed] = useState(false);
-  const step = width / 7;
-  const commit = (next: number) => {
-    const clamped = Math.min(7, Math.max(1, next));
-    if (clamped === value) return;
-    setIncreasing(clamped > value);
-    void Haptics.selectionAsync().catch(() => {});
-    onChange(clamped);
-  };
-  const select = (x: number) => { if (step) commit(Math.floor(x / step) + 1); };
-  const dismissHint = () => setHintDismissed(true);
-  const pan = Gesture.Pan().runOnJS(true).activeOffsetX([-4, 4]).failOffsetY([-12, 12]).onBegin(dismissHint).onStart((event) => select(event.x)).onUpdate((event) => select(event.x));
-  const tap = Gesture.Tap().runOnJS(true).onBegin(dismissHint).onEnd((event) => select(event.x));
-  return <View style={styles.days}>
-    <View style={styles.daysReadout}>
-      <Animated.Text key={value} entering={(increasing ? FadeInUp : FadeInDown).duration(220).easing(Easing.out(Easing.cubic))} style={styles.daysNumber}>{value}</Animated.Text>
-      <Text style={styles.daysUnit}>{value === 1 ? 'day' : 'days'} / week</Text>
-    </View>
-    <View style={styles.ruler}>
-      {!hintDismissed && <SwipeWatermark colors={colors} height={rulerTrackHeight} fontSize={58} />}
-      <GestureDetector gesture={Gesture.Exclusive(pan, tap)}>
-        <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={styles.rulerTrack} accessible accessibilityRole="adjustable" accessibilityLabel="Training days per week" accessibilityValue={{ min: 1, max: 7, now: value, text: `${value} ${value === 1 ? 'day' : 'days'} per week` }} accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]} onAccessibilityAction={(event) => commit(value + (event.nativeEvent.actionName === 'increment' ? 1 : -1))}>
-          {[1, 2, 3, 4, 5, 6, 7].map((day) => {
-            const active = day === value;
-            return <View key={day} style={styles.tickColumn}>
-              <Tick active={active} target={active ? 40 : 14 + (3 - Math.min(Math.abs(day - value), 3)) * 5} styles={styles} colors={colors} />
-              <Text style={[styles.tickLabel, active && styles.tickLabelActive]}>{day}</Text>
-            </View>;
-          })}
-        </View>
-      </GestureDetector>
-    </View>
-  </View>;
-}
-
-function Tick({ active, target, styles, colors }: { active: boolean; target: number; styles: Styles; colors: AppearanceColors }) {
-  const height = useSharedValue(target);
-  const activeProgress = useSharedValue(active ? 1 : 0);
-  useEffect(() => { height.value = withTiming(target, { duration: 280, easing: Easing.out(Easing.cubic) }); }, [height, target]);
-  useEffect(() => { activeProgress.value = withTiming(active ? 1 : 0, { duration: 200 }); }, [active, activeProgress]);
-  const barStyle = useAnimatedStyle(() => ({
-    height: height.value,
-    backgroundColor: interpolateColor(activeProgress.value, [0, 1], [colors.surfaceStrong, colors.accent]),
-  }), [colors.surfaceStrong, colors.accent]);
-  return <Animated.View style={[styles.tick, barStyle]} />;
-}
 function Button({ label, onPress, disabled, styles }: { label: string; onPress: () => void; disabled?: boolean; styles: Styles }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.button, disabled && styles.disabled, { transform: [{ scale: pressed && !disabled ? 0.98 : 1 }], opacity: pressed && !disabled ? 0.92 : 1 }]}><Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>{label}</Text></Pressable>;
 }
@@ -194,16 +140,6 @@ function createStyles(colors: AppearanceColors) {
     choiceDetail: { color: colors.mutedText, fontSize: 13, marginTop: 3 },
     choiceDetailSelected: { color: colors.accentText, opacity: 0.7 },
     check: { fontSize: 20, fontWeight: '800', minWidth: 22, textAlign: 'center', color: colors.accentText }, checkIdle: { color: colors.subtleText, opacity: 0.7 }, checkSelected: { color: colors.accentText },
-    days: { flex: 1 },
-    daysReadout: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    daysNumber: { color: colors.text, fontSize: 120, fontWeight: '900', letterSpacing: -5, lineHeight: 124 },
-    daysUnit: { color: colors.mutedText, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginTop: 2, textTransform: 'uppercase' },
-    ruler: { alignSelf: 'stretch', marginTop: 26, paddingHorizontal: 20 },
-    rulerTrack: { flexDirection: 'row', alignItems: 'flex-end', height: rulerTrackHeight },
-    tickColumn: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
-    tick: { width: 6, borderRadius: 3, backgroundColor: colors.surfaceStrong },
-    tickLabel: { color: colors.subtleText, fontSize: 12, fontWeight: '800' },
-    tickLabelActive: { color: colors.text },
     button: { minHeight: 56, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
     footer: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 15 },
     disabled: { backgroundColor: colors.surfaceStrong, opacity: 0.75 },

@@ -92,8 +92,9 @@ export function SplitBodyGraphic({ split, muscles, large = false }: { split: str
  * Everything else stays neutral, making gaps in the session easy to spot.
  */
 export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split, targetMuscles }: { primaryMuscles: readonly string[]; secondaryMuscles: readonly string[]; split: string; targetMuscles?: readonly string[] }) {
-	const { colors, mode } = useAppearance();
-	const missedColor = mode === 'dark' ? '#B34842' : 'rgba(255, 117, 101, 0.58)';
+	const { colors } = useAppearance();
+	// Hueless so it never collides with any accent; still clearly darker/lighter than untargeted muscles.
+	const missedColor = colors.mutedText;
   // react-native-body-highlighter snapshots highlight data on mount, so use the
   // logged-muscle signature as a key to redraw when a newly saved set lands.
   const coverageKey = `${split}:${[...primaryMuscles].sort().join(',')}|${[...secondaryMuscles].sort().join(',')}`;
@@ -115,7 +116,7 @@ export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split,
   };
   const sharedProps = { gender: 'male' as const, scale: 0.62, border: 'none' as const, defaultFill: colors.surfaceStrong, defaultStroke: 'none' };
 
-  return <View pointerEvents="none" style={styles.coveragePair} accessibilityLabel="Workout muscle coverage. Bright yellow indicates primary muscles trained; muted yellow indicates secondary muscles trained; red indicates a target muscle not yet trained.">
+  return <View pointerEvents="none" style={styles.coveragePair} accessibilityLabel="Workout muscle coverage. Full accent color indicates primary muscles trained; faded accent indicates secondary muscles trained; gray indicates a target muscle not yet trained.">
     <Body key={`front-${coverageKey}`} {...sharedProps} data={coverage(primary.front, secondary.front, targets.front)} side="front" />
     <Body key={`back-${coverageKey}`} {...sharedProps} data={coverage(primary.back, secondary.back, targets.back)} side="back" />
   </View>;

@@ -5,14 +5,26 @@ import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as schema from './schema';
 import { exerciseCatalog, type Exercise, workoutSplitForExercise } from './exercise-catalog';
 import { buildDemoWorkoutSets, demoWorkoutIdPrefix, isDemoDataEnabled } from './demo-data';
-import { defaultWorkoutSplits, getEffectiveExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRankedExercises as rankCatalogExercises, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
+import { defaultWorkoutSplits, getExerciseRecoveryExhaustion, getExerciseRecommendations as rankExerciseRecommendations, getRankedExercises as rankCatalogExercises, getRecommendedWorkoutSplit as recommendWorkoutSplit, type ExerciseRecommendation, type MuscleExhaustionRating, type RecommendationContext, type RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 export type { RecommendationContext, RecommendationFeedback, RecommendationFeedbackAction } from '@/lib/exercise-recommendations';
 
 const sqlite = SQLite.openDatabaseSync('lift.db');
 sqlite.execSync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-const DATABASE_SCHEMA_VERSION = 14;
+const DATABASE_SCHEMA_VERSION = 15;
 const workoutTimeoutSeconds = 2 * 60 * 60;
+
+function transaction<T>(write: () => T): T {
+  sqlite.execSync('BEGIN IMMEDIATE');
+  try {
+    const result = write();
+    sqlite.execSync('COMMIT');
+    return result;
+  } catch (error) {
+    sqlite.execSync('ROLLBACK');
+    throw error;
+  }
+}
 
 function migrateDatabase() {
   const databaseVersion = sqlite.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version ?? 0;
@@ -72,17 +84,19 @@ function migrateDatabase() {
   if (!catalogColumns.some((column) => column.name === 'details_json')) {
     sqlite.execSync('ALTER TABLE exercise_catalog ADD COLUMN details_json TEXT;');
   }
-  for (const exercise of exerciseCatalog) {
-    sqlite.runSync(
-      `INSERT INTO exercise_catalog (id, name, area, mark, color, equipment, is_featured, details_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name, area = excluded.area, mark = excluded.mark,
-         color = excluded.color, equipment = excluded.equipment, is_featured = excluded.is_featured,
-         details_json = excluded.details_json`,
-      [exercise.id, exercise.name, exercise.area, exercise.mark, exercise.color, exercise.equipment, exercise.isFeatured, exercise.detailsJson],
-    );
-  }
+  transaction(() => {
+    for (const exercise of exerciseCatalog) {
+      sqlite.runSync(
+        `INSERT INTO exercise_catalog (id, name, area, mark, color, equipment, is_featured, details_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name, area = excluded.area, mark = excluded.mark,
+           color = excluded.color, equipment = excluded.equipment, is_featured = excluded.is_featured,
+           details_json = excluded.details_json`,
+        [exercise.id, exercise.name, exercise.area, exercise.mark, exercise.color, exercise.equipment, exercise.isFeatured, exercise.detailsJson],
+      );
+    }
+  });
 
   sqlite.execSync(`
       CREATE TABLE IF NOT EXISTS workout_sets (
@@ -99,6 +113,10 @@ function migrateDatabase() {
         ON workout_sets(exercise_id, completed_at);
       CREATE INDEX IF NOT EXISTS workout_sets_workout_exercise
         ON workout_sets(workout_id, exercise_id);
+      CREATE INDEX IF NOT EXISTS workout_sets_completed_at
+        ON workout_sets(completed_at);
+      CREATE INDEX IF NOT EXISTS workouts_ended_at_created_at
+        ON workouts(ended_at, created_at DESC);
       CREATE TABLE IF NOT EXISTS workout_muscle_ratings (
         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
         workout_id TEXT NOT NULL REFERENCES workouts(id),
@@ -166,6 +184,10 @@ function migrateDatabase() {
   sqlite.execSync('DELETE FROM recommendation_feedback WHERE id NOT IN (SELECT MIN(id) FROM recommendation_feedback GROUP BY workout_id, exercise_id, action);');
   sqlite.execSync('CREATE UNIQUE INDEX IF NOT EXISTS recommendation_feedback_identity ON recommendation_feedback(workout_id, exercise_id, action);');
 
+  if (databaseVersion < 15) {
+    // v15 moves muscle check-ins from 1–4 labels to a 0–10 slider.
+    sqlite.execSync('UPDATE workout_muscle_ratings SET exhaustion = CAST(ROUND((MIN(exhaustion, 5) - 1) * 2.5) AS INTEGER);');
+  }
   if (databaseVersion < DATABASE_SCHEMA_VERSION) {
     sqlite.runSync("INSERT INTO sync_state (key, value) VALUES ('cloud_sync_needs_seed', '1') ON CONFLICT(key) DO UPDATE SET value = '1'");
     sqlite.execSync(`PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};`);
@@ -178,25 +200,27 @@ function syncDemoWorkoutData() {
   // Demo rows have a dedicated prefix, making the switch safe around real data.
   // Ratings reference workouts, so clear them before removing their parent
   // demo workouts. SQLite foreign-key enforcement is enabled for this database.
-  sqlite.runSync('DELETE FROM workout_muscle_ratings WHERE workout_id LIKE ?', [`${demoWorkoutIdPrefix}%`]);
-  sqlite.runSync('DELETE FROM workout_sets WHERE workout_id LIKE ?', [`${demoWorkoutIdPrefix}%`]);
-  sqlite.runSync('DELETE FROM workouts WHERE id LIKE ?', [`${demoWorkoutIdPrefix}%`]);
-  if (!isDemoDataEnabled) return;
+  transaction(() => {
+    sqlite.runSync('DELETE FROM workout_muscle_ratings WHERE workout_id LIKE ?', [`${demoWorkoutIdPrefix}%`]);
+    sqlite.runSync('DELETE FROM workout_sets WHERE workout_id LIKE ?', [`${demoWorkoutIdPrefix}%`]);
+    sqlite.runSync('DELETE FROM workouts WHERE id LIKE ?', [`${demoWorkoutIdPrefix}%`]);
+    if (!isDemoDataEnabled) return;
 
-  const demoSets = buildDemoWorkoutSets(exerciseCatalog);
-  const visits = new Map<string, number>();
-  for (const set of demoSets) visits.set(set.workoutId, Math.min(visits.get(set.workoutId) ?? Infinity, set.completedAt.getTime()));
-  for (const [id, createdAt] of visits) {
-    const stamp = Math.floor(createdAt / 1000);
-    sqlite.runSync('INSERT INTO workouts (id, split, created_at, ended_at, updated_at) VALUES (?, ?, ?, ?, ?)', [id, 'push', stamp, stamp, stamp]);
-  }
-  for (const set of demoSets) {
-    sqlite.runSync(
-      `INSERT INTO workout_sets (exercise_id, workout_id, set_number, weight, reps, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [set.exerciseId, set.workoutId, set.setNumber, set.weight, set.reps, Math.floor(set.completedAt.getTime() / 1000)],
-    );
-  }
+    const demoSets = buildDemoWorkoutSets(exerciseCatalog);
+    const visits = new Map<string, number>();
+    for (const set of demoSets) visits.set(set.workoutId, Math.min(visits.get(set.workoutId) ?? Infinity, set.completedAt.getTime()));
+    for (const [id, createdAt] of visits) {
+      const stamp = Math.floor(createdAt / 1000);
+      sqlite.runSync('INSERT INTO workouts (id, split, created_at, ended_at, updated_at) VALUES (?, ?, ?, ?, ?)', [id, 'push', stamp, stamp, stamp]);
+    }
+    for (const set of demoSets) {
+      sqlite.runSync(
+        `INSERT INTO workout_sets (exercise_id, workout_id, set_number, weight, reps, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [set.exerciseId, set.workoutId, set.setNumber, set.weight, set.reps, Math.floor(set.completedAt.getTime() / 1000)],
+      );
+    }
+  });
 }
 
 migrateDatabase();
@@ -226,16 +250,11 @@ export type CloudSyncMutationResult = { entity: CloudSyncEntity; key: string; st
 export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; conflict?: boolean };
 
 function syncedWrite<T>(write: () => T, queue: (result: T) => void): T {
-  sqlite.execSync('BEGIN IMMEDIATE');
-  try {
+  return transaction(() => {
     const result = write();
     queue(result);
-    sqlite.execSync('COMMIT');
     return result;
-  } catch (error) {
-    sqlite.execSync('ROLLBACK');
-    throw error;
-  }
+  });
 }
 
 const exerciseColumns = 'id, name, area, mark, color, equipment, is_featured AS isFeatured, details_json AS detailsJson';
@@ -453,8 +472,10 @@ export function getExerciseSessionCounts(): Map<string, number> {
 }
 
 export function getWorkoutAchievements(workoutId: string): WorkoutAchievement[] {
-  return getWorkoutVisitExercises(workoutId).flatMap<WorkoutAchievement>((exercise) => {
-    const history = getWorkoutHistory(exercise.id);
+  const exercises = getWorkoutVisitExercises(workoutId);
+  const histories = getWorkoutHistories(exercises.map((exercise) => exercise.id));
+  return exercises.flatMap<WorkoutAchievement>((exercise) => {
+    const history = histories.get(exercise.id) ?? [];
     const current = history.filter((set) => set.workoutId === workoutId);
     // Only earlier sets count, so a past workout keeps the PRs it earned at the time.
     const start = Math.min(...current.map((set) => set.completedAt.getTime()));
@@ -615,33 +636,47 @@ export function getNextSetNumberForWorkout(exerciseId: string, workoutId: string
   return (result?.lastSet ?? 0) + 1;
 }
 
-export function getWorkoutHistory(exerciseId: string) {
+export function getWorkoutHistory(exerciseId: string, options: { completedOnly?: boolean } = {}) {
   return sqlite
     .getAllSync<StoredWorkoutSet>(
-      'SELECT workout_id AS workoutId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE exercise_id = ? ORDER BY completed_at ASC, workout_id ASC, set_number ASC',
+      `SELECT workout_sets.workout_id AS workoutId, set_number AS setNumber, weight, reps, completed_at AS completedAt
+       FROM workout_sets ${options.completedOnly ? 'INNER JOIN workouts ON workouts.id = workout_sets.workout_id' : ''}
+       WHERE exercise_id = ? ${options.completedOnly ? 'AND workouts.ended_at IS NOT NULL' : ''}
+       ORDER BY completed_at ASC, workout_sets.workout_id ASC, set_number ASC`,
       [exerciseId],
     )
     .map((set) => ({ ...set, completedAt: new Date(set.completedAt * 1000) }));
 }
 
+/** Histories for several exercises in one query, used by overview and summary screens. */
+export function getWorkoutHistories(exerciseIds: readonly string[], options: { completedOnly?: boolean } = {}) {
+  const ids = [...new Set(exerciseIds)];
+  const histories = new Map(ids.map((id) => [id, [] as WorkoutHistoryPoint[]]));
+  if (!ids.length) return histories;
+  const rows = sqlite.getAllSync<StoredWorkoutSet & { exerciseId: string }>(
+    `SELECT workout_sets.exercise_id AS exerciseId, workout_sets.workout_id AS workoutId,
+       set_number AS setNumber, weight, reps, completed_at AS completedAt
+     FROM workout_sets ${options.completedOnly ? 'INNER JOIN workouts ON workouts.id = workout_sets.workout_id' : ''}
+     WHERE workout_sets.exercise_id IN (${ids.map(() => '?').join(',')}) ${options.completedOnly ? 'AND workouts.ended_at IS NOT NULL' : ''}
+     ORDER BY workout_sets.exercise_id ASC, completed_at ASC, workout_sets.workout_id ASC, set_number ASC`,
+    ids,
+  );
+  for (const { exerciseId, ...row } of rows) histories.get(exerciseId)!.push({ ...row, completedAt: new Date(row.completedAt * 1000) });
+  return histories;
+}
+
 export function getRecentExerciseExhaustion(exerciseId: string, excludingWorkoutId: string, now = new Date()): number | undefined {
-  const exercise = getExercises().find((item) => item.id === exerciseId);
-  let muscles: string[] = [];
-  try { muscles = JSON.parse(exercise?.detailsJson ?? '{}').primaryMuscles ?? []; } catch { /* Missing catalog metadata means there is no safe fatigue match. */ }
-  if (!muscles.length) return undefined;
-  const rows = sqlite.getAllSync<{ workoutId: string; exhaustion: number; completedAt: number }>(
-    `SELECT workout_muscle_ratings.workout_id AS workoutId, exhaustion,
+  const exercise = sqlite.getFirstSync<Exercise>(`SELECT ${exerciseColumns} FROM exercise_catalog WHERE id = ?`, [exerciseId]);
+  if (!exercise) return undefined;
+  const ratings = sqlite.getAllSync<{ workoutId: string; split: string; muscle: string; exhaustion: number; completedAt: number }>(
+    `SELECT workout_muscle_ratings.workout_id AS workoutId, workouts.split AS split, muscle, exhaustion,
        COALESCE(workouts.ended_at, workouts.created_at) AS completedAt
      FROM workout_muscle_ratings INNER JOIN workouts ON workouts.id = workout_muscle_ratings.workout_id
-     WHERE workout_muscle_ratings.workout_id != ? AND muscle IN (${muscles.map(() => '?').join(',')})
-       AND COALESCE(workouts.ended_at, workouts.created_at) >= ?
-     ORDER BY completedAt DESC, workoutId ASC, muscle ASC`,
-    [excludingWorkoutId, ...muscles, Math.floor((now.getTime() - 14 * 86_400_000) / 1000)],
-  );
-  if (!rows.length) return undefined;
-  const latest = rows[0]!.workoutId;
-  const ratings = rows.filter((row) => row.workoutId === latest).map((row) => getEffectiveExhaustion(row.exhaustion, new Date(row.completedAt * 1000), now));
-  return Math.max(...ratings);
+     WHERE workout_muscle_ratings.workout_id != ? AND COALESCE(workouts.ended_at, workouts.created_at) >= ?
+     ORDER BY completedAt ASC, workoutId ASC, muscle ASC`,
+    [excludingWorkoutId, Math.floor((now.getTime() - 7 * 86_400_000) / 1000)],
+  ).map((rating) => ({ ...rating, completedAt: new Date(rating.completedAt * 1000) }));
+  return getExerciseRecoveryExhaustion(exercise, ratings, now, excludingWorkoutId);
 }
 
 export function getWorkoutStats(): WorkoutStats {
@@ -863,6 +898,13 @@ export function rejectCloudSyncBatch(batchId: string, reason: string, invalidCha
     sqlite.execSync('ROLLBACK');
     throw error;
   }
+}
+/** Rebuild a refused upload from current local data, with a fresh batch ID. */
+export function resubmitCloudSyncChange(entity: CloudSyncEntity, key: string): boolean {
+  const issue = getRejectedCloudSyncChanges().find((item) => item.entity === entity && item.key === key);
+  if (!issue || issue.conflict || (issue.operation === 'upsert' && !localSyncRecord(entity, key))) return false;
+  enqueueCloudSync(entity, key, issue.operation);
+  return true;
 }
 export function getCloudSyncCursor() { return Number(syncState('cloud_sync_cursor') ?? 0); }
 function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: string) {

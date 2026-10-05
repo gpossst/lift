@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polygon, Polyline, Text as SvgText } from 'react-native-svg';
 import { X } from 'react-native-feather';
 
 import { useAppearance } from '@/components/appearance-provider';
+import { useSheetPresence } from '@/hooks/use-sheet-presence';
 import { muscleLabel as label } from '@/components/muscle-trend-row';
 import { muscleCoverage, trainingOverview } from '@/lib/training-overview';
 
@@ -26,6 +27,7 @@ export function CoverageTrendSheet({ muscle, weeks, split, onClose }: {
 }) {
   const { colors } = useAppearance();
   const insets = useSafeAreaInsets();
+  const visible = useSheetPresence(muscle !== null);
   const { width } = useWindowDimensions();
   const chartScroll = useRef<ScrollView>(null);
   const [timeWindow, setTimeWindow] = useState<4 | 13 | 26 | 52 | null>(4);
@@ -39,12 +41,13 @@ export function CoverageTrendSheet({ muscle, weeks, split, onClose }: {
   const firstVisible = Math.max(0, Math.min(chartWeeks.length - 1, Math.ceil((scrollOffset - 38) / spacing)));
   const lastVisible = Math.max(firstVisible, Math.min(chartWeeks.length - 1, Math.floor((scrollOffset + width - 48 - 38) / spacing)));
 
-  return <Modal visible={muscle !== null} transparent animationType="none" onRequestClose={onClose}>
+  return <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
     <View style={styles.overlay}>
-      <Animated.View entering={FadeIn.duration(180)} style={styles.backdrop}>
+      {muscle !== null && <>
+      <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdrop}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close coverage trend" />
       </Animated.View>
-      <Animated.View entering={SlideInDown.duration(280)} style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
+      <Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
         <View style={[styles.handle, { backgroundColor: colors.surfaceStrong }]} />
         <View style={styles.heading}><View><Text style={[styles.title, { color: colors.text }]}>{muscle ? label(muscle) : ''}</Text><Text style={[styles.subtitle, { color: colors.mutedText }]}>Weekly coverage · {timeWindow === null ? 'all weeks' : `last ${timeWindow} weeks`}</Text><Text style={[styles.average, { color: colors.text }]}>{Math.round(values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length))}<Text style={[styles.averageUnit, { color: colors.mutedText }]}>% avg</Text></Text></View><Pressable onPress={onClose} hitSlop={10} style={[styles.close, { backgroundColor: colors.surface }]} accessibilityRole="button" accessibilityLabel="Close coverage trend"><X width={18} height={18} color={colors.text} strokeWidth={2.5} /></Pressable></View>
         <ScrollView key={timeWindow ?? 'all'} ref={chartScroll} horizontal showsHorizontalScrollIndicator={false} onContentSizeChange={() => { setScrollOffset(Math.max(0, chartWidth - (width - 48))); chartScroll.current?.scrollToEnd({ animated: false }); }} onScroll={(event) => setScrollOffset(event.nativeEvent.contentOffset.x)} scrollEventThrottle={32}>
@@ -63,6 +66,7 @@ export function CoverageTrendSheet({ muscle, weeks, split, onClose }: {
         })}</View>
         <Text style={[styles.note, { color: colors.mutedText }]}>Each point shows that week&apos;s progress toward the coverage target.</Text>
       </Animated.View>
+      </>}
     </View>
   </Modal>;
 }

@@ -1,1 +1,1 @@
-export function syncRestLiveActivity(_endsAt: number | null) {}
+export function syncRestLiveActivity(_endsAt: number | null, _durationSeconds?: number) {}

@@ -7,6 +7,7 @@ export type RecommendationPreferences = {
   heightInches?: number | null;
   experience?: Onboarding['experience'] | null;
   favoriteExerciseIds?: string[] | null;
+  routineExerciseIdsBySplit?: Record<string, string[]> | null;
   trainingLocation?: Onboarding['trainingLocation'] | null;
   trainingDays?: number | null;
   gymId?: string | null;

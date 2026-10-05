@@ -1,13 +1,13 @@
 import { ui } from '@/styles/primitives';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, ExternalLink, Minus, Moon, Plus, Search, Sun } from 'react-native-feather';
+import { ArrowLeft, Check, ExternalLink, Minus, Moon, Plus, Sun } from 'react-native-feather';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, type SwitchProps } from 'react-native';
+import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
 import { clearLocalAccountData, deleteCustomSplit, getActiveWorkout, getCustomSplits, saveCustomSplit, type CustomSplit } from '@/db';
-import { exerciseCatalog } from '@/db/exercise-catalog';
 import { accountPageUrl, exportAccountData } from '@/lib/account';
 import { accentOptions, type AppearanceMode } from '@/lib/appearance';
 import { setCloudSyncUser, syncWorkoutData } from '@/lib/cloud-sync';
@@ -152,9 +152,9 @@ function ProfileSettings() {
   };
 
   return <>
-    {loading ? <ActivityIndicator color={colors.accent} /> : <><Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Display name</Text><View style={[styles.nameRow, { borderBottomColor: colors.surfaceStrong }]}><TextInput value={displayName} onChangeText={setDisplayName} maxLength={40} placeholder="Display name" placeholderTextColor={colors.subtleText} style={[styles.nameInput, { color: colors.text }]} accessibilityLabel="Display name" />
+    {loading ? <ActivityIndicator color={colors.accent} /> : <Animated.View entering={FadeIn.duration(220)}><Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Display name</Text><View style={[styles.nameRow, { borderBottomColor: colors.surfaceStrong }]}><TextInput value={displayName} onChangeText={setDisplayName} maxLength={40} placeholder="Display name" placeholderTextColor={colors.subtleText} style={[styles.nameInput, { color: colors.text }]} accessibilityLabel="Display name" />
       <Pressable onPress={() => void save()} disabled={saving || !displayName.trim()} style={({ pressed }) => [styles.saveButton, pressed && ui.pressed, (saving || !displayName.trim()) && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save display name"><Text style={[styles.saveText, { color: colors.accent }]}>{saving ? 'Saving…' : 'Save'}</Text></Pressable></View>
-      {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}</>}
+      {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}</Animated.View>}
     <Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Body measurements</Text>
     <Text style={[styles.preferenceDescription, { color: colors.mutedText, maxWidth: 320 }]}>Optional. Add your height and weight to see your lifts in context.</Text>
     <View style={styles.measurementInputs}>
@@ -187,16 +187,6 @@ function ProfileSettings() {
   </>;
 }
 
-function favoriteChoices(query: string, selectedIds: readonly string[]) {
-  const selected = new Set(selectedIds);
-  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  return exerciseCatalog.filter((exercise) => terms.length
-    ? terms.every((term) => `${exercise.name} ${exercise.area} ${exercise.equipment}`.toLowerCase().includes(term))
-    : selected.has(exercise.id) || exercise.isFeatured)
-    .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || b.isFeatured - a.isFeatured || a.name.localeCompare(b.name))
-    .slice(0, terms.length ? 12 : selectedIds.length + 6);
-}
-
 function LegalSettings() {
   const { colors } = useAppearance();
   const [error, setError] = useState<string | null>(null);
@@ -226,30 +216,6 @@ function AppearanceSettings() {
 function WorkoutSettings() {
   const { colors, showWorkoutRecommendations, restTimerEnabled, useRecommendedRestTimer, restTimerSeconds, setShowWorkoutRecommendations, setRestTimerEnabled, setUseRecommendedRestTimer, setRestTimerSeconds } = useAppearance();
   const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  const [favoriteExerciseIds, setFavoriteExerciseIds] = useState<string[]>([]);
-  const [favoriteQuery, setFavoriteQuery] = useState('');
-  const [favoritesLoading, setFavoritesLoading] = useState(true);
-  const [favoritesSaving, setFavoritesSaving] = useState(false);
-  const [favoritesError, setFavoritesError] = useState<string | null>(null);
-  const favoritesLoaded = useRef(false);
-
-  useEffect(() => {
-    if (favoritesLoaded.current) return;
-    favoritesLoaded.current = true;
-    void getProfile().then((profile) => {
-      setFavoriteExerciseIds(profile.recommendationPreferences?.favoriteExerciseIds ?? []);
-    }).catch((reason) => setFavoritesError(reason instanceof Error ? reason.message : 'Could not load favorite exercises.')).finally(() => setFavoritesLoading(false));
-  }, []);
-
-  const saveFavorites = async () => {
-    if (favoritesSaving) return;
-    setFavoritesSaving(true); setFavoritesError(null);
-    try { setFavoriteExerciseIds((await updateProfile({ recommendationPreferences: { favoriteExerciseIds } })).recommendationPreferences?.favoriteExerciseIds ?? []); }
-    catch (reason) { setFavoritesError(reason instanceof Error ? reason.message : 'Could not save favorite exercises.'); }
-    finally { setFavoritesSaving(false); }
-  };
-  const choices = favoriteChoices(favoriteQuery, favoriteExerciseIds);
-
   return <>
     <CustomSplitSettings />
     <Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Rest timer</Text>
@@ -264,28 +230,7 @@ function WorkoutSettings() {
       </View>
     </View>
     <Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Suggestions</Text><View style={[styles.preferenceRow, { borderBottomColor: colors.surfaceStrong }]}><View style={styles.preferenceCopy}><Text style={[styles.preferenceTitle, { color: colors.text }]}>Personalized exercise ranking</Text><Text style={[styles.preferenceDescription, { color: colors.mutedText }]}>Show the best matches first when you add an exercise.</Text></View><SettingsSwitch value={showWorkoutRecommendations} onValueChange={setShowWorkoutRecommendations} accessibilityLabel="Use personalized exercise ranking" accessibilityHint="Ranks matching exercises in the workout library" /></View>
-    <Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Favorite exercises</Text>
-    <View style={styles.favoriteIntro}>
-      <Text style={[styles.favoriteDescription, { color: colors.mutedText }]}>Pick up to 20 exercises to guide your suggestions.</Text>
-      <View style={[styles.favoriteCountBadge, { backgroundColor: colors.surface }]}><Text style={[styles.favoriteCount, { color: colors.text }]}>{favoriteExerciseIds.length}/20</Text></View>
-    </View>
-    {favoritesLoading ? <ActivityIndicator style={styles.favoriteLoading} color={colors.accent} /> : <>
-      <View style={[styles.favoriteSearch, { backgroundColor: colors.surface, borderColor: colors.surfaceStrong }]}>
-        <Search width={19} height={19} color={colors.mutedText} strokeWidth={2.3} />
-        <TextInput value={favoriteQuery} onChangeText={setFavoriteQuery} autoCapitalize="none" autoCorrect={false} placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.favoriteSearchInput, { color: colors.text }]} accessibilityLabel="Search favorite exercises" />
-      </View>
-      <View style={[styles.favoriteList, { borderColor: colors.surfaceStrong }]}>{choices.map((exercise, index) => {
-        const selected = favoriteExerciseIds.includes(exercise.id);
-        const disabled = !selected && favoriteExerciseIds.length >= 20;
-        return <Pressable key={exercise.id} disabled={disabled} onPress={() => setFavoriteExerciseIds((current) => selected ? current.filter((id) => id !== exercise.id) : [...current, exercise.id])} style={({ pressed }) => [styles.favoriteChoice, { backgroundColor: selected ? colors.surface : colors.background, borderBottomColor: colors.surfaceStrong, borderBottomWidth: index === choices.length - 1 ? 0 : StyleSheet.hairlineWidth }, disabled && styles.disabled, pressed && ui.pressed]} accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled }} accessibilityLabel={`${exercise.name}, ${exercise.area}, ${exercise.equipment}`}>
-          <View style={[styles.favoriteExerciseMark, { backgroundColor: exercise.color }]}><Text style={styles.favoriteExerciseMarkText}>{exercise.mark}</Text></View>
-          <View style={styles.favoriteChoiceText}><Text style={[styles.favoriteChoiceName, { color: colors.text }]}>{exercise.name}</Text><Text style={[styles.favoriteChoiceDetail, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View>
-          <View style={[styles.favoriteSelection, selected ? { backgroundColor: colors.accent, borderColor: colors.accent } : { borderColor: colors.surfaceStrong }]}>{selected ? <Check width={17} height={17} color={colors.accentText} strokeWidth={3} /> : <Plus width={17} height={17} color={colors.mutedText} strokeWidth={2.3} />}</View>
-        </Pressable>;
-      })}{choices.length === 0 && <Text style={[styles.favoriteEmpty, { color: colors.mutedText }]}>No exercises found. Try another search.</Text>}</View>
-      <Pressable onPress={() => void saveFavorites()} disabled={favoritesSaving} style={({ pressed }) => [styles.favoritesSave, { backgroundColor: colors.accent }, pressed && ui.pressed, favoritesSaving && styles.disabled]} accessibilityRole="button" accessibilityLabel="Save favorite exercises"><Text style={[styles.favoriteSaveText, { color: colors.accentText }]}>{favoritesSaving ? 'Saving…' : 'Save favorites'}</Text></Pressable>
-      {favoritesError && <Text accessibilityRole="alert" style={styles.error}>{favoritesError}</Text>}
-    </>}
+
   </>;
 }
 
@@ -326,7 +271,7 @@ function CustomSplitSettings() {
     <View style={[styles.preferenceRow, { borderBottomColor: colors.surfaceStrong, opacity: splits.length ? 1 : .45 }]}><View style={styles.preferenceCopy}><Text style={[styles.preferenceTitle, { color: colors.text }]}>Use custom splits</Text><Text style={[styles.preferenceDescription, { color: colors.mutedText }]}>Show your splits instead of Push, Pull, and Legs when starting a workout.</Text></View><SettingsSwitch disabled={!splits.length} value={useCustomSplits && splits.length > 0} onValueChange={setUseCustomSplits} accessibilityLabel="Use custom splits" /></View>
     {splits.map((split) => <View key={split.id} style={[styles.customSplitRow, { borderBottomColor: colors.surfaceStrong }]}><Pressable onPress={() => open(split)} style={styles.customSplitCopy} accessibilityRole="button" accessibilityLabel={`Edit ${split.name} split`}><Text style={[styles.preferenceTitle, { color: colors.text }]}>{split.name}</Text><Text numberOfLines={1} style={[styles.preferenceDescription, { color: colors.mutedText }]}>{split.muscles.join(' · ')}</Text></Pressable><Pressable onPress={() => setDeleteCandidate(split)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Delete ${split.name} split`}><Text style={styles.destructiveText}>Delete</Text></Pressable></View>)}
     <Pressable onPress={() => open()} style={[styles.addSplitButton, { backgroundColor: colors.surface }]} accessibilityRole="button" accessibilityLabel="Create custom split"><Plus width={19} height={19} color={colors.text} strokeWidth={2.5} /><Text style={[styles.preferenceTitle, { color: colors.text }]}>Create custom split</Text></Pressable>
-    <Modal visible={formOpen} transparent animationType="slide" onRequestClose={() => setFormOpen(false)}><View style={styles.modalOverlay}><View style={[styles.modalCard, styles.customSplitModal, { backgroundColor: colors.background }]}><Text style={[styles.modalTitle, { color: colors.text }]}>{editing ? 'Edit split' : 'Create split'}</Text><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Name</Text><TextInput value={name} onChangeText={setName} maxLength={40} placeholder="Upper body" placeholderTextColor={colors.subtleText} style={[styles.customSplitInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Split name" /><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Muscles to train</Text><ScrollView style={styles.muscleScroll} contentContainerStyle={styles.muscleChoices}>{muscleChoices.map((muscle) => { const selected = muscles.includes(muscle); return <Pressable key={muscle} onPress={() => { if (!selected && muscles.length >= 12) return setError('Choose up to 12 muscle groups.'); setError(''); setMuscles(selected ? muscles.filter((item) => item !== muscle) : [...muscles, muscle]); }} style={[styles.muscleChoice, { backgroundColor: selected ? colors.accent : colors.surface }]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={muscle}><Text style={[styles.muscleChoiceText, { color: selected ? colors.accentText : colors.text }]}>{muscle}</Text></Pressable>; })}</ScrollView>{!!error && <Text style={styles.error}>{error}</Text>}<Pressable onPress={save} style={[styles.customSplitSave, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Save split"><Text style={[styles.preferenceTitle, { color: colors.accentText }]}>Save split</Text></Pressable><Pressable onPress={() => setFormOpen(false)} style={styles.cancelButton} accessibilityRole="button" accessibilityLabel="Cancel"><Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text></Pressable></View></View></Modal>
+    <Modal visible={formOpen} transparent animationType="none" onRequestClose={() => setFormOpen(false)}><View style={[styles.modalOverlay, styles.clearOverlay]}><Animated.View entering={FadeIn.duration(180)} style={styles.modalBackdrop} /><Animated.View entering={SlideInDown.duration(280)} style={[styles.modalCard, styles.customSplitModal, { backgroundColor: colors.background }]}><Text style={[styles.modalTitle, { color: colors.text }]}>{editing ? 'Edit split' : 'Create split'}</Text><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Name</Text><TextInput value={name} onChangeText={setName} maxLength={40} placeholder="Upper body" placeholderTextColor={colors.subtleText} style={[styles.customSplitInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Split name" /><Text style={[styles.fieldPrompt, { color: colors.mutedText }]}>Muscles to train</Text><ScrollView style={styles.muscleScroll} contentContainerStyle={styles.muscleChoices}>{muscleChoices.map((muscle) => { const selected = muscles.includes(muscle); return <Pressable key={muscle} onPress={() => { if (!selected && muscles.length >= 12) return setError('Choose up to 12 muscle groups.'); setError(''); setMuscles(selected ? muscles.filter((item) => item !== muscle) : [...muscles, muscle]); }} style={[styles.muscleChoice, { backgroundColor: selected ? colors.accent : colors.surface }]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={muscle}><Text style={[styles.muscleChoiceText, { color: selected ? colors.accentText : colors.text }]}>{muscle}</Text></Pressable>; })}</ScrollView>{!!error && <Text style={styles.error}>{error}</Text>}<Pressable onPress={save} style={[styles.customSplitSave, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Save split"><Text style={[styles.preferenceTitle, { color: colors.accentText }]}>Save split</Text></Pressable><Pressable onPress={() => setFormOpen(false)} style={styles.cancelButton} accessibilityRole="button" accessibilityLabel="Cancel"><Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text></Pressable></Animated.View></View></Modal>
     <Modal visible={!!deleteCandidate} transparent animationType="fade" onRequestClose={() => setDeleteCandidate(null)}><View style={styles.modalOverlay}><View style={[styles.modalCard, { backgroundColor: colors.background }]}><Text style={[styles.modalTitle, { color: colors.text }]}>Delete {deleteCandidate?.name}?</Text><Text style={[styles.modalCopy, { color: colors.mutedText }]}>{getActiveWorkout()?.split === deleteCandidate?.id ? 'Finish your active workout before deleting this split.' : 'Past workouts will stay in your history.'}</Text><Pressable disabled={getActiveWorkout()?.split === deleteCandidate?.id} onPress={() => { if (!deleteCandidate) return; deleteCustomSplit(deleteCandidate.id); setSplits(getCustomSplits()); setDeleteCandidate(null); void syncWorkoutData().catch(() => undefined); }} style={[styles.deleteButton, getActiveWorkout()?.split === deleteCandidate?.id && styles.disabled]} accessibilityRole="button" accessibilityLabel="Delete split"><Text style={styles.deleteButtonText}>Delete split</Text></Pressable><Pressable onPress={() => setDeleteCandidate(null)} style={styles.cancelButton} accessibilityRole="button" accessibilityLabel="Cancel"><Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text></Pressable></View></View></Modal>
   </>;
 }
@@ -337,24 +282,8 @@ function ModeOption({ mode, label, Icon, selected, onPress }: { mode: Appearance
 }
 
 const styles = StyleSheet.create({
-  header: { width: '100%', maxWidth: 688, alignSelf: 'center', height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 13 }, backButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, content: { width: '100%', maxWidth: 688, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 12, paddingBottom: 48 }, copy: { maxWidth: 560, fontSize: 14, lineHeight: 21, fontWeight: '700' }, sectionLabel: { marginTop: 36, marginBottom: 12, fontSize: 18, lineHeight: 23, fontWeight: '900', letterSpacing: -.5 }, nameInput: { flex: 1, height: 64, paddingHorizontal: 0, fontSize: 16, fontWeight: '800' }, nameRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 10 }, saveButton: { height: 54, paddingLeft: 18, alignItems: 'center', justifyContent: 'center' }, saveText: { fontSize: 15, fontWeight: '900' }, favoriteIntro: { marginTop: 9, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  favoriteDescription: { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: '700' },
-  favoriteCountBadge: { minWidth: 52, height: 30, paddingHorizontal: 8, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  favoriteCount: { fontSize: 12, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  favoriteLoading: { marginTop: 24 },
-  favoriteSearch: { height: 52, marginTop: 20, borderWidth: 1, borderRadius: 14, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  favoriteSearchInput: { flex: 1, height: '100%', padding: 0, fontSize: 15, fontWeight: '700' },
-  favoriteList: { marginTop: 12, borderWidth: 1, borderRadius: 17, overflow: 'hidden' },
-  favoriteChoice: { minHeight: 76, paddingHorizontal: 13, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  favoriteExerciseMark: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  favoriteExerciseMarkText: { color: '#17180F', fontSize: 12, fontWeight: '900', letterSpacing: -.4 },
-  favoriteChoiceText: { flex: 1 },
-  favoriteChoiceName: { fontSize: 14, lineHeight: 18, fontWeight: '900', letterSpacing: -.25 },
-  favoriteChoiceDetail: { marginTop: 4, fontSize: 11, lineHeight: 14, fontWeight: '700', textTransform: 'capitalize' },
-  favoriteSelection: { width: 30, height: 30, borderWidth: 1.5, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  favoriteEmpty: { padding: 24, textAlign: 'center', fontSize: 13, fontWeight: '700' },
-  favoritesSave: { minHeight: 54, marginTop: 16, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, measurementSave: { minHeight: 52, marginTop: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  favoriteSaveText: { fontSize: 15, fontWeight: '900' }, measurementInputs: { marginTop: 14, flexDirection: 'row', gap: 8 }, measurementInputWrap: { height: 52, borderWidth: 1, borderRadius: 13, paddingHorizontal: 11, flex: 1, flexDirection: 'row', alignItems: 'center' }, measurementInput: { minWidth: 0, flex: 1, padding: 0, fontSize: 16, fontWeight: '800' }, measurementUnit: { fontSize: 12, fontWeight: '800' }, error: { marginTop: 8, color: '#FF5151', fontSize: 12, fontWeight: '700' }, disabled: { opacity: .5 }, modeRow: { gap: 8 }, modeOption: { minHeight: 64, paddingHorizontal: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 13 }, modeText: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, swatches: { marginTop: 4, flexDirection: 'row', gap: 16 }, swatchButton: { width: 76, minHeight: 92, alignItems: 'center', gap: 9 }, swatch: { width: 62, height: 62, borderRadius: 31, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, swatchLabel: { fontSize: 12, fontWeight: '800' }, preferenceRow: { minHeight: 84, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 16 }, preferenceCopy: { flex: 1 }, preferenceTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 }, preferenceDescription: { marginTop: 4, maxWidth: 420, fontSize: 12, lineHeight: 17, fontWeight: '700' }, durationRow: { minHeight: 82, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, durationControl: { height: 44, minWidth: 128, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, durationText: { minWidth: 48, textAlign: 'center', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, accountRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: 'center' }, resourceRow: { minHeight: 76, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 16 }, accountRowText: { fontSize: 15, fontWeight: '900' }, destructiveText: { color: '#E23D3D', fontSize: 15, fontWeight: '900' }, dataNote: { marginTop: 14, fontSize: 12, lineHeight: 18, fontWeight: '700' }, disclaimer: { marginTop: 32, padding: 18, borderRadius: 16, fontSize: 12, lineHeight: 19, fontWeight: '700' }, modalOverlay: { flex: 1, padding: 24, backgroundColor: 'rgba(0,0,0,.45)', alignItems: 'center', justifyContent: 'center' }, modalCard: { width: '100%', maxWidth: 440, borderRadius: 24, padding: 24 }, modalTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.8 }, modalCopy: { marginTop: 10, fontSize: 14, lineHeight: 21, fontWeight: '700' }, fieldPrompt: { marginTop: 22, marginBottom: 7, fontSize: 12, fontWeight: '900' }, deleteInput: { minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 15, fontSize: 17, fontWeight: '900', letterSpacing: 1 }, deleteButton: { minHeight: 54, marginTop: 20, borderRadius: 15, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center' }, deleteButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' }, cancelButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' }, cancelText: { fontSize: 15, fontWeight: '900' },
+  header: { width: '100%', maxWidth: 688, alignSelf: 'center', height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', gap: 13 }, backButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, content: { width: '100%', maxWidth: 688, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 12, paddingBottom: 48 }, copy: { maxWidth: 560, fontSize: 14, lineHeight: 21, fontWeight: '700' }, sectionLabel: { marginTop: 36, marginBottom: 12, fontSize: 18, lineHeight: 23, fontWeight: '900', letterSpacing: -.5 }, nameInput: { flex: 1, height: 64, paddingHorizontal: 0, fontSize: 16, fontWeight: '800' }, nameRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 10 }, saveButton: { height: 54, paddingLeft: 18, alignItems: 'center', justifyContent: 'center' }, saveText: { fontSize: 15, fontWeight: '900' }, measurementSave: { minHeight: 52, marginTop: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+ measurementInputs: { marginTop: 14, flexDirection: 'row', gap: 8 }, measurementInputWrap: { height: 52, borderWidth: 1, borderRadius: 13, paddingHorizontal: 11, flex: 1, flexDirection: 'row', alignItems: 'center' }, measurementInput: { minWidth: 0, flex: 1, padding: 0, fontSize: 16, fontWeight: '800' }, measurementUnit: { fontSize: 12, fontWeight: '800' }, error: { marginTop: 8, color: '#FF5151', fontSize: 12, fontWeight: '700' }, disabled: { opacity: .5 }, modeRow: { gap: 8 }, modeOption: { minHeight: 64, paddingHorizontal: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 13 }, modeText: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.35 }, swatches: { marginTop: 4, flexDirection: 'row', gap: 16 }, swatchButton: { width: 76, minHeight: 92, alignItems: 'center', gap: 9 }, swatch: { width: 62, height: 62, borderRadius: 31, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, swatchLabel: { fontSize: 12, fontWeight: '800' }, preferenceRow: { minHeight: 84, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 16 }, preferenceCopy: { flex: 1 }, preferenceTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -.35 }, preferenceDescription: { marginTop: 4, maxWidth: 420, fontSize: 12, lineHeight: 17, fontWeight: '700' }, durationRow: { minHeight: 82, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 }, durationControl: { height: 44, minWidth: 128, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, durationText: { minWidth: 48, textAlign: 'center', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, accountRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: 'center' }, resourceRow: { minHeight: 76, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 16 }, accountRowText: { fontSize: 15, fontWeight: '900' }, destructiveText: { color: '#E23D3D', fontSize: 15, fontWeight: '900' }, dataNote: { marginTop: 14, fontSize: 12, lineHeight: 18, fontWeight: '700' }, disclaimer: { marginTop: 32, padding: 18, borderRadius: 16, fontSize: 12, lineHeight: 19, fontWeight: '700' }, modalOverlay: { flex: 1, padding: 24, backgroundColor: 'rgba(0,0,0,.45)', alignItems: 'center', justifyContent: 'center' }, clearOverlay: { backgroundColor: 'transparent' }, modalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,.45)' }, modalCard: { width: '100%', maxWidth: 440, borderRadius: 24, padding: 24 }, modalTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.8 }, modalCopy: { marginTop: 10, fontSize: 14, lineHeight: 21, fontWeight: '700' }, fieldPrompt: { marginTop: 22, marginBottom: 7, fontSize: 12, fontWeight: '900' }, deleteInput: { minHeight: 52, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 15, fontSize: 17, fontWeight: '900', letterSpacing: 1 }, deleteButton: { minHeight: 54, marginTop: 20, borderRadius: 15, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center' }, deleteButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' }, cancelButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' }, cancelText: { fontSize: 15, fontWeight: '900' },
   customSplitRow: { minHeight: 64, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 },
   customSplitCopy: { flex: 1, paddingVertical: 10 },
   addSplitButton: { minHeight: 56, marginTop: 14, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },

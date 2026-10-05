@@ -645,6 +645,7 @@
       "Arnold_Dumbbell_Press/0.jpg",
       "Arnold_Dumbbell_Press/1.jpg"
     ],
+    "movementPattern": "vertical press",
     "id": "Arnold_Dumbbell_Press"
   },
   {
@@ -1121,6 +1122,7 @@
       "Barbell_Bench_Press_-_Medium_Grip/0.jpg",
       "Barbell_Bench_Press_-_Medium_Grip/1.jpg"
     ],
+    "movementPattern": "horizontal press",
     "id": "Barbell_Bench_Press_-_Medium_Grip"
   },
   {
@@ -1203,6 +1205,7 @@
       "Barbell_Deadlift/0.jpg",
       "Barbell_Deadlift/1.jpg"
     ],
+    "movementPattern": "hinge",
     "id": "Barbell_Deadlift"
   },
   {
@@ -1337,6 +1340,7 @@
       "Barbell_Hip_Thrust/0.jpg",
       "Barbell_Hip_Thrust/1.jpg"
     ],
+    "movementPattern": "hinge",
     "id": "Barbell_Hip_Thrust"
   },
   {
@@ -1655,6 +1659,7 @@
       "Barbell_Squat/0.jpg",
       "Barbell_Squat/1.jpg"
     ],
+    "movementPattern": "squat",
     "id": "Barbell_Squat"
   },
   {
@@ -2092,6 +2097,7 @@
       "Bent_Over_Barbell_Row/0.jpg",
       "Bent_Over_Barbell_Row/1.jpg"
     ],
+    "movementPattern": "row",
     "id": "Bent_Over_Barbell_Row"
   },
   {
@@ -4135,6 +4141,7 @@
       "Chin-Up/0.jpg",
       "Chin-Up/1.jpg"
     ],
+    "movementPattern": "vertical pull",
     "id": "Chin-Up"
   },
   {
@@ -5804,6 +5811,7 @@
       "Dumbbell_Bench_Press/0.jpg",
       "Dumbbell_Bench_Press/1.jpg"
     ],
+    "movementPattern": "horizontal press",
     "id": "Dumbbell_Bench_Press"
   },
   {
@@ -6376,6 +6384,7 @@
       "Dumbbell_Shoulder_Press/0.jpg",
       "Dumbbell_Shoulder_Press/1.jpg"
     ],
+    "movementPattern": "vertical press",
     "id": "Dumbbell_Shoulder_Press"
   },
   {
@@ -7765,6 +7774,7 @@
       "Gironda_Sternum_Chins/0.jpg",
       "Gironda_Sternum_Chins/1.jpg"
     ],
+    "movementPattern": "vertical pull",
     "id": "Gironda_Sternum_Chins"
   },
   {
@@ -8935,6 +8945,7 @@
       "Incline_Dumbbell_Press/0.jpg",
       "Incline_Dumbbell_Press/1.jpg"
     ],
+    "movementPattern": "horizontal press",
     "id": "Incline_Dumbbell_Press"
   },
   {
@@ -9648,6 +9659,7 @@
       "Kettlebell_Arnold_Press/0.jpg",
       "Kettlebell_Arnold_Press/1.jpg"
     ],
+    "movementPattern": "vertical press",
     "id": "Kettlebell_Arnold_Press"
   },
   {
@@ -10690,6 +10702,7 @@
       "Leg_Press/0.jpg",
       "Leg_Press/1.jpg"
     ],
+    "movementPattern": "squat",
     "id": "Leg_Press"
   },
   {
@@ -12040,6 +12053,7 @@
       "Mixed_Grip_Chin/0.jpg",
       "Mixed_Grip_Chin/1.jpg"
     ],
+    "movementPattern": "vertical pull",
     "id": "Mixed_Grip_Chin"
   },
   {
@@ -13112,6 +13126,7 @@
       "One_Arm_Chin-Up/0.jpg",
       "One_Arm_Chin-Up/1.jpg"
     ],
+    "movementPattern": "vertical pull",
     "id": "One_Arm_Chin-Up"
   },
   {
@@ -13937,6 +13952,7 @@
       "Plank/0.jpg",
       "Plank/1.jpg"
     ],
+    "movementPattern": "core",
     "id": "Plank"
   },
   {
@@ -14520,6 +14536,7 @@
       "Pullups/0.jpg",
       "Pullups/1.jpg"
     ],
+    "movementPattern": "vertical pull",
     "id": "Pullups"
   },
   {
@@ -16469,6 +16486,7 @@
       "Seated_Dumbbell_Press/0.jpg",
       "Seated_Dumbbell_Press/1.jpg"
     ],
+    "movementPattern": "vertical press",
     "id": "Seated_Dumbbell_Press"
   },
   {
@@ -17333,6 +17351,7 @@
       "Side_To_Side_Chins/0.jpg",
       "Side_To_Side_Chins/1.jpg"
     ],
+    "movementPattern": "vertical pull",
     "id": "Side_To_Side_Chins"
   },
   {
@@ -20002,6 +20021,7 @@
       "Standing_Military_Press/0.jpg",
       "Standing_Military_Press/1.jpg"
     ],
+    "movementPattern": "vertical press",
     "id": "Standing_Military_Press"
   },
   {
@@ -22216,6 +22236,7 @@
       "Wide-Grip_Lat_Pulldown/0.jpg",
       "Wide-Grip_Lat_Pulldown/1.jpg"
     ],
+    "movementPattern": "vertical pull",
     "id": "Wide-Grip_Lat_Pulldown"
   },
   {

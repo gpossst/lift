@@ -1,6 +1,10 @@
 export const BAR_WEIGHT_LB = 45;
 export const PLATE_INCREMENT_LB = 5;
 export const MAX_BAR_WEIGHT_LB = 1_000;
+export const availableBarWeights = Array.from(
+  { length: (MAX_BAR_WEIGHT_LB - BAR_WEIGHT_LB) / PLATE_INCREMENT_LB + 1 },
+  (_, index) => BAR_WEIGHT_LB + index * PLATE_INCREMENT_LB,
+);
 
 const plateSizes = [45, 35, 25, 10, 5, 2.5] as const;
 // One unit is 2.5 lb per side, or 5 lb on the bar. Prefer larger plates

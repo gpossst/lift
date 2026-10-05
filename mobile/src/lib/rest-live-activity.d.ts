@@ -1,1 +1,1 @@
-export function syncRestLiveActivity(endsAt: number | null): void;
+export function syncRestLiveActivity(endsAt: number | null, durationSeconds?: number): void;

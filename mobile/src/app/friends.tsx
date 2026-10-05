@@ -5,7 +5,8 @@ import Svg, { Path } from 'react-native-svg';
 import LottieView from 'lottie-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown, useReducedMotion } from 'react-native-reanimated';
+import { useSheetPresence } from '@/hooks/use-sheet-presence';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
@@ -21,6 +22,7 @@ const AnimatedSafeAreaView = Animated.createAnimatedComponent(SafeAreaView);
 
 export default function FriendsScreen() {
   const { colors } = useAppearance();
+  const reducedMotion = useReducedMotion();
   const { data: session } = authClient.useSession();
   const userId = session?.user.id;
   const [code, setCode] = useState('');
@@ -31,9 +33,11 @@ export default function FriendsScreen() {
   const [adding, setAdding] = useState(false);
   const [updatingFriend, setUpdatingFriend] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [hasChosenDisplayName, setHasChosenDisplayName] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [showFriends, setShowFriends] = useState(false);
+  const friendsSheetVisible = useSheetPresence(showFriends);
   const nameDirtyRef = useRef(false);
   const [savingName, setSavingName] = useState(false);
 
@@ -41,6 +45,7 @@ export default function FriendsScreen() {
     if (!userId) return;
     setLoading(true);
     setError(null);
+    setLoadFailed(false);
     try {
       const { profile, code: nextCode, friends: nextFriends, records: nextRecords } = await (fresh ? loadFriendsPage() : takeFriendsPage(userId));
       setHasChosenDisplayName(profile.hasChosenDisplayName);
@@ -59,6 +64,7 @@ export default function FriendsScreen() {
       })] : nextRecords);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load friends.');
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -125,30 +131,32 @@ export default function FriendsScreen() {
       </Pressable>}
     </View>
     <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, !hasChosenDisplayName && styles.nameContent]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      {!loading && !hasChosenDisplayName ? <View style={styles.nameSection}>
-        <LottieView autoPlay loop resizeMode="contain" source={require('../../assets/friends-intro.json')} style={styles.nameAnimation} webStyle={styles.nameAnimation} />
+      {!loading && loadFailed && !friends ? <View style={styles.empty}><Text style={[styles.emptyTitle, { color: colors.text }]}>Couldn&apos;t load friends</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>{error ?? 'Check your connection and try again.'}</Text><Pressable onPress={() => void load(true)} style={({ pressed }) => [styles.nameButton, { alignSelf: 'stretch', backgroundColor: colors.accent }, pressed && styles.pressed]} accessibilityRole="button"><Text style={[styles.nameButtonText, { color: colors.accentText }]}>Try again</Text></Pressable></View> : !loading && !hasChosenDisplayName ? <Animated.View entering={FadeIn.duration(220)} style={styles.nameSection}>
+        <LottieView autoPlay={!reducedMotion} loop={!reducedMotion} progress={reducedMotion ? 0.5 : undefined} resizeMode="contain" source={require('../../assets/friends-intro.json')} style={styles.nameAnimation} webStyle={styles.nameAnimation} />
         <Text style={[styles.nameTitle, { color: colors.text }]}>Make sure your friends know who you are!</Text>
         <TextInput value={displayName} onChangeText={(value) => { setDisplayName(value); nameDirtyRef.current = true; }} maxLength={40} autoCapitalize="words" autoCorrect={false} placeholder="Your name" placeholderTextColor={colors.mutedText} style={[styles.nameInput, { color: colors.text, borderColor: colors.surfaceStrong }]} accessibilityLabel="Display name" returnKeyType="done" onSubmitEditing={() => void saveDisplayName()} />
         {error && <Text accessibilityRole="alert" style={styles.nameError}>{error}</Text>}
         <Pressable onPress={() => void saveDisplayName()} disabled={!displayName.trim() || savingName} style={({ pressed }) => [styles.nameButton, { backgroundColor: displayName.trim() ? colors.accent : colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Save display name">
           {savingName ? <ActivityIndicator color={colors.accentText} /> : <Text style={[styles.nameButtonText, { color: displayName.trim() ? colors.accentText : colors.mutedText }]}>Save name</Text>}
         </Pressable>
-      </View> : loading && !friends ? <View style={styles.loading}><ActivityIndicator color={colors.accent} /></View> : hasChosenDisplayName && friends?.count === 0 && !isDemoDataEnabled ? <View style={styles.empty}><Users width={27} height={27} color={colors.subtleText} strokeWidth={2.3} /><Text style={[styles.emptyTitle, { color: colors.text }]}>Your feed is waiting</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Open your friends list to add a friend and see their lifting highlights.</Text></View> : hasChosenDisplayName && <FriendFeed records={records} onChange={setRecords} ownDisplayName={displayName} />}
+      </Animated.View> : loading && !friends ? <View style={styles.loading}><ActivityIndicator color={colors.accent} /></View> : hasChosenDisplayName && friends?.count === 0 && !isDemoDataEnabled ? <Animated.View entering={FadeIn.duration(220)} style={styles.empty}><Users width={27} height={27} color={colors.subtleText} strokeWidth={2.3} /><Text style={[styles.emptyTitle, { color: colors.text }]}>Your feed is waiting</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Open your friends list to add a friend and see their lifting highlights.</Text></Animated.View> : hasChosenDisplayName && <Animated.View entering={FadeIn.duration(220)}><FriendFeed records={records} onChange={setRecords} ownDisplayName={displayName} /></Animated.View>}
     </ScrollView>
 
-    <Modal visible={showFriends} transparent animationType="none" onRequestClose={() => setShowFriends(false)}>
+    <Modal visible={friendsSheetVisible} transparent animationType="none" onRequestClose={() => setShowFriends(false)}>
       <View style={[styles.modalOverlay, styles.clearOverlay]}>
-        <Animated.View entering={FadeIn.duration(180)} style={styles.friendsBackdrop}>
+        {showFriends && <>
+        <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.friendsBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFriends(false)} accessibilityLabel="Close friends list" />
         </Animated.View>
-        <AnimatedSafeAreaView entering={SlideInDown.duration(280)} edges={['bottom']} style={[styles.sheet, { backgroundColor: colors.background }]}>
+        <AnimatedSafeAreaView entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} edges={['bottom']} style={[styles.sheet, { backgroundColor: colors.background }]}>
           <View style={styles.sheetHeader}><View><Text style={[styles.sheetTitle, { color: colors.text }]}>Your friends</Text><Text style={[styles.sheetCount, { color: colors.mutedText }]}>{friends?.count ?? 0} friend{friends?.count === 1 ? '' : 's'}</Text></View><Pressable onPress={() => setShowFriends(false)} style={({ pressed }) => [styles.closeButton, { backgroundColor: colors.surface }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Close friends list"><X width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable></View>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetContent}>
             <AddFriendCard code={code} friendCode={friendCode} adding={adding} error={error} onChangeCode={setCode} onSubmit={() => void submit()} />
             {!!friends?.users.length && <View style={[styles.friendList, { borderColor: colors.surfaceStrong }]}>{friends.users.map((friend) => <FriendRow key={friend.id} friend={friend} busy={updatingFriend?.endsWith(`:${friend.id}`) ?? false} onRemove={() => void updateConnection(friend, 'remove')} onBlock={() => void updateConnection(friend, 'block')} />)}</View>}
-            {!!friends?.blocked.length && <View style={styles.blockedSection}><Text style={[styles.sectionLabel, { color: colors.mutedText }]}>BLOCKED</Text>{friends.blocked.map((friend) => <BlockedRow key={friend.id} friend={friend} busy={updatingFriend === `unblock:${friend.id}`} onUnblock={() => void updateConnection(friend, 'unblock')} />)}</View>}
+            {!!friends?.blocked.length && <View style={styles.blockedSection}><Text style={[ui.eyebrow, styles.sectionLabel, { color: colors.mutedText }]}>BLOCKED</Text>{friends.blocked.map((friend) => <BlockedRow key={friend.id} friend={friend} busy={updatingFriend === `unblock:${friend.id}`} onUnblock={() => void updateConnection(friend, 'unblock')} />)}</View>}
           </ScrollView>
         </AnimatedSafeAreaView>
+        </>}
       </View>
     </Modal>
   </SafeAreaView>;
@@ -157,7 +165,7 @@ export default function FriendsScreen() {
 function AddFriendCard({ code, friendCode, adding, error, onChangeCode, onSubmit }: { code: string; friendCode: string | null; adding: boolean; error: string | null; onChangeCode: (code: string) => void; onSubmit: () => void }) {
   const { colors } = useAppearance();
   return <View style={[styles.codeCard, { backgroundColor: colors.inverse }]}>
-    <View style={styles.codeHeader}><View><Text style={[styles.cardLabel, { color: colors.inverseText }]}>YOUR CODE</Text><Text selectable style={[styles.code, { color: colors.inverseText }]}>{friendCode ?? '— — — — — —'}</Text></View><Plus width={22} height={22} color={colors.inverseText} strokeWidth={2.5} /></View>
+    <View style={styles.codeHeader}><View><Text style={[ui.eyebrow, styles.cardLabel, { color: colors.inverseText }]}>YOUR CODE</Text><Text selectable style={[styles.code, { color: colors.inverseText }]}>{friendCode ?? '— — — — — —'}</Text></View><Plus width={22} height={22} color={colors.inverseText} strokeWidth={2.5} /></View>
     <View style={[styles.codeDivider, { backgroundColor: colors.inverseText }]} />
     <View style={styles.addRow}>
       <TextInput value={code} onChangeText={(value) => onChangeCode(value.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={6} placeholder="Enter a friend’s code" placeholderTextColor={colors.inverseText} style={[styles.codeInput, { color: colors.inverseText }]} accessibilityLabel="Friend code" accessibilityHint="Enter the six-character code your friend shared" returnKeyType="done" onSubmitEditing={onSubmit} />
@@ -249,10 +257,10 @@ function FriendFeed({ records, onChange, ownDisplayName }: { records: FriendPers
     </View>;
   })}
     {commentError && !selected && <Text accessibilityRole="alert" style={styles.commentError}>{commentError}</Text>}
-    <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
-      <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelected(null)} accessibilityLabel="Close comments" />
-        <SafeAreaView edges={['bottom']} style={[styles.sheet, styles.commentsSheet, { backgroundColor: colors.background }]}>
+    <Modal visible={!!selected} transparent animationType="none" onRequestClose={() => setSelected(null)}>
+      <KeyboardAvoidingView style={[styles.modalOverlay, styles.clearOverlay]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Animated.View entering={FadeIn.duration(180)} style={styles.friendsBackdrop}><Pressable style={StyleSheet.absoluteFill} onPress={() => setSelected(null)} accessibilityLabel="Close comments" /></Animated.View>
+        <AnimatedSafeAreaView entering={SlideInDown.duration(280)} edges={['bottom']} style={[styles.sheet, styles.commentsSheet, { backgroundColor: colors.background }]}>
           <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
           <View style={styles.sheetHeader}>
             <View><Text style={[styles.sheetTitle, { color: colors.text }]}>Comments</Text><Text style={[styles.sheetCount, { color: colors.mutedText }]}>{selected ? `${selected.displayName}'s workout` : ''}</Text></View>
@@ -267,7 +275,7 @@ function FriendFeed({ records, onChange, ownDisplayName }: { records: FriendPers
           </ScrollView>
           {commentError && <Text accessibilityRole="alert" style={styles.commentError}>{commentError}</Text>}
           <View style={styles.commentComposer}><View style={[styles.commentField, { backgroundColor: colors.surface }]}><TextInput value={draft} onChangeText={setDraft} maxLength={280} multiline placeholder="Add a comment" placeholderTextColor={colors.mutedText} style={[styles.commentInput, { color: colors.text }]} accessibilityLabel="Add a comment" /></View><Pressable onPress={() => void submitComment()} disabled={!draft.trim() || !!busy} style={[styles.sendButton, { backgroundColor: draft.trim() ? colors.accent : colors.surfaceStrong }]} accessibilityRole="button" accessibilityLabel="Post comment">{busy === 'comment' ? <ActivityIndicator color={colors.accentText} /> : <Send width={19} height={19} color={draft.trim() ? colors.accentText : colors.mutedText} strokeWidth={2.4} />}</Pressable></View>
-        </SafeAreaView>
+        </AnimatedSafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
   </View>;
@@ -302,9 +310,9 @@ function BlockedRow({ friend, busy, onUnblock }: { friend: Friend; busy: boolean
 const styles = StyleSheet.create({
   headerButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, countBadge: { position: 'absolute', top: 4, right: 3, minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, countText: { fontSize: 9, fontWeight: '900' },
   scroll: { flex: 1 }, content: { paddingHorizontal: 24, paddingTop: 13, paddingBottom: 30 }, nameContent: { flexGrow: 1, justifyContent: 'center' }, nameSection: { width: '100%' }, nameTitle: { fontSize: 20, fontWeight: '900', letterSpacing: -.5, textAlign: 'center' }, nameAnimation: { width: 270, height: 180, alignSelf: 'center', marginBottom: 8 }, nameInput: { height: 52, marginTop: 20, paddingHorizontal: 14, borderWidth: 1, borderRadius: 14, fontSize: 16, fontWeight: '700' }, nameError: { marginTop: 8, fontSize: 12, color: '#D43A2F' }, nameButton: { height: 50, marginTop: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, nameButtonText: { fontSize: 15, fontWeight: '900' },
-  codeCard: { padding: 18, borderRadius: 18 }, codeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, cardLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1, opacity: .65 }, code: { marginTop: 7, fontSize: 28, fontVariant: ['tabular-nums'], fontWeight: '900', letterSpacing: 5 }, codeDivider: { height: 1, marginTop: 10, opacity: .18 }, addRow: { height: 40, marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 10 }, codeInput: { flex: 1, padding: 0, fontSize: 15, fontWeight: '800', letterSpacing: .2 }, addButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, error: { marginTop: 7, fontSize: 12, lineHeight: 16, fontWeight: '700', color: '#FF9B8A' },
+  codeCard: { padding: 18, borderRadius: 18 }, codeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, cardLabel: { opacity: .65 }, code: { marginTop: 7, fontSize: 28, fontVariant: ['tabular-nums'], fontWeight: '900', letterSpacing: 5 }, codeDivider: { height: 1, marginTop: 10, opacity: .18 }, addRow: { height: 40, marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 10 }, codeInput: { flex: 1, padding: 0, fontSize: 15, fontWeight: '800', letterSpacing: .2 }, addButton: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, error: { marginTop: 7, fontSize: 12, lineHeight: 16, fontWeight: '700', color: '#FF9B8A' },
   feedTitle: { marginBottom: 18, fontSize: 23, fontWeight: '900', letterSpacing: -.7 }, feedCard: { paddingBottom: 18, marginBottom: 22, borderBottomWidth: 1 }, feedHeader: { flexDirection: 'row', alignItems: 'center', gap: 11 }, feedPerson: { flex: 1 }, feedTime: { marginTop: 1, fontSize: 11, fontWeight: '700' }, recordTimeline: { marginTop: 15 }, timelineRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 11 }, timelineRail: { width: 28, alignItems: 'center' }, trophyMark: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, timelineContent: { flex: 1, minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8 }, feedExercise: { flex: 1, fontSize: 15, lineHeight: 20, fontWeight: '900', letterSpacing: -.3 }, recordResult: { fontSize: 13, fontWeight: '800', textAlign: 'right' }, recordActions: { marginTop: 9, flexDirection: 'row', gap: 22 }, feedAction: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6 }, feedActionText: { fontSize: 12, fontWeight: '800' }, commentsSheet: { height: '70%', maxHeight: '85%' }, sheetHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 10 }, commentsList: { flex: 1 }, commentsContent: { paddingHorizontal: 24, paddingBottom: 20 }, commentRow: { flexDirection: 'row', gap: 10, marginBottom: 20 }, commentAvatar: { width: 34, height: 34, borderRadius: 17 }, commentContent: { flex: 1 }, commentMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 8 }, commentName: { fontSize: 13, fontWeight: '900' }, commentBody: { marginTop: 3, fontSize: 14, lineHeight: 20, fontWeight: '600' }, commentError: { paddingHorizontal: 24, paddingBottom: 7, color: '#D43A2F', fontSize: 12, fontWeight: '700' }, commentComposer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 24, paddingTop: 13, paddingBottom: 18 }, commentField: { flex: 1, minHeight: 44, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, justifyContent: 'center' }, commentInput: { maxHeight: 88, padding: 0, fontSize: 14, fontWeight: '600', textAlignVertical: 'center' }, sendButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,.38)' }, clearOverlay: { backgroundColor: 'transparent' }, friendsBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.38)' }, sheet: { maxHeight: '88%', minHeight: '58%', borderTopLeftRadius: 26, borderTopRightRadius: 26 }, sheetHeader: { paddingHorizontal: 24, paddingTop: 21, paddingBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, sheetTitle: { fontSize: 23, fontWeight: '900', letterSpacing: -.8 }, sheetCount: { marginTop: 2, fontSize: 12, fontWeight: '700' }, closeButton: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, sheetContent: { paddingHorizontal: 24, paddingBottom: 28 },
-  friendList: { marginTop: 20, borderTopWidth: 1 }, friendRow: { minHeight: 67, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }, avatar: { width: 42, height: 42, borderRadius: 14 }, initials: { alignItems: 'center', justifyContent: 'center' }, initialsText: { fontSize: 14, fontWeight: '900' }, friendName: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.25 }, friendActions: { flexDirection: 'row', gap: 6 }, friendAction: { minHeight: 36, paddingHorizontal: 9, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, friendActionText: { fontSize: 11, fontWeight: '800' }, blockText: { color: '#D43A2F', fontSize: 11, fontWeight: '800' }, blockedSection: { marginTop: 30 }, sectionLabel: { marginBottom: 7, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, blockedRow: { minHeight: 55, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  friendList: { marginTop: 20, borderTopWidth: 1 }, friendRow: { minHeight: 67, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }, avatar: { width: 42, height: 42, borderRadius: 14 }, initials: { alignItems: 'center', justifyContent: 'center' }, initialsText: { fontSize: 14, fontWeight: '900' }, friendName: { flex: 1, fontSize: 16, fontWeight: '900', letterSpacing: -.25 }, friendActions: { flexDirection: 'row', gap: 6 }, friendAction: { minHeight: 36, paddingHorizontal: 9, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, friendActionText: { fontSize: 11, fontWeight: '800' }, blockText: { color: '#D43A2F', fontSize: 11, fontWeight: '800' }, blockedSection: { marginTop: 30 }, sectionLabel: { marginBottom: 7 }, blockedRow: { minHeight: 55, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   empty: { minHeight: 220, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }, emptyTitle: { marginTop: 10, fontSize: 19, fontWeight: '900', letterSpacing: -.5, textAlign: 'center' }, emptyCopy: { maxWidth: 260, marginTop: 5, textAlign: 'center', fontSize: 13, lineHeight: 19, fontWeight: '700' }, loading: { minHeight: 220, alignItems: 'center', justifyContent: 'center' }, pressed: { opacity: .72, transform: [{ scale: .97 }] },
 });

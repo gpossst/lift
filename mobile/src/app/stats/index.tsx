@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { Clock } from 'react-native-feather';
+import { Clock, Search } from 'react-native-feather';
 import { router } from 'expo-router';
 
 import { useAppearance } from '@/components/appearance-provider';
@@ -11,6 +11,7 @@ import { CoverageTrendSheet } from '@/components/coverage-trend-sheet';
 import { MuscleTrendRow } from '@/components/muscle-trend-row';
 import { ProgressRing, SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
+import { ExerciseSearchSheet } from '@/components/exercise-search-sheet';
 import { loadStatsExercises, StatsExerciseRow } from '@/components/stats-exercise-row';
 import { getCompletedWorkoutExerciseDetails, getCustomSplits, getExercises, getWorkoutVisits } from '@/db';
 import { defaultWorkoutSplits } from '@/lib/exercise-recommendations';
@@ -41,13 +42,15 @@ export default function StatsScreen() {
   const [metric, setMetric] = useState<Metric>('workouts');
   const [timeWindow, setTimeWindow] = useState<4 | 13 | 26 | 52 | null>(4);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
+  const [exerciseSheet, setExerciseSheet] = useState<'closed' | 'browse' | 'search'>('closed');
   const load = useCallback(() => {
     const visits = getWorkoutVisits();
-    const exercises = loadStatsExercises();
+    const details = getCompletedWorkoutExerciseDetails();
+    const catalog = getExercises();
+    const exercises = loadStatsExercises(visits, details, catalog);
     const now = new Date();
     const history = weeklyTrainingHistory(visits, now);
-    const details = getCompletedWorkoutExerciseDetails();
-    const overview = trainingOverview(visits, (id) => details.get(id) ?? [], getExercises(), now, undefined, history.length);
+    const overview = trainingOverview(visits, (id) => details.get(id) ?? [], catalog, now, undefined, history.length);
     const customSplits = getCustomSplits();
     const planDefinitions = useCustomSplits && customSplits.length ? customSplits : defaultWorkoutSplits;
     return {
@@ -55,6 +58,7 @@ export default function StatsScreen() {
       history,
       definitions: planDefinitions,
       planMuscles: [...new Set(planDefinitions.flatMap((split) => split.muscles))],
+      exercises,
       topExercises: exercises.filter((exercise) => exercise.sessions > 0).slice(0, 3),
     };
   }, [useCustomSplits]);
@@ -87,8 +91,9 @@ export default function StatsScreen() {
       <Pressable onPress={() => router.push('/stats/history')} style={({ pressed }) => [styles.historyAction, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Workout history"><Clock width={15} height={15} color={colors.text} strokeWidth={2.4} /><Text style={[styles.historyActionText, { color: colors.text }]}>History</Text></Pressable>
     </View>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <Pressable onPress={() => setExerciseSheet('search')} style={({ pressed }) => [styles.searchEntry, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="search" accessibilityLabel="Search exercise progress"><Search width={17} height={17} color={colors.subtleText} strokeWidth={2.4} /><Text style={[styles.searchEntryText, { color: colors.subtleText }]}>Search exercises</Text></Pressable>
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.eyebrow, { color: colors.mutedText }]}>MUSCLE COVERAGE · 4 WEEKS</Text>
+        <Text style={[ui.eyebrow, { color: colors.mutedText }]}>MUSCLE COVERAGE · 4 WEEKS</Text>
         <View style={styles.heroRow}>
           <View style={styles.heroLead}>
             <Text style={[styles.heroValue, { color: colors.text }]}>{overallCoverage}<Text style={[styles.heroUnit, { color: colors.mutedText }]}>%</Text></Text>
@@ -138,10 +143,11 @@ export default function StatsScreen() {
         <View style={styles.rangePicker}><SegmentedPicker options={rangeOptions} selected={String(timeWindow ?? 'all')} onSelect={(value) => setTimeWindow(timeRanges.find((range) => String(range.weeks ?? 'all') === value)!.weeks)} compact /></View>
       </View>
 
-      <SectionHeader title="Exercises" action={{ label: 'See all', onPress: () => router.push('/stats/exercises') }} />
+      <SectionHeader title="Exercises" action={{ label: 'See all', onPress: () => setExerciseSheet('browse') }} />
       {data.topExercises.length ? data.topExercises.map((exercise, index) => <StatsExerciseRow key={exercise.id} item={exercise} last={index === data.topExercises.length - 1} />)
         : <Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Exercises you log show up here, most-trained first.</Text>}
     </ScrollView>
+    <ExerciseSearchSheet visible={exerciseSheet !== 'closed'} focus={exerciseSheet === 'search'} exercises={data.exercises} onClose={() => setExerciseSheet('closed')} />
     <CoverageTrendSheet muscle={selectedMuscle} weeks={data.overview.weeks} onClose={() => setSelectedMuscle(null)} />
   </SafeAreaView>;
 }
@@ -161,8 +167,8 @@ function CoverageScale() {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 120 },
   historyAction: { height: 36, paddingHorizontal: 13, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 6 }, historyActionText: { fontSize: 13, fontWeight: '800' },
+  searchEntry: { height: 46, marginBottom: 14, paddingHorizontal: 14, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }, searchEntryText: { fontSize: 15, fontWeight: '700' },
   card: { padding: 18, borderRadius: 24, borderCurve: 'continuous' },
-  eyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   heroRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }, heroLead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroDelta: { fontSize: 13, fontWeight: '900', fontVariant: ['tabular-nums'] }, heroCaption: { marginTop: 1, fontSize: 11, fontWeight: '700' },
   heroSide: { alignItems: 'flex-end', paddingBottom: 6 }, heroSideValue: { fontSize: 22, fontWeight: '900', letterSpacing: -.6, fontVariant: ['tabular-nums'] },

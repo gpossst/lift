@@ -1,22 +1,27 @@
+import { searchExercises } from '@/lib/exercise-search';
 import { isValidWorkoutSetValues } from '@/lib/workout-set-validation';
 import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ChevronLeft, Delete, Info, Plus, X } from "react-native-feather";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Animated, { cancelAnimation, Easing, FadeIn, FadeInLeft, FadeInRight, FadeOutLeft, FadeOutRight, interpolate, interpolateColor, LinearTransition, SlideInDown, useAnimatedProps, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
-import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import Animated, { FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft, FadeOutRight, interpolate, interpolateColor, LinearTransition, SlideInDown, SlideOutDown, useAnimatedStyle, useSharedValue, withSequence, withSpring } from "react-native-reanimated";
+import Svg, { Defs, G, Line, LinearGradient, Rect, Stop } from "react-native-svg";
 import {
   ActivityIndicator,
-  Image,
+  Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
+  Vibration,
   View,
 } from "react-native";
+import { ui } from "@/styles/primitives";
+import { useSheetPresence } from "@/hooks/use-sheet-presence";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   deleteWorkoutSet,
@@ -31,33 +36,34 @@ import {
 } from "@/db";
 import { exerciseRequiresWeight } from "@/db/exercise-catalog";
 import { useAppearance } from "@/components/appearance-provider";
+import { ExerciseThumb } from "@/components/exercise-thumb";
+import { ExerciseDetailSheet } from "@/components/exercise-detail-sheet";
 import { StatsPanel } from "@/components/stats-panel";
 import { SwipeWatermark } from "@/components/swipe-watermark";
-import { getProgressiveOverloadRecommendation } from "@/lib/exercise-recommendations";
+import { getProgressiveOverloadLoadOptions, getProgressiveOverloadRecommendation, resolveExercisePrescription } from "@/lib/exercise-recommendations";
+import { useRecommendationContext } from "@/hooks/use-recommendation-context";
 import { normalizeRestTimerSeconds } from "@/lib/appearance";
 import { syncRestLiveActivity } from "@/lib/rest-live-activity";
-import { BAR_WEIGHT_LB, formatPlateCounts, MAX_BAR_WEIGHT_LB, PLATE_INCREMENT_LB, platesPerSide } from "@/lib/plate-loading";
+import { availableBarWeights, BAR_WEIGHT_LB, formatPlateCounts, MAX_BAR_WEIGHT_LB, PLATE_INCREMENT_LB, platesPerSide } from "@/lib/plate-loading";
 
 type Field = "weight" | "reps";
 type WeightInputMode = "plates" | "keypad";
 const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];
-const plateDialWeights = Array.from(
-  { length: (MAX_BAR_WEIGHT_LB - BAR_WEIGHT_LB) / PLATE_INCREMENT_LB + 1 },
-  (_, index) => BAR_WEIGHT_LB + index * PLATE_INCREMENT_LB,
-);
+const plateDialWeights = availableBarWeights;
 const plateTickWidth = 24;
 const rulerHeight = 88;
 const normalizeBarWeight = (value: string) => Math.min(MAX_BAR_WEIGHT_LB, Math.max(BAR_WEIGHT_LB, Math.round(((Number(value) || BAR_WEIGHT_LB) - BAR_WEIGHT_LB) / PLATE_INCREMENT_LB) * PLATE_INCREMENT_LB + BAR_WEIGHT_LB));
 const exerciseCatalog = getExercises();
-const exerciseImageBase = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
-const restCenter = 72;
-const restRadius = 64;
-const restPieRadius = restRadius / 2;
-const restCircumference = 2 * Math.PI * restPieRadius;
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const restTickCount = 60;
+const restTicks = Array.from({ length: restTickCount }, (_, index) => {
+  const angle = (index / restTickCount) * 2 * Math.PI;
+  const inner = index % 5 === 0 ? 120 : 128;
+  return { x1: 150 + inner * Math.sin(angle), y1: 150 - inner * Math.cos(angle), x2: 150 + 144 * Math.sin(angle), y2: 150 - 144 * Math.cos(angle) };
+});
 const plateLayout = LinearTransition.duration(180);
 const leftPlateEnter = FadeInLeft.duration(180);
 const rightPlateEnter = FadeInRight.duration(180);
+const recentSetEnter = FadeInRight.duration(220);
 const leftPlateExit = FadeOutLeft.duration(120);
 const rightPlateExit = FadeOutRight.duration(120);
 
@@ -190,22 +196,14 @@ export default function WorkoutScreen() {
     color: string;
     workoutId: string;
     recommendedSets?: string;
-    recommendedRepMin?: string;
-    recommendedRepMax?: string;
-    recommendedRestSeconds?: string;
     superset?: string | string[];
   }>();
   const exerciseId = params.id ?? "free_exercise_db:Barbell_Squat";
   const name = params.name ?? "Barbell Squat";
   const accentColor = colors.accent;
   const workoutId = params.workoutId ?? "legacy-workout";
-  const [routeRecommendation] = useState(() => Number(params.recommendedSets) && Number(params.recommendedRepMin) && Number(params.recommendedRepMax) ? {
-    exerciseId,
-    sets: params.recommendedSets!,
-    repMin: params.recommendedRepMin!,
-    repMax: params.recommendedRepMax!,
-    restSeconds: params.recommendedRestSeconds ?? "",
-  } : null);
+  // Preserve the plan's volume cap for its exercise when switching supersets.
+  const [plannedVolume] = useState(() => ({ exerciseId, sets: Number(params.recommendedSets) }));
   const exercise = useMemo(() => exerciseCatalog.find((item) => item.id === exerciseId) ?? {
     id: exerciseId,
     name,
@@ -217,30 +215,24 @@ export default function WorkoutScreen() {
     detailsJson: null,
   }, [exerciseId, name, params.area, params.color, params.mark]);
   const requiresWeight = exerciseRequiresWeight(exercise);
-  const defaultPrescription = useMemo(() => {
-    let compound = false;
-    try { compound = JSON.parse(exercise.detailsJson ?? "{}").mechanic === "compound"; } catch { /* Use conservative accessory defaults for malformed catalog data. */ }
-    return { sets: compound ? 3 : 2, reps: compound ? { min: 6, max: 10 } : { min: 10, max: 15 }, restSeconds: compound ? 120 : 75 };
-  }, [exercise.detailsJson]);
-  const prescription = useMemo(() => ({
-    sets: Number(params.recommendedSets) || defaultPrescription.sets,
-    reps: {
-      min: Number(params.recommendedRepMin) || defaultPrescription.reps.min,
-      max: Number(params.recommendedRepMax) || defaultPrescription.reps.max,
-    },
-    restSeconds: Number(params.recommendedRestSeconds) || defaultPrescription.restSeconds,
-  }), [defaultPrescription, params.recommendedRepMax, params.recommendedRepMin, params.recommendedRestSeconds, params.recommendedSets]);
+  const loadOptions = useMemo(() => getProgressiveOverloadLoadOptions(exercise), [exercise]);
+  const { context: recommendationContext, ready: contextReady } = useRecommendationContext();
+  const prescription = useMemo(() => resolveExercisePrescription(
+    exercise, recommendationContext, getRecentExerciseExhaustion(exerciseId, workoutId),
+    plannedVolume.exerciseId === exerciseId ? plannedVolume.sets : undefined,
+  ), [exercise, exerciseId, plannedVolume, recommendationContext, workoutId]);
   const exerciseDetails = useMemo(() => {
     let parsed: Record<string, unknown> = {};
     try { parsed = JSON.parse(exercise.detailsJson ?? "{}") ?? {}; } catch { /* Catalog rows may lack details; show the empty state. */ }
     const strings = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
     const instructions = strings(parsed.instructions);
-    const images = strings(parsed.images);
     const muscles = strings(parsed.primaryMuscles);
-    const meta = [typeof parsed.level === "string" ? parsed.level : "", exercise.equipment, muscles.join(", ")].filter(Boolean).join(" · ");
-    return { instructions, images, meta };
-  }, [exercise.detailsJson, exercise.equipment]);
+    const meta = [typeof parsed.level === "string" ? parsed.level : "", muscles.join(", ")].filter(Boolean).join(" · ");
+    return { instructions, meta };
+  }, [exercise.detailsJson]);
   const [field, setField] = useState<Field>("weight");
+  // Prefilled values are shown muted; the first keypad digit replaces them instead of appending (10 → 8, not 108).
+  const [typed, setTyped] = useState({ weight: false, reps: false });
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const [weightInputMode, setWeightInputMode] = useState<WeightInputMode>("plates");
@@ -251,20 +243,22 @@ export default function WorkoutScreen() {
   const [setNumber, setSetNumber] = useState(1);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<WorkoutHistoryPoint[]>([]);
-  const [undoSet, setUndoSet] = useState<{ exerciseId: string; set: WorkoutHistoryPoint } | null>(null);
+  const completedHistory = useMemo(() => getWorkoutHistory(exerciseId, { completedOnly: true }), [exerciseId]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const historySheetVisible = useSheetPresence(historyOpen);
   const [infoOpen, setInfoOpen] = useState(false);
   const [supersetPickerOpen, setSupersetPickerOpen] = useState(false);
   const [supersetQuery, setSupersetQuery] = useState("");
   const [restDuration, setRestDuration] = useState(restTimerSeconds);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   const [restNow, setRestNow] = useState(() => Date.now());
-  const restProgress = useSharedValue(1);
+  const [restDone, setRestDone] = useState(false);
   const restScale = useSharedValue(1);
-  const restCircleAnimatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: restCircumference * (1 - restProgress.value),
-  }));
   const restTimeAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: restScale.value }] }));
+  const setLabelScale = useSharedValue(1);
+  const setLabelAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: setLabelScale.value }] }));
+  const valueScale = useSharedValue(1);
+  const valueAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: valueScale.value }] }));
   const inputPagerRef = useRef<ScrollView>(null);
   const inputScrollProgress = useSharedValue(0);
   const plateDotStyle = useAnimatedStyle(() => ({ width: interpolate(inputScrollProgress.value, [0, 1], [12, 6]), backgroundColor: interpolateColor(inputScrollProgress.value, [0, 1], [colors.accent, colors.subtleText]) }));
@@ -275,9 +269,7 @@ export default function WorkoutScreen() {
     .map((id) => exerciseCatalog.find((exercise) => exercise.id === id))
     .filter((exercise): exercise is Exercise => Boolean(exercise)), [supersetIds]);
   const supersetCandidates = useMemo(() => {
-    const query = supersetQuery.trim().toLowerCase();
-    return exerciseCatalog.filter((exercise) => !supersetIds.includes(exercise.id)
-      && (!query || exercise.name.toLowerCase().includes(query))).slice(0, 40);
+    return searchExercises(exerciseCatalog.filter((exercise) => !supersetIds.includes(exercise.id)), supersetQuery).slice(0, 40);
   }, [supersetIds, supersetQuery]);
   useEffect(() => {
     if (restEndsAt === null) return;
@@ -285,41 +277,55 @@ export default function WorkoutScreen() {
       const now = Date.now();
       if (skippingRestRef.current) return;
       setRestNow(now);
-      if (now >= restEndsAt) setRestEndsAt(null);
+      if (now >= restEndsAt) {
+        // Hold the modal briefly so the inverted screen and pulse register before it closes.
+        skippingRestRef.current = true;
+        setRestDone(true);
+        restScale.value = withSequence(
+          withSpring(1.14, { duration: 160, dampingRatio: 0.5 }),
+          withSpring(1, { duration: 300, dampingRatio: 0.6 }),
+        );
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Vibration.vibrate([0, 400, 200, 400]);
+        setTimeout(() => {
+          skippingRestRef.current = false;
+          setRestDone(false);
+          setRestEndsAt(null);
+        }, 900);
+      }
     };
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
-  }, [restEndsAt]);
+  }, [restEndsAt, restScale]);
   useEffect(() => {
-    syncRestLiveActivity(restEndsAt);
-  }, [restEndsAt]);
+    syncRestLiveActivity(restEndsAt, restDuration);
+  }, [restEndsAt, restDuration]);
   useEffect(() => () => syncRestLiveActivity(null), []);
   useEffect(() => {
-    if (!undoSet || restEndsAt !== null) return;
-    const timer = setTimeout(() => setUndoSet(null), 2_000);
-    return () => clearTimeout(timer);
-  }, [undoSet, restEndsAt]);
-  useEffect(() => {
+    if (!contextReady) return;
     const timer = setTimeout(() => {
       const nextHistory = getWorkoutHistory(exerciseId);
       const currentSets = nextHistory.filter((set) => set.workoutId === workoutId);
       const lastSet = currentSets.at(-1);
       const continueAddedWeight = !requiresWeight && Boolean(lastSet?.weight);
-      setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
+      const nextSetNumber = getNextSetNumberForWorkout(exerciseId, workoutId);
+      setSetNumber(nextSetNumber);
       setHistory(nextHistory);
       setIncludesAddedWeight(continueAddedWeight);
-      const lastWeight = lastSet
-        ? (requiresWeight || continueAddedWeight ? lastSet.weight : undefined)
-        : requiresWeight ? getProgressiveOverloadRecommendation(nextHistory, prescription, { currentWorkoutId: workoutId, exhaustion: getRecentExerciseExhaustion(exerciseId, workoutId) }).weight : undefined;
+      const nextRecommendation = getProgressiveOverloadRecommendation([...completedHistory, ...currentSets], prescription, {
+        ...loadOptions,
+        currentWorkoutId: workoutId, setNumber: nextSetNumber, exhaustion: getRecentExerciseExhaustion(exerciseId, workoutId),
+      });
+      const lastWeight = requiresWeight || continueAddedWeight ? nextRecommendation.weight ?? lastSet?.weight : undefined;
       setWeight(String(lastWeight ?? ""));
-      setReps(lastSet ? String(lastSet.reps) : "");
+      setReps(String(nextRecommendation.action === "start" ? lastSet?.reps ?? "" : nextRecommendation.reps));
       setField(requiresWeight || continueAddedWeight ? "weight" : "reps");
       const canShowLastWeightOnBar = !lastWeight || lastWeight >= BAR_WEIGHT_LB && (lastWeight - BAR_WEIGHT_LB) % PLATE_INCREMENT_LB === 0;
       setWeightInputMode(exercise.equipment === "barbell" && canShowLastWeightOnBar ? "plates" : "keypad");
       setPlateHintDismissed(false);
     }, 0);
     return () => clearTimeout(timer);
-  }, [exercise.equipment, exerciseId, prescription, requiresWeight, workoutId]);
+  }, [completedHistory, contextReady, exercise.equipment, exerciseId, loadOptions, prescription, requiresWeight, workoutId]);
   useEffect(() => {
     if (supportsPlateDial && weightInputMode === "plates" && field === "weight" && !Number(weight)) {
       setWeight(String(BAR_WEIGHT_LB));
@@ -328,10 +334,15 @@ export default function WorkoutScreen() {
   useEffect(() => {
     inputPagerRef.current?.scrollTo({ x: supportsPlateDial && field === "weight" && weightInputMode === "keypad" ? inputAreaWidth : 0, animated: true });
   }, [field, inputAreaWidth, supportsPlateDial, weightInputMode]);
+  useEffect(() => setTyped({ weight: false, reps: false }), [exerciseId, setNumber]);
   const value = field === "weight" ? weight : reps;
   function edit(key: string) {
-    const next = (v: string) =>
-      key === "backspace"
+    if (key === "." && field === "reps") return;
+    const replace = !typed[field] && /^\d$/.test(key);
+    setTyped((current) => ({ ...current, [field]: true }));
+    const next = (current: string) => {
+      const v = replace ? "" : current;
+      return key === "backspace"
         ? v.slice(0, -1)
         : key === "." && (field === "reps" || v.includes(".") || v.split(".")[1]?.length >= 2)
           ? v
@@ -340,6 +351,7 @@ export default function WorkoutScreen() {
           : v === "0"
             ? key
             : v + key;
+    };
     if (field === "weight") setWeight(next);
     else setReps(next);
   }
@@ -356,14 +368,21 @@ export default function WorkoutScreen() {
         completedAt: new Date(),
       });
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setLabelScale.value = withSequence(
+        withSpring(1.15, { duration: 120, dampingRatio: 0.55 }),
+        withSpring(1, { duration: 200, dampingRatio: 0.65 }),
+      );
       setSetNumber((v) => v + 1);
       const nextHistory = getWorkoutHistory(exerciseId);
       const currentSets = nextHistory.filter((set) => set.workoutId === workoutId);
       const lastSet = currentSets.at(-1);
-      if (lastSet) setUndoSet({ exerciseId, set: lastSet });
       setHistory(nextHistory);
-      setWeight(String((requiresWeight || lastSet?.weight ? lastSet : undefined)?.weight ?? ""));
-      setReps(String(lastSet?.reps ?? ""));
+      const nextRecommendation = getProgressiveOverloadRecommendation([...completedHistory, ...currentSets], prescription, {
+        ...loadOptions,
+        currentWorkoutId: workoutId, setNumber: setNumber + 1, exhaustion: getRecentExerciseExhaustion(exerciseId, workoutId),
+      });
+      setWeight(String(usesWeight ? nextRecommendation.weight ?? lastSet?.weight ?? "" : ""));
+      setReps(String(nextRecommendation.action === "start" ? lastSet?.reps ?? "" : nextRecommendation.reps));
       setField(usesWeight ? "weight" : "reps");
       if (supersetExercises.length > 1) {
         const currentIndex = supersetExercises.findIndex((exercise) => exercise.id === exerciseId);
@@ -377,26 +396,22 @@ export default function WorkoutScreen() {
     }
   }
   function deleteSet(set: WorkoutHistoryPoint) {
+    // Swipe + tap is enough for today's sets; past sessions are history, so confirm first.
+    if (set.workoutId === workoutId) return removeSet(set);
+    const message = `Set ${set.setNumber} from ${set.completedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })} will be permanently removed.`;
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) removeSet(set);
+      return;
+    }
+    Alert.alert("Delete past set?", message, [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: () => removeSet(set) }]);
+  }
+  function removeSet(set: WorkoutHistoryPoint) {
     if (set.workoutId === workoutId && history.filter((item) => item.workoutId === workoutId).length === 1) {
       recordRecommendationFeedback(workoutId, exerciseId, "removed");
     }
     deleteWorkoutSet(exerciseId, set);
     setHistory(getWorkoutHistory(exerciseId));
     setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
-  }
-  function undoLastSet() {
-    if (!undoSet) return;
-    if (getWorkoutHistory(undoSet.exerciseId).filter((set) => set.workoutId === workoutId).length === 1) {
-      recordRecommendationFeedback(workoutId, undoSet.exerciseId, "removed");
-    }
-    deleteWorkoutSet(undoSet.exerciseId, undoSet.set);
-    if (undoSet.exerciseId === exerciseId) {
-      setHistory(getWorkoutHistory(exerciseId));
-      setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId));
-      setWeight(String(undoSet.set.weight || ""));
-      setReps(String(undoSet.set.reps));
-    }
-    setUndoSet(null);
   }
   function continueFlow() {
     if (field === "weight") {
@@ -426,8 +441,6 @@ export default function WorkoutScreen() {
     const duration = useRecommendedRestTimer ? prescription.restSeconds : normalizeRestTimerSeconds(restTimerSeconds);
     skippingRestRef.current = false;
     restScale.value = 1;
-    restProgress.value = 1;
-    restProgress.value = withTiming(0, { duration: duration * 1_000, easing: Easing.linear });
     setRestDuration(duration);
     setRestNow(now);
     setRestEndsAt(now + duration * 1_000);
@@ -436,12 +449,6 @@ export default function WorkoutScreen() {
     if (skippingRestRef.current) return;
     const nextDuration = Math.max(15, Math.min(600, restDuration + seconds));
     const delta = nextDuration - restDuration;
-    const nextRemaining = Math.max(0, (restEndsAt ?? Date.now()) - Date.now() + delta * 1_000);
-    const transitionDuration = Math.min(180, nextRemaining);
-    restProgress.value = withSequence(
-      withSpring(Math.min(1, nextRemaining / (nextDuration * 1_000)), { duration: transitionDuration, dampingRatio: 0.55 }),
-      withTiming(0, { duration: Math.max(0, nextRemaining - transitionDuration), easing: Easing.linear }),
-    );
     restScale.value = withSequence(
       withSpring(1.06, { duration: 100, dampingRatio: 0.6 }),
       withSpring(1, { duration: 140, dampingRatio: 0.65 }),
@@ -453,13 +460,7 @@ export default function WorkoutScreen() {
     if (skippingRestRef.current) return;
     skippingRestRef.current = true;
     const duration = 500;
-    const startedAt = Date.now();
-    const endsAt = restEndsAt ?? startedAt;
-    const remaining = Math.max(0, endsAt - startedAt);
-    setRestNow(endsAt);
-    cancelAnimation(restProgress);
-    restProgress.value = Math.min(1, remaining / (restDuration * 1_000));
-    restProgress.value = withTiming(0, { duration, easing: Easing.linear });
+    setRestNow(restEndsAt ?? Date.now());
     restScale.value = withSequence(
       withSpring(1.08, { duration: 180, dampingRatio: 0.55 }),
       withSpring(1, { duration: 260, dampingRatio: 0.65 }),
@@ -472,15 +473,10 @@ export default function WorkoutScreen() {
   function switchExercise(exercise: Exercise, ids = supersetIds) {
     // Superset exercises are views within this workout, not separate screens.
     // Updating the current route's params preserves its single stack entry.
-    const recommended = routeRecommendation?.exerciseId === exercise.id ? routeRecommendation : null;
     router.setParams({
       ...exercise,
       workoutId,
       superset: JSON.stringify(ids),
-      recommendedSets: recommended?.sets ?? "",
-      recommendedRepMin: recommended?.repMin ?? "",
-      recommendedRepMax: recommended?.repMax ?? "",
-      recommendedRestSeconds: recommended?.restSeconds ?? "",
     });
   }
   function addSupersetExercise(exercise: Exercise) {
@@ -489,27 +485,37 @@ export default function WorkoutScreen() {
     setSupersetQuery("");
     switchExercise(exercise, ids);
   }
-  const canUndo = undoSet !== null && restEndsAt === null;
   const validInput = field === "weight" ? Number(weight) > 0 && Number(weight) <= 10_000 && isValidWorkoutSetValues({ weight: Number(weight), reps: 1 }) : isValidWorkoutSetValues({ weight: usesWeight ? Number(weight) : 0, reps: Number(reps) }) && setNumber <= 100;
-  const action = canUndo ? "Undo last set" : field === "weight" ? "Next" : "Log set";
+  const action = field === "weight" ? "Next" : "Log set";
   const restRemaining = restEndsAt === null ? 0 : Math.max(0, Math.ceil((restEndsAt - restNow) / 1_000));
+  const restLitTicks = restEndsAt === null ? 0 : Math.max(0, restEndsAt - restNow) / (restDuration * 1_000) * restTickCount;
   const formatRest = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   const recentSets = history.slice(-5);
   const recommendation = useMemo(
-    () => getProgressiveOverloadRecommendation(history, prescription, {
+    () => getProgressiveOverloadRecommendation([
+      ...completedHistory,
+      ...history.filter((set) => set.workoutId === workoutId),
+    ], prescription, {
+      ...loadOptions,
       currentWorkoutId: workoutId,
+      setNumber,
       exhaustion: getRecentExerciseExhaustion(exerciseId, workoutId),
     }),
-    [exerciseId, history, prescription, workoutId],
+    [completedHistory, exerciseId, history, loadOptions, prescription, setNumber, workoutId],
   );
   const recommendationValue = `${usesWeight && recommendation.weight !== undefined ? `${recommendation.weight} lb × ` : ""}${recommendation.reps} reps`;
-  const recommendationLabel = ({ start: "START", increase: "ADD WEIGHT", retain: "HOLD", reduce: "EASE BACK", deload: "LIGHT DAY" } as const)[recommendation.action];
-  const valueDisplay = <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.value, { color: colors.text }]}>
+  const recommendationLabel = ({ start: "START", increase: recommendation.weight === 0 ? "ADD REPS" : "ADD WEIGHT", retain: "HOLD", reduce: "EASE BACK", deload: "LIGHT DAY" } as const)[recommendation.action];
+  const valueDisplay = <Animated.Text key={field} entering={FadeIn.duration(180)} numberOfLines={1} adjustsFontSizeToFit style={[styles.value, { color: typed[field] || !value ? colors.text : colors.mutedText }, valueAnimatedStyle]}>
     {value || "0"}{field === "weight" ? " lb" : " reps"}
-  </Text>;
+  </Animated.Text>;
   function applyRecommendation() {
     if (recommendation.weight !== undefined) setWeight(String(recommendation.weight));
     setReps(String(recommendation.reps));
+    setTyped({ weight: false, reps: false });
+    valueScale.value = withSequence(
+      withSpring(1.06, { duration: 100, dampingRatio: 0.6 }),
+      withSpring(1, { duration: 140, dampingRatio: 0.65 }),
+    );
   }
   const keypad = <View style={styles.keypad}>
     {keys.map((key) => (
@@ -551,6 +557,7 @@ export default function WorkoutScreen() {
             return <Pressable
               key={exercise.id}
               onPress={() => !active && switchExercise(exercise)}
+              hitSlop={{ top: 5, bottom: 5 }}
               style={({ pressed }) => [styles.supersetTab, { backgroundColor: active ? colors.accent : colors.surface }, pressed && !active && styles.supersetTabPressed]}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
@@ -559,6 +566,7 @@ export default function WorkoutScreen() {
           })}
           <Pressable
             onPress={() => setSupersetPickerOpen(true)}
+            hitSlop={{ top: 5, bottom: 5 }}
             style={({ pressed }) => [styles.addSupersetButton, { borderColor: colors.surfaceStrong }, pressed && styles.supersetTabPressed]}
             accessibilityRole="button"
             accessibilityLabel="Add an exercise to this superset"
@@ -566,7 +574,7 @@ export default function WorkoutScreen() {
         </ScrollView>
       </View>
       <View style={styles.exerciseBlock}>
-        <Text style={[styles.exerciseName, { color: colors.text }]}>SET {setNumber}</Text>
+        <Animated.Text style={[styles.exerciseName, { color: colors.text }, setLabelAnimatedStyle]}>SET {setNumber}</Animated.Text>
         {!requiresWeight && <Pressable onPress={toggleAddedWeight} hitSlop={8} accessibilityRole="button" accessibilityLabel={includesAddedWeight ? "Remove added weight" : "Add weight to this exercise"}><Text style={[styles.weightMode, { color: colors.mutedText }]}>{includesAddedWeight ? "− REMOVE ADDED WEIGHT" : "+ ADD WEIGHT"}</Text></Pressable>}
       </View>
       <View style={styles.valueBlock}>
@@ -597,9 +605,9 @@ export default function WorkoutScreen() {
           accessibilityLabel="View latest set history"
         >
           <Text style={[styles.edgeLabel, { color: colors.mutedText }]}>HISTORY</Text>
-          {recentSets.map((set, index) => <View key={`recent-${set.completedAt.getTime()}-${set.setNumber}-${index}`} style={styles.recentSet}>
+          {recentSets.map((set, index) => <Animated.View key={`recent-${set.completedAt.getTime()}-${set.setNumber}`} entering={recentSetEnter} layout={plateLayout} style={styles.recentSet}>
             <Text numberOfLines={1} style={[styles.recentSetValue, { color: index === recentSets.length - 1 ? colors.text : colors.mutedText }]}>{requiresWeight ? `${set.weight}×${set.reps}` : set.weight ? `+${set.weight}×${set.reps}` : `${set.reps} reps`}</Text>
-          </View>)}
+          </Animated.View>)}
         </Pressable>}
         <Pressable
           onPress={applyRecommendation}
@@ -634,7 +642,7 @@ export default function WorkoutScreen() {
             }}
           >
             <View style={[styles.inputPage, { width: inputAreaWidth }]} accessibilityElementsHidden={weightInputMode !== "plates"} importantForAccessibility={weightInputMode === "plates" ? "auto" : "no-hide-descendants"}>
-              <PlateDial value={weight} onChange={setWeight} colors={colors} showSwipeHint={!plateHintDismissed} onSwipeStart={() => setPlateHintDismissed(true)} />
+              <PlateDial value={weight} onChange={(next) => { setWeight(next); setTyped((current) => ({ ...current, weight: true })); }} colors={colors} showSwipeHint={!plateHintDismissed} onSwipeStart={() => setPlateHintDismissed(true)} />
             </View>
             <View style={[styles.inputPage, { width: inputAreaWidth }]} accessibilityElementsHidden={weightInputMode !== "keypad"} importantForAccessibility={weightInputMode === "keypad" ? "auto" : "no-hide-descendants"}>
               {keypad}
@@ -646,15 +654,15 @@ export default function WorkoutScreen() {
           </View>}
       </View>
       <View style={styles.footer}>
-        {!canUndo && !validInput && value !== "" && <Text style={{ color: colors.mutedText, fontSize: 12 }}>{setNumber > 100 ? 'This exercise supports up to 100 sets per workout.' : 'Use up to 10,000 lb (two decimal places) and 1–10,000 whole reps.'}</Text>}
+        {!validInput && value !== "" && <Text style={{ color: colors.mutedText, fontSize: 12 }}>{setNumber > 100 ? 'This exercise supports up to 100 sets per workout.' : 'Use up to 10,000 lb (two decimal places) and 1–10,000 whole reps.'}</Text>}
         <Pressable
-          onPress={canUndo ? undoLastSet : continueFlow}
-          disabled={!canUndo && (!validInput || saving)}
-          accessibilityState={{ disabled: !canUndo && (!validInput || saving) }}
+          onPress={continueFlow}
+          disabled={!validInput || saving}
+          accessibilityState={{ disabled: !validInput || saving }}
           style={({ pressed }) => [
             styles.saveButton,
             { backgroundColor: accentColor },
-            !canUndo && !validInput && styles.saveDisabled,
+            !validInput && styles.saveDisabled,
             pressed && styles.savePressed,
           ]}
           accessibilityRole="button"
@@ -668,57 +676,59 @@ export default function WorkoutScreen() {
         </Pressable>
       </View>
       <Modal visible={restEndsAt !== null} animationType="fade" presentationStyle="fullScreen" onRequestClose={skipRest}>
-        <SafeAreaView edges={["top", "left", "right"]} style={[styles.restModal, { backgroundColor: colors.background }]}>
+        <SafeAreaView edges={["top", "left", "right"]} style={[styles.restModal, { backgroundColor: restDone ? colors.accent : colors.background }]}>
           <View style={[styles.restScreen, { paddingBottom: bottomInset + 15 }]}>
-            <Text style={[styles.restTitle, { color: colors.text }]}>Rest Timer</Text>
+            <Text style={[styles.restTitle, { color: restDone ? colors.accentText : colors.mutedText }]}>Rest</Text>
             <View style={styles.restBody}>
               <View style={styles.restDial}>
-                <Svg width="100%" height="100%" viewBox="0 0 144 144" accessibilityElementsHidden>
-                  <Circle cx={restCenter} cy={restCenter} r={restRadius} fill={colors.surface} />
-                  <AnimatedCircle
-                    animatedProps={restCircleAnimatedProps}
-                    cx={restCenter}
-                    cy={restCenter}
-                    r={restPieRadius}
-                    fill="none"
-                    stroke={colors.accent}
-                    strokeWidth={restRadius}
-                    strokeLinecap="butt"
-                    strokeDasharray={`${restCircumference} ${restCircumference}`}
-                    transform={`rotate(-90 ${restCenter} ${restCenter})`}
-                  />
+                <Svg width="100%" height="100%" viewBox="0 0 300 300" accessibilityElementsHidden>
+                  {restTicks.map((tick, index) => {
+                    // Remaining time is the clockwise run of ticks ending at 12 o'clock.
+                    // The boundary tick fades with the fractional remainder; 12 o'clock goes out with the last tick.
+                    const position = index === 0 ? restTickCount - 1 : index;
+                    const level = restDone ? 1 : Math.min(1, Math.max(0, restLitTicks - (restTickCount - 1 - position)));
+                    const strokeWidth = index % 5 === 0 ? 5 : 4;
+                    return <G key={index}>
+                      {level < 1 && <Line {...tick} stroke={colors.surfaceStrong} strokeWidth={strokeWidth} strokeLinecap="round" />}
+                      {level > 0 && <Line {...tick} stroke={restDone ? colors.accentText : colors.accent} strokeOpacity={level} strokeWidth={strokeWidth} strokeLinecap="round" />}
+                    </G>;
+                  })}
                 </Svg>
-                <Animated.Text accessibilityLiveRegion="polite" style={[styles.restTime, { color: colors.text }, restTimeAnimatedStyle]}>{formatRest(restRemaining)}</Animated.Text>
+                <Animated.View style={[styles.restTimeBlock, restTimeAnimatedStyle]}>
+                  <Text accessibilityLiveRegion="polite" style={[styles.restTime, { color: restDone ? colors.accentText : colors.text }]}>{formatRest(restRemaining)}</Text>
+                  <Text style={[styles.restTotal, { color: restDone ? colors.accentText : colors.subtleText }]}>of {formatRest(restDuration)}</Text>
+                </Animated.View>
               </View>
               <View style={styles.restAdjustments}>
-                <Pressable hitSlop={10} onPress={() => adjustRest(-15)} style={({ pressed }) => [styles.restAdjustButton, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Reduce rest by 15 seconds">
-                  <Text style={[styles.restAdjustText, { color: colors.text }]}>−15</Text>
+                <Pressable hitSlop={10} onPress={() => adjustRest(-15)} style={({ pressed }) => [styles.restAdjustButton, { backgroundColor: restDone ? `${colors.accentText}1F` : colors.surface }, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Reduce rest by 15 seconds">
+                  <Text style={[styles.restAdjustText, { color: restDone ? colors.accentText : colors.text }]}>−15</Text>
                 </Pressable>
-                <Pressable hitSlop={10} onPress={() => adjustRest(15)} style={({ pressed }) => [styles.restAdjustButton, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Add 15 seconds of rest">
-                  <Text style={[styles.restAdjustText, { color: colors.text }]}>+15</Text>
+                <Pressable hitSlop={10} onPress={() => adjustRest(15)} style={({ pressed }) => [styles.restAdjustButton, { backgroundColor: restDone ? `${colors.accentText}1F` : colors.surface }, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Add 15 seconds of rest">
+                  <Text style={[styles.restAdjustText, { color: restDone ? colors.accentText : colors.text }]}>+15</Text>
                 </Pressable>
               </View>
             </View>
-            <Pressable onPress={skipRest} style={({ pressed }) => [styles.skipRestButton, { backgroundColor: colors.accent }, pressed && styles.restPressed]} accessibilityRole="button">
-              <Text style={[styles.skipRestText, { color: colors.accentText }]}>Skip rest</Text>
+            <Pressable onPress={skipRest} style={({ pressed }) => [styles.skipRestButton, { backgroundColor: restDone ? colors.accentText : colors.accent }, pressed && styles.restPressed]} accessibilityRole="button">
+              <Text style={[styles.skipRestText, { color: restDone ? colors.accent : colors.accentText }]}>Skip rest</Text>
             </Pressable>
           </View>
         </SafeAreaView>
       </Modal>
       <Modal
         transparent
-        visible={historyOpen}
+        visible={historySheetVisible}
         animationType="none"
         onRequestClose={() => setHistoryOpen(false)}
       >
         <View style={styles.modal}>
-          <Animated.View entering={FadeIn.duration(180)} style={styles.backdropLayer}>
+          {historyOpen && <>
+          <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdropLayer}>
             <Pressable
               onPress={() => setHistoryOpen(false)}
               style={styles.backdrop}
             />
           </Animated.View>
-          <Animated.View entering={SlideInDown.duration(280)} style={[styles.sheet, { backgroundColor: colors.background }]}>
+          <Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} style={[styles.sheet, { backgroundColor: colors.background }]}>
             <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
             <View style={styles.sheetHeader}>
               <Text numberOfLines={2} style={[styles.sheetTitle, { color: colors.text }]}>{name}</Text>
@@ -728,49 +738,39 @@ export default function WorkoutScreen() {
             </View>
             <StatsPanel initialExerciseId={exerciseId} history={history} onDeleteSet={deleteSet} embedded />
           </Animated.View>
+          </>}
         </View>
       </Modal>
-      <Modal transparent visible={supersetPickerOpen} animationType="slide" onRequestClose={() => setSupersetPickerOpen(false)}>
+      <Modal transparent visible={supersetPickerOpen} animationType="none" onRequestClose={() => setSupersetPickerOpen(false)}>
         <View style={styles.modal}>
-          <Pressable onPress={() => setSupersetPickerOpen(false)} style={styles.backdrop} />
-          <View style={[styles.supersetSheet, { backgroundColor: colors.background }]}>
+          <Animated.View entering={FadeIn.duration(180)} style={styles.backdropLayer}><Pressable onPress={() => setSupersetPickerOpen(false)} style={styles.backdrop} /></Animated.View>
+          <Animated.View entering={SlideInDown.duration(280)} style={[styles.supersetSheet, { backgroundColor: colors.background }]}>
             <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
             <View style={styles.sheetHeader}>
-              <View><Text style={[styles.pickerEyebrow, { color: colors.mutedText }]}>SUPERSET</Text><Text style={[styles.pickerTitle, { color: colors.text }]}>Add an exercise</Text></View>
+              <View><Text style={[ui.eyebrow, { color: colors.mutedText }]}>SUPERSET</Text><Text style={[styles.pickerTitle, { color: colors.text }]}>Add an exercise</Text></View>
               <Pressable onPress={() => setSupersetPickerOpen(false)} hitSlop={12} style={styles.sheetClose}><X width={24} height={24} color={colors.mutedText} strokeWidth={2} /></Pressable>
             </View>
             <TextInput value={supersetQuery} onChangeText={setSupersetQuery} autoFocus placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.supersetSearch, { backgroundColor: colors.surface, color: colors.text }]} />
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.pickerList}>
-              {supersetCandidates.map((exercise) => <Pressable key={exercise.id} onPress={() => addSupersetExercise(exercise)} style={({ pressed }) => [styles.pickerRow, { borderColor: colors.surfaceStrong }, pressed && styles.supersetTabPressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name} to superset`}><View style={styles.pickerCopy}><Text numberOfLines={1} style={[styles.pickerName, { color: colors.text }]}>{exercise.name}</Text><Text numberOfLines={1} style={[styles.pickerMeta, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View><Plus width={19} height={19} color={colors.text} strokeWidth={2.5} /></Pressable>)}
+              {supersetCandidates.map((exercise) => <Pressable key={exercise.id} onPress={() => addSupersetExercise(exercise)} style={({ pressed }) => [styles.pickerRow, { borderColor: colors.surfaceStrong }, pressed && styles.supersetTabPressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name} to superset`}><ExerciseThumb exercise={exercise} size={46} /><View style={styles.pickerCopy}><Text numberOfLines={1} style={[styles.pickerName, { color: colors.text }]}>{exercise.name}</Text><Text numberOfLines={1} style={[styles.pickerMeta, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View><Plus width={19} height={19} color={colors.text} strokeWidth={2.5} /></Pressable>)}
               {!supersetCandidates.length && <Text style={[styles.emptyPicker, { color: colors.mutedText }]}>No available exercises match that search.</Text>}
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
-      <Modal transparent visible={infoOpen} animationType="slide" onRequestClose={() => setInfoOpen(false)}>
+      <Modal transparent visible={infoOpen} animationType="none" onRequestClose={() => setInfoOpen(false)}>
         <View style={styles.modal}>
-          <Pressable onPress={() => setInfoOpen(false)} style={styles.backdrop} />
-          <View style={[styles.infoSheet, { backgroundColor: colors.background }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
-            <View style={styles.sheetHeader}>
-              <View style={styles.infoHeading}>
-                <Text style={[styles.pickerEyebrow, { color: colors.mutedText }]}>HOW TO</Text>
-                <Text numberOfLines={2} style={[styles.infoTitle, { color: colors.text }]}>{name}</Text>
-                {!!exerciseDetails.meta && <Text numberOfLines={2} style={[styles.infoMeta, { color: colors.mutedText }]}>{exerciseDetails.meta}</Text>}
-              </View>
-              <Pressable onPress={() => setInfoOpen(false)} hitSlop={12} style={styles.sheetClose}><X width={24} height={24} color={colors.mutedText} strokeWidth={2} /></Pressable>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.infoContent}>
-              {!!exerciseDetails.images.length && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.infoGallery}>
-                {exerciseDetails.images.map((image, index) => <Image key={`${image}-${index}`} source={{ uri: `${exerciseImageBase}${image}` }} style={[styles.infoImage, { backgroundColor: colors.surface }]} resizeMode="cover" accessibilityLabel={`${name} demonstration, image ${index + 1}`} />)}
-              </ScrollView>}
+          <Animated.View entering={FadeIn.duration(180)} style={styles.backdropLayer}><Pressable onPress={() => setInfoOpen(false)} style={styles.backdrop} /></Animated.View>
+          <Animated.View entering={SlideInDown.duration(280)} style={[styles.infoSheet, { backgroundColor: colors.background }]} accessibilityViewIsModal>
+            <ExerciseDetailSheet key={exercise.id} exercise={exercise} onDismiss={() => setInfoOpen(false)} dismissIcon="close" headingDetails={exerciseDetails.meta ? <Text style={[styles.infoMeta, { color: colors.mutedText }]}>{exerciseDetails.meta}</Text> : undefined}>
+              <Text style={[styles.infoSectionTitle, { color: colors.text }]}>How to</Text>
               {exerciseDetails.instructions.map((step, index) => <View key={`step-${index}`} style={styles.infoStep}>
                 <Text style={[styles.infoStepNumber, { color: colors.accent, backgroundColor: colors.surface }]}>{index + 1}</Text>
                 <Text style={[styles.infoStepText, { color: colors.text }]}>{step}</Text>
               </View>)}
               {!exerciseDetails.instructions.length && <Text style={[styles.emptyHistory, { color: colors.mutedText }]}>No instructions available for this exercise yet.</Text>}
-            </ScrollView>
-          </View>
+            </ExerciseDetailSheet>
+          </Animated.View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -836,9 +836,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#0D0E0B",
     lineHeight: 76,
+    fontVariant: ["tabular-nums"],
   },
   valuePressed: { opacity: 0.6 },
-  clearValue: { minHeight: 44, justifyContent: "center" },
+  // Absolute so appearing/disappearing doesn't shift the centered value.
+  clearValue: { position: "absolute", left: "100%", bottom: 0, marginLeft: 10, minHeight: 44, justifyContent: "flex-end", paddingBottom: 13 },
   clearValueText: { fontSize: 10, fontWeight: "900", letterSpacing: 0.7 },
   edgeLabel: { marginBottom: 5, fontSize: 7, fontWeight: "900", letterSpacing: 0.7 },
   recommendationButton: { position: "absolute", top: 0, right: 24, bottom: 0, width: 72, justifyContent: "center", alignItems: "flex-end" },
@@ -916,14 +918,16 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   restModal: { flex: 1 },
-  restScreen: { flex: 1, paddingHorizontal: 24, paddingTop: 72, alignItems: "center" },
-  restTitle: { fontSize: 28, fontWeight: "900", letterSpacing: -1 },
+  restScreen: { flex: 1, paddingHorizontal: 24, paddingTop: 28, alignItems: "center" },
+  restTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.3 },
   restBody: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
-  restDial: { width: 310, height: 310, alignItems: "center", justifyContent: "center" },
-  restTime: { position: "absolute", width: 190, textAlign: "center", fontSize: 64, lineHeight: 72, fontWeight: "900", fontVariant: ["tabular-nums"], letterSpacing: -3.5 },
-  restAdjustments: { marginTop: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 64 },
-  restAdjustButton: { minWidth: 88, height: 56, paddingHorizontal: 16, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  restAdjustText: { fontSize: 26, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  restDial: { width: 300, height: 300, alignItems: "center", justifyContent: "center" },
+  restTimeBlock: { position: "absolute", alignItems: "center" },
+  restTime: { fontSize: 76, lineHeight: 82, fontWeight: "900", fontVariant: ["tabular-nums"], letterSpacing: -4 },
+  restTotal: { marginTop: 2, fontSize: 15, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  restAdjustments: { marginTop: 36, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 20 },
+  restAdjustButton: { width: 76, height: 76, borderRadius: 38, alignItems: "center", justifyContent: "center" },
+  restAdjustText: { fontSize: 22, fontWeight: "900", fontVariant: ["tabular-nums"], letterSpacing: -0.5 },
   skipRestButton: { width: "100%", height: 60, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   skipRestText: { fontSize: 16, fontWeight: "900", letterSpacing: -0.3 },
   restPressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
@@ -967,21 +971,16 @@ const styles = StyleSheet.create({
   },
   sheetClose: { width: 32, height: 32, flexShrink: 0, alignItems: "center", justifyContent: "center" },
   supersetSheet: { height: "78%", paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
-  infoSheet: { height: "88%", paddingHorizontal: 24, paddingTop: 10, paddingBottom: 28, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
-  infoHeading: { flex: 1, flexShrink: 1, paddingRight: 16 },
-  infoTitle: { marginTop: 3, fontSize: 24, fontWeight: "900", letterSpacing: -0.9 },
-  infoMeta: { marginTop: 8, fontSize: 10, fontWeight: "800", letterSpacing: 0.7, textTransform: "uppercase" },
-  infoContent: { paddingBottom: 24 },
-  infoGallery: { gap: 10, paddingBottom: 18 },
-  infoImage: { width: 260, height: 195, borderRadius: 16 },
+  infoSheet: { height: "92%", borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: "hidden" },
+  infoMeta: { marginTop: 14, fontSize: 12, lineHeight: 18, fontWeight: "600", textTransform: "capitalize" },
+  infoSectionTitle: { marginBottom: 18, fontSize: 20, fontWeight: "900", letterSpacing: -.5 },
   infoStep: { flexDirection: "row", gap: 12, marginBottom: 16 },
   infoStepNumber: { width: 24, height: 24, borderRadius: 12, textAlign: "center", textAlignVertical: "center", lineHeight: 24, fontSize: 12, fontWeight: "900" },
   infoStepText: { flex: 1, fontSize: 15, lineHeight: 22, fontWeight: "600" },
-  pickerEyebrow: { fontSize: 10, fontWeight: "900", letterSpacing: 1.1 },
   pickerTitle: { marginTop: 3, fontSize: 24, fontWeight: "900", letterSpacing: -0.9 },
   supersetSearch: { height: 48, paddingHorizontal: 15, borderRadius: 15, fontSize: 15, fontWeight: "700" },
   pickerList: { paddingTop: 10, paddingBottom: 20 },
-  pickerRow: { minHeight: 62, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", gap: 12 },
+  pickerRow: { minHeight: 62, paddingVertical: 8, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   pickerCopy: { flex: 1, minWidth: 0 },
   pickerName: { fontSize: 16, fontWeight: "900", letterSpacing: -0.35 },
   pickerMeta: { marginTop: 3, fontSize: 10, fontWeight: "800", letterSpacing: 0.55 },

@@ -49,6 +49,7 @@ export function recordCloudSyncFailure(): void;
 export function getCloudSyncBatch(limit?: number): CloudSyncBatch | null;
 export function acknowledgeCloudSyncBatch(batchId: string, revision: number, results: CloudSyncMutationResult[]): void;
 export function rejectCloudSyncBatch(batchId: string, reason: string, invalidChanges?: { entity: CloudSyncEntity; key: string }[]): void;
+export function resubmitCloudSyncChange(entity: CloudSyncEntity, key: string): boolean;
 export function getRejectedCloudSyncChanges(): CloudSyncRejectedChange[];
 export function getCloudSyncCursor(): number;
 export function prepareCloudSyncForUser(userId: string): boolean;
@@ -61,7 +62,8 @@ export function getRankedExercises(workoutId: string, split: WorkoutSplit, conte
 export function recordRecommendationFeedback(workoutId: string, exerciseId: string, action: RecommendationFeedbackAction, rank?: number): void;
 export function getNextSetNumberForWorkout(exerciseId: string, workoutId: string): number;
 export type WorkoutHistoryPoint = { workoutId: string; setNumber: number; weight: number; reps: number; completedAt: Date };
-export function getWorkoutHistory(exerciseId: string): WorkoutHistoryPoint[];
+export function getWorkoutHistory(exerciseId: string, options?: { completedOnly?: boolean }): WorkoutHistoryPoint[];
+export function getWorkoutHistories(exerciseIds: readonly string[], options?: { completedOnly?: boolean }): Map<string, WorkoutHistoryPoint[]>;
 export function getRecentExerciseExhaustion(exerciseId: string, excludingWorkoutId: string, now?: Date): number | undefined;
 export function deleteWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint): void;
 export function updateWorkoutSet(exerciseId: string, set: WorkoutHistoryPoint, values: { weight: number; reps: number }): void;

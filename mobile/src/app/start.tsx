@@ -1,11 +1,11 @@
 import { ui } from '@/styles/primitives';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SplitBodyGraphic } from '@/components/split-body-graphic';
-import { createWorkout, getCustomSplits, getRecommendedWorkoutSplit, getWorkoutSplitDefinition, type WorkoutSplit } from '@/db';
+import { createWorkout, getActiveWorkout, getCustomSplits, getRecommendedWorkoutSplit, getWorkoutSplitDefinition, type WorkoutSplit } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
 import { SegmentedPicker } from '@/components/segmented-picker';
 
@@ -22,6 +22,13 @@ export default function StartWorkoutScreen() {
   const [recommendedSplit] = useState(() => getRecommendedWorkoutSplit(new Date(), customMode));
   const [selectedSplit, setSelectedSplit] = useState<WorkoutSplit>(recommendedSplit);
   const [previousSplit, setPreviousSplit] = useState<WorkoutSplit>(recommendedSplit);
+  const [activeWorkout, setActiveWorkout] = useState(getActiveWorkout);
+  useFocusEffect(useCallback(() => {
+    // Every start path lands here (plus button, Home cards); resume instead of opening a second workout.
+    const active = getActiveWorkout();
+    setActiveWorkout(active);
+    if (active) router.replace({ pathname: '/exercises', params: { split: active.split, workoutId: active.id } });
+  }, []));
   const startWorkout = () => {
     const workout = createWorkout(selectedSplit);
     router.replace({ pathname: '/exercises', params: { split: selectedSplit, workoutId: workout.id } });
@@ -34,6 +41,7 @@ export default function StartWorkoutScreen() {
   const selectedDefinition = getWorkoutSplitDefinition(selectedSplit);
   const previousDefinition = getWorkoutSplitDefinition(previousSplit);
   const recommendedName = getWorkoutSplitDefinition(recommendedSplit)?.name ?? recommendedSplit;
+  if (activeWorkout) return null; // Avoid flashing the picker before the redirect above.
 
 	return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
     <View style={styles.header}>

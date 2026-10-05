@@ -87,11 +87,22 @@ assert.deepEqual(readNative(native.getExerciseSessionCounts), sessions);
 assert.equal(sessions.get(first.id), completed.length, 'multiple sets count as one exercise session');
 assert.equal(sessions.get(second.id), completed.length);
 
+reads.clear();
+const histories = web.getWorkoutHistories([first.id, second.id]);
+assert.equal(reads.get('lift-preview-sets'), 1, 'bulk web histories parse set storage once');
+assert.equal(reads.get('lift-preview-workouts'), undefined, 'unfiltered bulk histories do not read workouts');
+queries = 0;
+const nativeHistories = native.getWorkoutHistories([first.id, second.id]);
+assert.equal(queries, 1, 'bulk native histories use one SQL query');
+assert.deepEqual(nativeHistories, histories, 'native and web bulk histories match');
+assert.equal(histories.get(first.id).length, (completed.length + 1) * 2);
+assert.equal(histories.get(second.id).length, completed.length + 1);
+
 // Bulk split recommendation must retain the old per-workout rating semantics.
 const chest = native.getExercises().find((exercise) => JSON.parse(exercise.detailsJson).primaryMuscles.includes('chest'));
 connection.query('INSERT INTO workout_sets (exercise_id, workout_id, set_number, weight, reps, completed_at) VALUES (?, ?, 1, 100, 8, ?)').run(chest.id, completed[0].id, now.getTime() / 1000);
-connection.query('INSERT INTO workout_muscle_ratings (workout_id, muscle, exhaustion, created_at) VALUES (?, ?, 4, ?)').run(completed[0].id, 'chest', now.getTime() / 1000);
-connection.query('INSERT INTO workout_muscle_ratings (workout_id, muscle, exhaustion, created_at) VALUES (?, ?, 4, ?)').run('active', 'chest', now.getTime() / 1000);
+connection.query('INSERT INTO workout_muscle_ratings (workout_id, muscle, exhaustion, created_at) VALUES (?, ?, 8, ?)').run(completed[0].id, 'chest', now.getTime() / 1000);
+connection.query('INSERT INTO workout_muscle_ratings (workout_id, muscle, exhaustion, created_at) VALUES (?, ?, 8, ?)').run('active', 'chest', now.getTime() / 1000);
 const { getRecommendedWorkoutSplit } = await import('../lib/exercise-recommendations.ts');
 const history = native.getWorkoutVisits();
 const ratings = history.flatMap(({ workout }) => native.getWorkoutMuscleRatings(workout.id).map((rating) => ({
@@ -101,5 +112,20 @@ const expectedSplit = getRecommendedWorkoutSplit(history.map(({ workout, sets })
 queries = 0;
 assert.equal(native.getRecommendedWorkoutSplit(now), expectedSplit);
 assert.equal(queries, 3, 'split recommendations use bulk ratings, visit summaries, and custom splits only');
+// Weight progression must opt into completed history on both adapters.
+const orphan = { exerciseId: first.id, workoutId: 'orphan', setNumber: 1, weight: 300, reps: 10, completedAt: now };
+values.set('lift-preview-sets', JSON.stringify([...sets, orphan]));
+// Simulate legacy/imported orphan data, bypassing the current schema's constraint.
+connection.exec('PRAGMA foreign_keys = OFF');
+connection.query('INSERT INTO workout_sets (exercise_id, workout_id, set_number, weight, reps, completed_at) VALUES (?, ?, ?, ?, ?, ?)').run(first.id, orphan.workoutId, 1, 300, 10, now.getTime() / 1000);
+connection.exec('PRAGMA foreign_keys = ON');
+for (const adapter of [web, native]) {
+  const all = adapter.getWorkoutHistory(first.id);
+  const finished = adapter.getWorkoutHistory(first.id, { completedOnly: true });
+  assert.equal(all.some((set) => set.workoutId === 'active'), true, 'history still includes active sets');
+  assert.equal(finished.some((set) => set.workoutId === 'active' || set.workoutId === 'orphan'), false, 'only explicitly completed workouts can drive weight progression');
+  assert.equal(finished.length, completed.length * 2);
+  assert.equal(finished.some((set) => set.workoutId === 'epoch'), true, 'epoch completion counts as finished');
+}
 connection.close();
 console.log('History regression passed: 101 completed visits; one web history read / one native query per aggregate; three queries for split recommendations.');

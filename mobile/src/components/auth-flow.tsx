@@ -220,7 +220,7 @@ export function MfaSetupFlow({ onDone }: { onDone: () => void }) {
     finally { setBusy(false); }
   };
 
-  return <AuthShell title={stage === 'backup' ? 'Save backup codes.' : 'Set up MFA.'} subtitle={stage === 'setup' ? 'Use your authenticator app.' : undefined} styles={styles}>
+  return <AuthShell title={stage === 'backup' ? 'Save backup codes.' : 'Set up MFA.'} subtitle={stage === 'setup' ? 'Use your authenticator app.' : undefined} onBack={stage === 'backup' || busy ? undefined : onDone} styles={styles}>
     {stage === 'password' && <>
       <Text style={styles.subtitle}>Confirm your password to add an authenticator or email code.</Text>
       <Field label="Password" value={password} onChangeText={setPassword} autoComplete="current-password" secureTextEntry styles={styles} colors={colors} />
