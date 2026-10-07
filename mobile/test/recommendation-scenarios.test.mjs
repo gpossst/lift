@@ -23,6 +23,113 @@ const plan = (catalog, history = [], context = {}, ratings = []) => engine.getEx
 const ranking = (catalog, history = [], context = {}, feedback = []) => engine.getRankedExercises(catalog, history, [], 'today', 'push', now, context, feedback);
 
 const scenarios = [
+  ['equal muscle fatigue does not favor narrower splits', () => {
+    const narrow = { id: 'custom:chest', name: 'Chest', muscles: ['chest'] };
+    const upper = { id: 'custom:upper', name: 'Upper', muscles: ['chest', 'shoulders', 'triceps', 'lats', 'biceps'] };
+    const lower = { id: 'custom:lower', name: 'Lower', muscles: ['quadriceps', 'hamstrings', 'glutes', 'calves'] };
+    const full = { id: 'custom:full', name: 'Full body', muscles: [...upper.muscles, ...lower.muscles] };
+    for (const definitions of [[full, narrow], [upper, lower], engine.defaultWorkoutSplits]) {
+      for (const exhaustion of [0, 2, 5, 10]) {
+        const ratings = [...new Set(definitions.flatMap((split) => split.muscles))].map((muscle) => ({
+          workoutId: 'check-in', split: 'unrelated', muscle, exhaustion, completedAt: now,
+        }));
+        assert.equal(engine.getRecommendedWorkoutSplit([], now, ratings, definitions), definitions[0].id);
+        for (const overdue of definitions) {
+          const history = definitions.map((split) => ({
+            split: split.id, sets: 3, completedAt: new Date(now - (split === overdue ? 4 : 3) * day),
+          }));
+          assert.equal(engine.getRecommendedWorkoutSplit(history, now, ratings, definitions), engine.getRecommendedWorkoutSplit(history, now, [], definitions));
+          const volume = definitions.map((split) => ({ split: split.id, sets: split === overdue ? 2 : 4, completedAt: new Date(now - 3 * day) }));
+          assert.equal(engine.getRecommendedWorkoutSplit(volume, now, ratings, definitions), engine.getRecommendedWorkoutSplit(volume, now, [], definitions));
+        }
+      }
+    }
+  }],
+  ['broader splits can train recovered muscles while fatigued exercises stay excluded', () => {
+    const chestOnly = { id: 'custom:chest', name: 'Chest', muscles: ['chest'] };
+    const full = { id: 'custom:full', name: 'Full body', muscles: ['chest', 'quadriceps', 'lats'] };
+    const fresh = { id: 'custom:fresh', name: 'Fresh', muscles: ['biceps'] };
+    const ratings = [{ workoutId: 'check-in', split: 'other', muscle: 'chest', exhaustion: 10, completedAt: now }];
+    assert.equal(engine.getRecommendedWorkoutSplit([], now, ratings, [chestOnly, full]), full.id);
+    const result = engine.getExerciseRecommendations([chest, exercise('Squat', ['quadriceps']), exercise('Row', ['lats'])], [], ratings, 'today', full.id, 3, now, {}, [], full);
+    assert(result.length > 0);
+    assert(result.every((item) => item.exercise.id !== chest.id));
+    assert.equal(engine.getRecommendedWorkoutSplit([], now, ratings, [full, fresh]), fresh.id);
+    // A one-muscle split still receives the full existing recovery penalty.
+    assert.equal(engine.getRecommendedWorkoutSplit([{ split: fresh.id, sets: 0, completedAt: now }], now, ratings, [chestOnly, fresh]), fresh.id);
+    for (const daysAgo of [8, -1]) {
+      const ignored = ratings.map((rating) => ({ ...rating, completedAt: new Date(now - daysAgo * day) }));
+      assert.equal(engine.getRecommendedWorkoutSplit([], now, ignored, [full, fresh]), full.id);
+    }
+    const later = new Date(now.getTime() + 1000);
+    const latest = [...ratings, { ...ratings[0], exhaustion: 0, completedAt: later }];
+    assert.equal(engine.getRecommendedWorkoutSplit([], later, latest, [full, fresh]), full.id);
+  }],
+  ['learned routines stay familiar and follow observed order', () => {
+    const usual = [bench, shoulders, triceps];
+    const odd = exercise('Car Drivers', ['shoulders'], [], { mechanic: 'isolation' });
+    const discovery = { ...core, isFeatured: 1 };
+    const history = Array.from({ length: 8 }, (_, visit) => usual.map((item, index) => ({
+      ...session(`routine-${visit}`, 100, [8], 8 + visit * 7)[0], exerciseId: item.id,
+      completedAt: new Date(now - (8 + visit * 7) * day + index * 60_000),
+    }))).flat();
+    const result = engine.getExerciseRecommendations([...usual, odd, discovery], history, [], 'today', 'push', 3, now);
+    assert.deepEqual(result.map((item) => item.exercise.id), usual.map((item) => item.id));
+    const realStaples = ['Barbell_Bench_Press_-_Medium_Grip', 'Incline_Dumbbell_Press', 'Triceps_Pushdown', 'Side_Lateral_Raise'].map((source) => {
+      const item = exerciseCatalog.find((item) => item.id === `free_exercise_db:${source}`);
+      assert(item, source); return item;
+    });
+    const realHistory = Array.from({ length: 8 }, (_, visit) => realStaples.flatMap((item, index) => session(`real-${visit}`, 100, [8, 8, 8], 8 + visit * 7).map((set) => ({
+      ...set, exerciseId: item.id, completedAt: new Date(set.completedAt.getTime() + index * 10 * 60_000),
+    })))).flat();
+    const realPlan = engine.getExerciseRecommendations(exerciseCatalog, realHistory, [], 'today', 'push', 3, now);
+    assert.equal(realPlan[0].exercise.id, realStaples[0].id);
+    assert(realPlan.every((item) => realStaples.some((known) => known.id === item.exercise.id)));
+    const longer = plan([...usual, odd, discovery, { ...discovery, id: 'another-core' }], history, { sessionMinutes: 120 });
+    assert(!longer.some((item) => item.exercise.id === odd.id));
+    assert(longer.filter((item) => !usual.some((known) => known.id === item.exercise.id)).length <= 1);
+    const intermediate = { ...bench, detailsJson: JSON.stringify({ ...JSON.parse(bench.detailsJson), level: 'intermediate' }) };
+    const expert = { ...intermediate, detailsJson: JSON.stringify({ ...JSON.parse(bench.detailsJson), level: 'expert' }) };
+    for (const item of [intermediate, expert]) {
+      assert.equal(plan([item], []).length, 0);
+      assert.equal(plan([item], history)[0].exercise.id, bench.id);
+    }
+    const impression = { exerciseId: bench.id, workoutId: 'last', action: 'impression', createdAt: new Date(now - day) };
+    assert.equal(ranking([bench, odd], history, {}, [impression, { ...impression, action: 'skipped' }])[0].exercise.id, bench.id);
+    const recentlyTrained = history.map((set) => set.exerciseId === bench.id && set.workoutId === 'routine-0' ? { ...set, completedAt: new Date(now - 20 / 24 * day) } : set);
+    const benchScore = (sets) => ranking(usual, sets).find((item) => item.exercise.id === bench.id).score;
+    assert(benchScore(recentlyTrained) < benchScore(history));
+  }],
+  ['regular compounds beat unfamiliar shorter catalog movements', () => {
+    const novelty = exercise('A New Fly', ['chest'], [], { mechanic: 'isolation' });
+    novelty.isFeatured = 1;
+    const history = [8, 15, 22].flatMap((daysAgo, index) => session(`habit-${index}`, 100, [8], daysAgo).map((set) => ({ ...set, exerciseId: bench.id })));
+    assert.equal(ranking([bench, novelty])[0].exercise.id, novelty.id);
+    assert.equal(ranking([bench, novelty], history)[0].exercise.id, bench.id);
+    assert.equal(plan([bench, novelty], history)[0].exercise.id, bench.id);
+    assert.equal(ranking([bench, novelty], history)[0].reason, 'A regular part of your training');
+    assert.deepEqual(ranking([bench, novelty], history), ranking([novelty, bench], [...history].reverse()));
+    const heavySingleVisit = Array.from({ length: 20 }, () => history[0]);
+    assert.equal(ranking([bench, novelty], heavySingleVisit)[0].exercise.id, novelty.id);
+  }],
+  ['habit confidence fades and follows changing choices', () => {
+    const alternative = { ...chest, id: 'Alternative Press', name: 'Alternative Press' };
+    const habit = [8, 15, 22].map((daysAgo, index) => session(`habit-${index}`, 100, [8], daysAgo)[0]);
+    const score = (sets) => ranking([chest, alternative], sets).find((item) => item.exercise.id === chest.id).score;
+    const pull = exercise('Pull', ['lats']);
+    const unrelated = [3, 10, 17].map((daysAgo, index) => ({ ...session(`pull-${index}`, 100, [8], daysAgo)[0], exerciseId: pull.id }));
+    assert.deepEqual(ranking([chest, alternative], habit), ranking([chest, alternative, pull], [...habit, ...unrelated]));
+    const replacement = [8, 15, 22, 29, 36, 43].map((daysAgo, index) => ({ ...session(`alternative-${index}`, 100, [8], daysAgo)[0], exerciseId: alternative.id }));
+    assert(score([...habit, ...replacement]) < score(habit));
+    assert.equal(ranking([chest, alternative], [...habit, ...replacement])[0].exercise.id, alternative.id);
+    assert(score(habit.map((set) => ({ ...set, completedAt: new Date(set.completedAt - 60 * day) }))) < score(habit));
+    const rejections = [1, 2, 3].map((daysAgo) => ({ exerciseId: chest.id, workoutId: `rejected-${daysAgo}`, action: 'removed', createdAt: new Date(now - daysAgo * day) }));
+    assert.equal(ranking([chest, alternative], habit, {}, rejections)[0].exercise.id, alternative.id);
+    assert(!engine.getExerciseRecommendations([chest, alternative], habit, [], 'today', 'push', 3, now, {}, rejections).some((item) => item.exercise.id === chest.id));
+    const fatigue = [{ workoutId: 'fatigued', split: 'push', muscle: 'chest', exhaustion: 10, completedAt: now }];
+    assert.equal(plan([chest, alternative], habit, {}, fatigue).length, 0);
+    assert.deepEqual(ranking([chest, alternative], habit), ranking([chest, alternative], [...habit, ...session('future', 100, [8], -1)]));
+  }],
   ['fatigue overrides misses and earned progression', () => {
     for (const history of [[...session('older', 100, [5, 5, 5], 2), ...session('last', 100, [5, 4, 5])], session('last', 100, [10, 10, 10])]) {
       const result = overload(history, { exhaustion: 4 });

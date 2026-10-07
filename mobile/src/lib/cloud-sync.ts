@@ -2,6 +2,8 @@ import {
   acknowledgeCloudSyncBatch,
   getCloudSyncBatch,
   getCloudSyncCursor,
+  getRejectedCloudSyncChanges,
+  reconcileCloudSyncConflicts,
   hasPendingCloudSync,
   mergeCloudSyncChanges,
   recordCloudSyncFailure,
@@ -104,16 +106,25 @@ export function syncWorkoutData(): Promise<void> {
           acknowledgeCloudSyncBatch(batch.batchId, response.revision!, response.results!);
         }
 
-        let cursor = getCloudSyncCursor();
+        // Older clients retained redundant conflicts indefinitely. Replay once
+        // for each unchecked conflict, then use normal incremental pulls.
+        const fullReplay = getRejectedCloudSyncChanges().some((issue) => issue.conflict && (issue.remoteRevision === undefined || (issue.remoteRevision !== 0 && issue.remoteOperation === undefined)));
+        let cursor = fullReplay ? 0 : getCloudSyncCursor();
+        const remoteChanges = new Map<string, CloudSyncRemoteChange>();
         let hasMore = true;
         while (hasMore) {
           const response = await request(`/v1/sync?cursor=${cursor}&limit=50`, controller.signal);
           assertCurrent();
           if (!Array.isArray(response.changes) || !Number.isSafeInteger(response.cursor)) throw new Error('Cloud sync returned an invalid change page.');
           mergeCloudSyncChanges(response.changes, response.cursor!);
-          if (response.changes.length) for (const listener of workoutDataListeners) listener();
+          for (const change of response.changes) remoteChanges.set(`${change.entity}\u0000${change.key}`, change);
           cursor = response.cursor!;
           hasMore = response.hasMore === true;
+        }
+        const issueCount = getRejectedCloudSyncChanges().length;
+        reconcileCloudSyncConflicts([...remoteChanges.values()], fullReplay);
+        if (remoteChanges.size || getRejectedCloudSyncChanges().length !== issueCount) {
+          for (const listener of workoutDataListeners) listener();
         }
       } while (hasPendingCloudSync());
       retryDelay = 5_000;

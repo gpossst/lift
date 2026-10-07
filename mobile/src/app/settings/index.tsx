@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
 import { authClient } from '@/lib/auth-client';
-import { syncWorkoutData } from '@/lib/cloud-sync';
+import { subscribeWorkoutData, syncWorkoutData } from '@/lib/cloud-sync';
 import { cloudSyncIssueDescription } from '@/lib/cloud-sync-issue';
 import { getProfile } from '@/lib/profile';
 import { getExercises, getRejectedCloudSyncChanges, hasPendingCloudSync, resubmitCloudSyncChange, type CloudSyncRejectedChange } from '@/db';
@@ -29,12 +29,14 @@ export default function SettingsScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setSyncIssues(getRejectedCloudSyncChanges());
+    const unsubscribe = subscribeWorkoutData(() => setSyncIssues(getRejectedCloudSyncChanges()));
     void getProfile().then((profile) => { if (active) setDisplayName(profile.displayName); }).catch(() => undefined);
-    return () => { active = false; };
+    return () => { active = false; unsubscribe(); };
   }, []));
   const name = displayName.trim() || session?.user.name?.trim() || session?.user.email?.split('@')[0] || 'Your profile';
   const email = session?.user.email;
   const exerciseNames = new Map(syncIssues.length ? getExercises().map((exercise) => [exercise.id, exercise.name]) : []);
+  const workoutReviews = syncIssues.filter((issue) => issue.entity === 'workout' && issue.conflict && issue.remoteOperation === 'delete');
 
   function reviewSyncIssue(issue: CloudSyncRejectedChange) {
     const [workoutId, exerciseId] = issue.key.split('\u001f');
@@ -85,7 +87,11 @@ export default function SettingsScreen() {
       {syncIssues.length > 0 && <View style={styles.syncIssues}>
         <Text style={[styles.rowTitle, { color: colors.text }]}>Changes need attention</Text>
         <Text style={[styles.rowDescription, { color: colors.mutedText }]}>These changes have not synced. Resubmit to try again, or open a change to review it.</Text>
-        {syncIssues.map((issue) => {
+        {workoutReviews.length > 0 && <Pressable onPress={() => router.push('/settings/review-workouts')} style={({ pressed }) => [styles.profile, { backgroundColor: colors.surface }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Review ${workoutReviews.length} deleted workouts`}>
+          <View style={styles.rowCopy}><Text style={[styles.rowTitle, { color: colors.text }]}>Keep or delete {workoutReviews.length} {workoutReviews.length === 1 ? 'workout' : 'workouts'}</Text><Text style={[styles.rowDescription, { color: colors.mutedText }]}>Swipe through the copies saved on this device.</Text></View>
+          <ChevronRight width={19} height={19} color={colors.subtleText} />
+        </Pressable>}
+        {syncIssues.filter((issue) => !workoutReviews.includes(issue)).map((issue) => {
           const [, exerciseId, setNumber] = issue.key.split('\u001f');
           const title = issue.entity === 'set' ? `${exerciseNames.get(exerciseId) ?? 'Exercise'} · set ${setNumber}` : issue.entity === 'split' ? 'Workout split' : 'Workout changes';
           const id = JSON.stringify([issue.entity, issue.key]);

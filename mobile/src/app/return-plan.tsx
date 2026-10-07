@@ -1,4 +1,6 @@
 import { router } from 'expo-router';
+import LottieView from 'lottie-react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ui } from '@/styles/primitives';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +24,7 @@ function dateAfter(days: number) {
 export default function ReturnPlanScreen() {
   const { colors } = useAppearance();
   const { data: session } = authClient.useSession();
+  const reducedMotion = useReducedMotion();
   const finish = (date: string | null) => {
     if (session?.user.id) saveReturnPlan(session.user.id, date);
     router.replace('/');
@@ -29,6 +32,7 @@ export default function ReturnPlanScreen() {
 
   return <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
     <View style={styles.content}>
+      <LottieView autoPlay={!reducedMotion} loop={!reducedMotion} progress={reducedMotion ? 0.5 : undefined} resizeMode="contain" source={require('../../assets/return-plan.json')} style={styles.animation} webStyle={styles.animation} />
       <Text style={[ui.eyebrow, { color: colors.mutedText }]}>KEEP YOUR MOMENTUM</Text>
       <Text style={[styles.title, { color: colors.text }]}>When do you plan to come back?</Text>
       <Text style={[styles.subtitle, { color: colors.mutedText }]}>A small plan makes it easier to show up again.</Text>
@@ -39,7 +43,7 @@ export default function ReturnPlanScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 }, content: { flex: 1, justifyContent: 'center', padding: 24 },
+  safeArea: { flex: 1 }, animation: { width: 270, height: 180, alignSelf: 'center', marginBottom: 12 }, content: { flex: 1, justifyContent: 'center', padding: 24 },
   title: { marginTop: 10, fontSize: 35, lineHeight: 39, fontWeight: '900', letterSpacing: -1.5 }, subtitle: { marginTop: 9, fontSize: 15, lineHeight: 21, fontWeight: '600' }, options: { gap: 9, marginTop: 28 },
   option: { minHeight: 58, paddingHorizontal: 18, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, optionText: { fontSize: 16, fontWeight: '800' }, arrow: { fontSize: 24, fontWeight: '400' }, pressed: { opacity: .75, transform: [{ scale: .99 }] },
   skip: { alignSelf: 'center', padding: 14, marginTop: 10 }, skipText: { fontSize: 14, fontWeight: '800' },

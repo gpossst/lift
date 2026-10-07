@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, FadeIn, FadeInUp, Layout, SlideInLeft, SlideInRight, ZoomIn, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import { useAppearance } from '@/components/appearance-provider';
 import { FlexAnimation } from '@/components/flex-animation';
 import { RulerSlider } from '@/components/ruler-slider';
@@ -14,6 +15,12 @@ type Step = 'welcome' | 'goals' | 'experience' | 'routine';
 type Styles = ReturnType<typeof createStyles>;
 const steps: Step[] = ['welcome', 'goals', 'experience', 'routine'];
 const goals = ['Build muscle', 'Get stronger', 'Lose fat', 'Feel healthier'];
+const goalGlyphs: Record<string, string> = {
+  'Build muscle': 'M4 20V10l3-6h4l-.5 2.5L8.5 8v3.5C10 9.5 13 9 15.5 10c3 1.2 5 3.8 4.5 6.5-.5 2.5-3 3.5-6 3.5H4z',
+  'Get stronger': 'M6.5 6.5v11 M17.5 6.5v11 M3.5 9v6 M20.5 9v6 M6.5 12h11',
+  'Lose fat': 'M3 6l6.5 6.5 4-4L21 16 M15.5 16H21v-5.5',
+  'Feel healthier': 'M12 20s-8-4.5-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5C20 15.5 12 20 12 20z M6.5 12.5h3l1.5-2.5 2 4 1.5-1.5h3',
+};
 const springify = <T,>(e: T) => (e as { springify: () => T }).springify();
 // Mobbin patterns (Tonal, Yazio, Strava, WHOOP, Equinox): thin top progress + step
 // counter, staggered card entrance, selected-card inversion with radio pop, bottom
@@ -75,7 +82,7 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
           const selected = selectedGoals.includes(goal);
           return <Animated.View key={goal} entering={FadeInUp.delay(120 + i * 70).duration(380)} layout={springify(Layout.damping(26).stiffness(300))}>
             <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} onPress={() => setSelectedGoals(current => current.includes(goal) ? current.filter(item => item !== goal) : [...current, goal])} style={({ pressed }) => [styles.choice, selected && styles.selected, { transform: [{ scale: pressed ? 0.97 : 1 }] }]}>
-              <Text style={[styles.choiceLabel, selected && styles.choiceLabelSelected]}>{goal}</Text>
+              <View style={styles.choiceLead}><Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={selected ? colors.accentText : colors.text} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><Path d={goalGlyphs[goal]} /></Svg><Text style={[styles.choiceLabel, selected && styles.choiceLabelSelected]}>{goal}</Text></View>
               <Animated.Text key={String(selected)} entering={springify(ZoomIn.duration(220))} style={[styles.check, !selected && styles.checkIdle, selected && styles.checkSelected]}>{selected ? '✓' : '+'}</Animated.Text>
             </Pressable>
           </Animated.View>;
@@ -134,7 +141,7 @@ function createStyles(colors: AppearanceColors) {
     welcome: { flex: 1, paddingTop: 72 }, title: { color: colors.text, fontSize: 42, fontWeight: '900', letterSpacing: -1.7, lineHeight: 44, marginTop: 0 }, subtitle: { color: colors.mutedText, fontSize: 16, lineHeight: 23, marginTop: 14, maxWidth: 310 }, animationWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' }, animation: { width: '100%', aspectRatio: 16 / 9 }, signIn: { alignItems: 'center', paddingTop: 14, paddingBottom: 4 }, signInText: { color: colors.mutedText, fontWeight: '700' }, back: { color: colors.mutedText, fontSize: 16, fontWeight: '700', paddingVertical: 8 },     question: { flex: 1, paddingTop: 24 }, questionBody: { flex: 1, marginTop: 40 }, routineBody: { flex: 1, justifyContent: 'flex-end', paddingBottom: 8 }, choices: { gap: 10 },
     choice: { minHeight: 62, borderRadius: 16, paddingHorizontal: 18, paddingVertical: 14, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     selected: { backgroundColor: colors.accent },
-    choiceText: { flex: 1 },
+    choiceText: { flex: 1 }, choiceLead: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
     choiceLabel: { color: colors.text, fontSize: 16, fontWeight: '800' },
     choiceLabelSelected: { color: colors.accentText },
     choiceDetail: { color: colors.mutedText, fontSize: 13, marginTop: 3 },

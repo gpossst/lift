@@ -1,7 +1,7 @@
 {
   "name": "lift",
   "main": "expo-router/entry",
-  "version": "1.3.2",
+  "version": "1.3.4",
   "packageManager": "bun@1.2.18",
   "trustedDependencies": [
     "@shopify/react-native-skia",
@@ -63,7 +63,7 @@
   },
   "scripts": {
     "start": "expo start",
-    "test": "bun test/recommendation-scenarios.test.mjs && bun test/recommendation-replay.test.mjs && bun src/lib/exercise-search.test.ts && bun src/lib/exercise-recommendations.test.ts && bun src/lib/exercise-prescription.test.ts && bun src/lib/split-routines.test.ts && bun src/lib/plate-loading.test.ts && bun src/lib/home-notifications.test.ts && bun src/lib/lift-progress.test.ts && bun src/lib/summary-progress.test.ts && bun src/lib/friend-record-groups.test.ts && bun src/lib/training-overview.test.ts && bun src/lib/history-sections.test.ts && bun src/db/custom-splits.test.ts && bun src/db/account-switch.test.ts && bun src/db/historical-set-edit.test.ts && bun src/db/workout-visits.test.ts && bun src/db/workout-delete.test.ts && bun src/db/demo-friends.test.ts && bun src/db/history-performance.test.mjs && bun src/db/exercise-recovery.test.mjs && bun src/db/cloud-sync.test.mjs",
+    "test": "bun test/recommendation-scenarios.test.mjs && bun test/recommendation-replay.test.mjs && bun src/lib/exercise-search.test.ts && bun src/lib/exercise-recommendations.test.ts && bun src/lib/exercise-prescription.test.ts && bun src/lib/split-routines.test.ts && bun src/lib/plate-loading.test.ts && bun src/lib/home-notifications.test.ts && bun src/lib/lift-progress.test.ts && bun src/lib/summary-progress.test.ts && bun src/lib/friend-record-groups.test.ts && bun src/lib/training-overview.test.ts && bun src/lib/history-sections.test.ts && bun src/db/custom-splits.test.mjs && bun src/db/account-switch.test.ts && bun src/db/historical-set-edit.test.ts && bun src/db/workout-visits.test.ts && bun src/db/workout-delete.test.ts && bun src/db/demo-friends.test.ts && bun src/db/history-performance.test.mjs && bun src/db/exercise-recovery.test.mjs && bun src/db/cloud-sync.test.mjs",
     "typecheck": "tsc --noEmit",
     "check": "bun run lint && bun run typecheck && bun run test",
     "reset-project": "node ./scripts/reset-project.js",

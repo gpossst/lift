@@ -5,6 +5,7 @@ import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { getExercises, getWorkoutHistory, type WorkoutHistoryPoint } from '@/db';
 import { exerciseRequiresWeight } from '@/db/exercise-catalog';
 import { useAppearance } from '@/components/appearance-provider';
+import { EmptyArt } from '@/components/empty-art';
 import { ExerciseDetailSheet } from '@/components/exercise-detail-sheet';
 import { SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
@@ -48,7 +49,7 @@ export function StatsPanel({ initialExerciseId, history, onDeleteSet, embedded =
   const activeMetric = options.some((option) => option.value === metric) ? metric : options[0].value;
   const points = selected ? progressFor(selected.history, requiresWeight, activeMetric) : [];
   const period = comparePeriods(points, weeks);
-  if (!selected) return <View style={styles.empty}><Text style={[styles.emptyTitle, { color: colors.text }]}>No stats yet</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Log an exercise to start seeing your growth.</Text></View>;
+  if (!selected) return <View style={styles.empty}><EmptyArt name="chart" /><Text style={[styles.emptyTitle, { color: colors.text }]}>No stats yet</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Log an exercise to start seeing your growth.</Text></View>;
   const summary = selected.history.length ? <LiftSummary points={period.current} metric={activeMetric} metricOptions={options} onMetricChange={setMetric} range={range} weeks={weeks} change={period.change} onRangeChange={setRange} colors={colors} onDeleteSet={onDeleteSet} gutter={embedded ? 24 : 20} embedded={embedded} /> : <View style={[styles.card, { backgroundColor: colors.surface }]}><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>No workouts logged for this exercise yet.</Text></View>;
   if (embedded) return <ScrollView style={styles.body} contentContainerStyle={[styles.content, styles.embeddedContent]} showsVerticalScrollIndicator={false}>{summary}</ScrollView>;
   return <ExerciseDetailSheet key={selected.id} exercise={selected} onDismiss={onBack} headingDetails={<Text style={[styles.sessionCount, { color: colors.mutedText }]}>{new Set(selected.history.map((point) => point.workoutId)).size} {new Set(selected.history.map((point) => point.workoutId)).size === 1 ? 'workout' : 'workouts'} logged</Text>}>{summary}</ExerciseDetailSheet>;

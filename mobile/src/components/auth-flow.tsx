@@ -1,8 +1,9 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { router, useGlobalSearchParams } from 'expo-router';
 import * as ExpoLinking from 'expo-linking';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, { Easing, FadeInUp, interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppearance } from '@/components/appearance-provider';
@@ -103,6 +104,7 @@ export function AuthFlow({ mode, onBack, onModeChange }: { mode: AuthMode; onBac
       <Pressable accessibilityRole="button" onPress={() => onModeChange(mode === 'signIn' ? 'signUp' : 'signIn')} style={styles.switchAction}><Text style={styles.switchTextStrong}>{mode === 'signIn' ? 'Create account' : 'Sign in'}</Text></Pressable>
     </>}
     {step === 'verifyEmail' && <>
+      <PaperPlane colors={colors} />
       <Text style={styles.subtitle}>Open the verification link we sent to {email} to finish creating your account. Check your Spam folder if you do not see it.</Text>
       <ErrorMessage message={error} styles={styles} />
       <ActionButton label={busy ? 'Sending…' : 'Resend verification email'} disabled={busy} onPress={() => { void resendVerification(); }} styles={styles} />
@@ -138,6 +140,7 @@ export function VerificationPrompt({ email, onContinue }: { email: string; onCon
   };
 
   return <AuthShell title="Check your email." styles={styles}>
+    <PaperPlane colors={colors} />
     <Text style={styles.subtitle}>You’re signed in. Open the verification link we sent to {email} to verify your address. Check your Spam folder if you do not see it.</Text>
     {message && <Text accessibilityRole="alert" style={styles.subtitle}>{message}</Text>}
     <ActionButton label={busy ? 'Sending…' : 'Resend verification email'} disabled={busy} onPress={() => { void resend(); }} styles={styles} />
@@ -257,6 +260,23 @@ function Field({ label, value, onChangeText, styles, colors, ...props }: { label
 
 function CodeForm({ code, setCode, error, busy, label, onSubmit, styles, colors }: { code: string; setCode: (value: string) => void; error?: string | null; busy: boolean; label: string; onSubmit: () => void; styles: Styles; colors: AppearanceColors }) {
   return <><Field label="Verification code" value={code} onChangeText={setCode} autoComplete="one-time-code" keyboardType="number-pad" styles={styles} colors={colors} /><ErrorMessage message={error} styles={styles} /><ActionButton label={busy ? 'Checking…' : label} disabled={busy || !code} onPress={onSubmit} styles={styles} /></>;
+}
+
+function PaperPlane({ colors }: { colors: AppearanceColors }) {
+  const reduceMotion = useReducedMotion();
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (!reduceMotion) t.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.sin) }), -1, true);
+  }, [reduceMotion, t]);
+  const float = useAnimatedStyle(() => ({ transform: [{ translateX: interpolate(t.value, [0, 1], [-4, 4]) }, { translateY: interpolate(t.value, [0, 1], [5, -5]) }, { rotate: `${interpolate(t.value, [0, 1], [3, -4])}deg` }] }));
+  return <View accessible={false} importantForAccessibility="no-hide-descendants" style={{ height: 96, flexDirection: 'row', alignItems: 'center' }}>
+    <Svg width={96} height={40} viewBox="0 0 96 40" style={{ transform: [{ translateY: 28 }] }}><Path d="M2 34 C 30 40, 52 30, 92 10" stroke={colors.surfaceStrong} strokeWidth={2.5} strokeDasharray="4 7" strokeLinecap="round" fill="none" /></Svg>
+    <Animated.View style={float}><Svg width={72} height={72} viewBox="0 0 64 64">
+      <Path d="M4 30 L60 8 L22 38 Z" fill={colors.accent} />
+      <Path d="M22 38 L60 8 L44 54 Z" fill={colors.accent} opacity={0.72} />
+      <Path d="M22 38 L26 54 L33 45 Z" fill={colors.accent} opacity={0.45} />
+    </Svg></Animated.View>
+  </View>;
 }
 
 function ErrorMessage({ message, styles }: { message?: string | null; styles: Styles }) {

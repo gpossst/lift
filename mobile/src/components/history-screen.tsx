@@ -5,6 +5,7 @@ import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getWorkoutVisits } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
+import { EmptyArt } from '@/components/empty-art';
 import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { groupWorkoutVisits } from '@/lib/history-sections';
 import { useWorkoutData } from '@/hooks/use-workout-data';
@@ -25,7 +26,7 @@ export default function HistoryScreen() {
       renderItem={({ item: visit }) => <Pressable onPress={() => router.push({ pathname: pathname.startsWith('/stats/') ? '/stats/history-detail' : '/history-detail', params: { workoutId: visit.workout.id } })} style={({ pressed }) => [styles.visit, { borderColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`View ${workoutSplitLabel(visit.workout.split)} workout from ${formatDate(visit.workout.endedAt ?? visit.workout.createdAt)}`}>
         <View style={styles.visitCopy}><Text style={[styles.visitTitle, { color: colors.text }]}>{workoutSplitLabel(visit.workout.split)} workout<Text style={[styles.visitDate, { color: colors.mutedText }]}> · {formatRowDate(visit.workout.endedAt ?? visit.workout.createdAt)}</Text></Text><Text style={[styles.meta, { color: colors.mutedText }]}>{visit.exercises} exercise{visit.exercises === 1 ? '' : 's'}  ·  {visit.sets} set{visit.sets === 1 ? '' : 's'}  ·  {visit.volume ? `${formatVolume(visit.volume)} lb` : `${visit.reps} reps`}</Text></View><ChevronRight width={20} height={20} color={colors.subtleText} strokeWidth={2.2} />
       </Pressable>}
-      ListEmptyComponent={<View style={styles.empty}><Text style={[styles.emptyTitle, { color: colors.text }]}>No workouts yet</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Finish a workout to find it here.</Text></View>}
+      ListEmptyComponent={<View style={styles.empty}><EmptyArt name="logbook" /><Text style={[styles.emptyTitle, { color: colors.text }]}>No workouts yet</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Finish a workout to find it here.</Text></View>}
     />
   </SafeAreaView>;
 }

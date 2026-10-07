@@ -1,5 +1,5 @@
 import { exerciseCatalog, exerciseRequiresWeight, type Exercise } from '@/db/exercise-catalog';
-import { getExerciseRecommendations, getRankedExercises, getProgressiveOverloadRecommendation as recommendProgressiveOverload, getProgressiveOverloadLoadOptions, getRecommendedWorkoutSplit, type RecommendationFeedback, type RecommendationSet } from './exercise-recommendations';
+import { getExerciseRecommendations, getRankedExercises, getProgressiveOverloadRecommendation as recommendProgressiveOverload, getProgressiveOverloadLoadOptions, getRecommendedWorkoutSplit, type RecommendationFeedback, type RecommendationSet, type WorkoutSplitDefinition } from './exercise-recommendations';
 
 function assert(condition: unknown, message = 'assertion failed'): asserts condition { if (!condition) throw new Error(message); }
 function equal<T>(actual: T, expected: T) { assert(actual === expected, `expected ${String(expected)}, got ${String(actual)}`); }
@@ -44,6 +44,32 @@ equal(getRecommendedWorkoutSplit([], now, crossSplitFatigue), 'pull');
 const customUpper = { id: 'custom:upper', name: 'Upper', muscles: ['chest', 'lats'] };
 const customLower = { id: 'custom:lower', name: 'Lower', muscles: ['quadriceps', 'hamstrings'] };
 equal(getRecommendedWorkoutSplit([{ split: customUpper.id, completedAt: now, sets: 8 }], now, [], [customUpper, customLower]), customLower.id);
+// Different day IDs must share recent work when their muscle targets overlap.
+const upperB = { ...customUpper, id: 'custom:upper-b', name: 'Upper B' };
+const overlappingDays = [customUpper, upperB, customLower];
+const visit = (split: string, sets: number, daysAgo = 0) => ({ split, sets, completedAt: new Date(now.getTime() - daysAgo * 86_400_000) });
+for (const daysAgo of [0, 1]) {
+  equal(getRecommendedWorkoutSplit([visit(customUpper.id, 12, daysAgo)], now, [], overlappingDays), customLower.id);
+}
+equal(getRecommendedWorkoutSplit([visit(customUpper.id, 12)], now, [], [upperB, customLower, customUpper]), customLower.id);
+equal(getRecommendedWorkoutSplit([visit(upperB.id, 12)], now, [], overlappingDays), customLower.id);
+// Partial overlap scales penalties rather than treating every shared muscle as a full day.
+const chestDay = { id: 'custom:chest', name: 'Chest', muscles: ['chest'] };
+const partialHistory = [visit(chestDay.id, 12), visit(customLower.id, 6, 3)];
+equal(getRecommendedWorkoutSplit(partialHistory, now, [], [customUpper, customLower, chestDay]), customUpper.id);
+equal(getRecommendedWorkoutSplit([...partialHistory].reverse(), now, [], [customUpper, customLower, chestDay]), customUpper.id);
+// Work outside the active candidates still contributes when its targets are known.
+equal(getRecommendedWorkoutSplit([visit('push', 12)], now, [], [customUpper, customLower]), customLower.id);
+equal(getRecommendedWorkoutSplit([{ ...visit('custom:inactive-upper', 12), muscles: customUpper.muscles }], now, [], [upperB, customLower]), customLower.id);
+for (const history of [[visit(customUpper.id, 12, 8)], [visit(customUpper.id, 12, -1)], [visit('deleted', 12)]]) {
+  equal(getRecommendedWorkoutSplit(history, now, [], overlappingDays), customUpper.id);
+}
+equal(getRecommendedWorkoutSplit([], now, [], overlappingDays), customUpper.id);
+// Muscle check-ins still apply independently of overlap penalties.
+equal(getRecommendedWorkoutSplit([visit(customUpper.id, 12)], now, [
+  ...customLower.muscles.map((muscle) => ({ workoutId: 'lower-fatigue', split: customLower.id, muscle, exhaustion: 10, completedAt: now })),
+], overlappingDays), customUpper.id);
+
 deepEqual(getExerciseRecommendations([bench, squat, deadlift], [], [], 'today', customUpper.id, 3, now, {}, [], customUpper).map((item) => item.exercise.id), ['bench']);
 deepEqual(getExerciseRecommendations([bench, plank], [], [], 'today', customUpper.id, 3, now, {}, [], customUpper).map((item) => item.exercise.id), ['bench']);
 
@@ -155,9 +181,10 @@ assert(Math.abs(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, no
 assert(getExerciseRecommendations([fly], [set('fly', 'favorite-1', 8), set('fly', 'favorite-2', 9), set('fly', 'favorite-3', 10)], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] })[0]!.score > baselineFly + 2, 'regular completion should strengthen a favorite beyond its prior');
 const rejectedFavorite = [feedback('fly', 'replaced', 2), feedback('fly', 'removed', 4), feedback('fly', 'replaced', 6)];
 equal(
-  getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] }, rejectedFavorite)[0]!.score,
-  getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, rejectedFavorite)[0]!.score,
+  getRankedExercises([fly], [], [], 'today', 'push', now, { favoriteExerciseIds: ['fly'] }, rejectedFavorite)[0]!.score,
+  getRankedExercises([fly], [], [], 'today', 'push', now, {}, rejectedFavorite)[0]!.score,
 );
+equal(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] }, rejectedFavorite).length, 0);
 equal(getExerciseRecommendations([fly, shoulderPress], [], [{ workoutId: 'recent', split: 'push', muscle: 'chest', exhaustion: 10, completedAt: now }], 'today', 'push', 1, now, { favoriteExerciseIds: ['fly'] })[0]!.exercise.id, 'shoulder');
 
 const manualFly = getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, {}, [feedback('fly', 'manual', 2)])[0]!.score;
@@ -190,9 +217,15 @@ assert(rawPreferenceScore([], [feedback('fly', 'removed', 0, 'today')]) < rawPre
 }
 const ancientDays = (now.getTime() - new Date('2020-01-01T12:00:00Z').getTime()) / 86_400_000;
 const pairedBonus = (daysAgo: number, copies = 1) => {
-  const pairs = Array.from({ length: copies }, (_, index) => [set('fly', `pair-${index}`, daysAgo), set('bench', `pair-${index}`, daysAgo)]).flat();
-  const unpaired = pairs.map((item) => item.exerciseId === 'bench' ? { ...item, workoutId: `solo-${item.workoutId}` } : item);
-  return rawPreferenceScore([set('bench', 'today'), ...pairs]) - rawPreferenceScore([set('bench', 'today'), ...unpaired]);
+  // Use a different primary muscle so this isolates co-training from the
+  // frequency of competing exercises for the same muscle.
+  const pairs = Array.from({ length: copies }, (_, index) => [set('fly', `pair-${index}`, daysAgo), set('shoulder', `pair-${index}`, daysAgo)]).flat();
+  const unpaired = pairs.map((item) => item.exerciseId === 'shoulder' ? { ...item, workoutId: `solo-${item.workoutId}` } : item);
+  const score = (history: RecommendationSet[]) => {
+    const result = getRankedExercises([fly, { ...shoulderPress, equipment: 'body only' }], [set('shoulder', 'today'), ...history], [], 'today', 'push', now).find(({ exercise }) => exercise.id === 'fly')!;
+    return result.score * result.estimatedMinutes;
+  };
+  return score(pairs) - score(unpaired);
 };
 close(pairedBonus(8), 2 * Math.pow(.5, 8 / 30));
 close(pairedBonus(38), pairedBonus(8) / 2);
@@ -374,6 +407,27 @@ equal(shoulderScore(pplHistory), frequencyScore(pplHistory));
 equal(shoulderScore([...pplHistory, set('history-shoulder', 'pull', 9)]), shoulderScore(pplHistory));
 // Cold-start custom splits do not assume every training day trains their muscles.
 equal(getRankedExercises([fly], [], [], 'today', customUpper.id, now, { trainingDays: 3 }, [], customUpper)[0]!.score, frequencyScore([]));
+// Today's work exposes the weekly target without supplying historical frequency.
+const customFrequencyScore = (splitSchedule?: readonly WorkoutSplitDefinition[], history: RecommendationSet[] = [], trainingDays = 3) => getRankedExercises(
+  frequencyCatalog, [...history, ...completedChestDose], [], 'today', customUpper.id, now,
+  { trainingDays, splitSchedule }, [], customUpper,
+).find(({ exercise: item }) => item.id === fly.id)!.score;
+const oneExposureScore = customFrequencyScore();
+// One Full Body/Upper slot repeats on all three weekly training days.
+equal(customFrequencyScore([customUpper]), customFrequencyScore(undefined, fullBodyHistory));
+assert(customFrequencyScore([customUpper]) > oneExposureScore);
+// Upper/Lower shares chest work across half the visits (1.5 exposures per week).
+assert(Math.abs(customFrequencyScore([customUpper, customLower]) - oneExposureScore - 2.5 * 2 / 10) < 1e-10);
+// Distinct Upper days and repeated slots both count; duplicate muscle tags do not.
+const scheduledUpperB = { ...customUpper, id: 'custom:upper-b', muscles: ['chest', 'chest', 'lats'] };
+assert(Math.abs(customFrequencyScore([customUpper, scheduledUpperB, customLower]) - oneExposureScore - 3 * 2 / 10) < 1e-10);
+equal(customFrequencyScore([customUpper, customUpper, customLower]), customFrequencyScore([customUpper, scheduledUpperB, customLower]));
+equal(customFrequencyScore([customLower, customUpper, scheduledUpperB]), customFrequencyScore([customUpper, scheduledUpperB, customLower]));
+equal(customFrequencyScore([]), oneExposureScore);
+equal(customFrequencyScore([customUpper], [], 1), customFrequencyScore(undefined, [], 1));
+// Observed muscle exposure takes precedence over the schedule once history exists.
+equal(customFrequencyScore([customUpper], pplHistory), customFrequencyScore(undefined, pplHistory));
+equal(customFrequencyScore([customUpper, customLower], fullBodyHistory), customFrequencyScore(undefined, fullBodyHistory));
 // More training days reduce the prescription as well as scaling the weekly target.
 equal(frequencyScore([], 5), (2 * 18 + 2 * 2 + 3) / 7);
 equal(getExerciseRecommendations([bench], [set('bench', 'previous')], [], 'today', 'push', 1, now, { weightLb: 160 })[0]!.relativeLoadPercent, 63);
@@ -628,6 +682,39 @@ equal(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, routine
 equal(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, { routineExerciseIdsBySplit: { pull: ['fly'] } })[0]!.score, baselineFly);
 assert(Math.abs(getExerciseRecommendations([fly], [], [], 'today', 'push', 1, now, { ...routineContext, favoriteExerciseIds: ['fly'] })[0]!.score - baselineFly - 2) < 1e-10, 'saved preferences add a 20-point prior');
 equal(getExerciseRecommendations([fly], [], severeChest, 'today', 'push', 1, now, routineContext).length, 0);
+
+// Custom routines boost eligible preferences and preserve saved order without widening muscle targets.
+const offTargetWithSecondary = exercise('off-target-secondary', 'Off-target Lift', ['quadriceps'], ['chest']);
+const customRoutineCatalog = [bench, fly, squat, plank, offTargetWithSecondary];
+const customRoutineIds = [fly.id, bench.id, squat.id, plank.id, offTargetWithSecondary.id];
+const customRoutineContext = { routineExerciseIdsBySplit: { [customUpper.id]: customRoutineIds } };
+const reversedCustomRoutineContext = { routineExerciseIdsBySplit: { [customUpper.id]: [...customRoutineIds].reverse() } };
+const customRoutineRanking = getRankedExercises(customRoutineCatalog, [], [], 'today', customUpper.id, now, customRoutineContext, [], customUpper);
+deepEqual(customRoutineRanking, getRankedExercises(customRoutineCatalog, [], [], 'today', customUpper.id, now, reversedCustomRoutineContext, [], customUpper));
+deepEqual(customRoutineRanking.map(({ exercise }) => exercise.id).sort(), [bench.id, fly.id].sort());
+const customRoutinePlan = getExerciseRecommendations(customRoutineCatalog, [], [], 'today', customUpper.id, 3, now, customRoutineContext, [], customUpper);
+const reversedCustomRoutinePlan = getExerciseRecommendations(customRoutineCatalog, [], [], 'today', customUpper.id, 3, now, reversedCustomRoutineContext, [], customUpper);
+deepEqual(customRoutinePlan.map(({ exercise }) => exercise.id), [fly.id, bench.id]);
+deepEqual(reversedCustomRoutinePlan.map(({ exercise }) => exercise.id), [bench.id, fly.id]);
+deepEqual(customRoutinePlan.map(({ exercise }) => exercise.id).sort(), reversedCustomRoutinePlan.map(({ exercise }) => exercise.id).sort());
+// Explicit order overrides established history, including in default splits.
+const routineOrderHistory = [14, 28].flatMap((daysAgo) => [
+  set(bench.id, `order-${daysAgo}`, daysAgo),
+  { ...set(fly.id, `order-${daysAgo}`, daysAgo), completedAt: new Date(now.getTime() - daysAgo * 86_400_000 + 60_000) },
+]);
+for (const definition of [customUpper, { id: 'push', name: 'Push', muscles: ['chest'] }]) {
+  const plan = getExerciseRecommendations([bench, fly], routineOrderHistory, [], 'today', definition.id, 3, now, {
+    routineExerciseIdsBySplit: { [definition.id]: [fly.id, bench.id] },
+  }, [], definition);
+  deepEqual(plan.map(({ exercise }) => exercise.id), [fly.id, bench.id]);
+}
+assert(customRoutinePlan.length > 0 && customRoutinePlan.every(({ exercise }) => [bench.id, fly.id].includes(exercise.id)), 'saved off-target movements remain ineligible in a custom plan');
+const customBaselineScore = getRankedExercises([fly], [], [], 'today', customUpper.id, now, {}, [], customUpper)[0]!.score;
+assert(Math.abs(getRankedExercises([fly], [], [], 'today', customUpper.id, now, customRoutineContext, [], customUpper)[0]!.score - customBaselineScore - 2) < 1e-10, 'custom routines retain the preference boost');
+deepEqual(
+  getExerciseRecommendations([bench, squat], [], [], 'today', customUpper.id, 3, now, { routineExerciseIdsBySplit: { [customUpper.id]: [squat.id] } }, [], customUpper),
+  getExerciseRecommendations([bench, squat], [], [], 'today', customUpper.id, 3, now, {}, [], customUpper),
+);
 
 // Explicit preferences outrank equally useful unfamiliar movements regardless of tag count.
 const routineMovement = exercise('routine-movement', 'Routine Press', ['chest']);

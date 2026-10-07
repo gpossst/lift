@@ -11,8 +11,15 @@ const widgets: typeof import('expo-widgets') | null = requireOptionalNativeModul
 
 type RestProps = { startedAt: number; endsAt: number };
 
-const RestLayout = ({ startedAt, endsAt }: RestProps) => {
+const RestLayout = ({ startedAt, endsAt }: RestProps, { isStale }: { isStale?: boolean }) => {
   'widget';
+  // staleDate is endsAt, so iOS flips this while the app is suspended and can't end the activity itself.
+  if (isStale) {
+    const label = (size: number) => <Text modifiers={[font({ size, weight: 'semibold', design: 'rounded' }), foregroundStyle('#5194FF')]}>{size > 20 ? 'Rest over · Go' : 'Go'}</Text>;
+    const filled = <ProgressView value={1} modifiers={[progressViewStyle('circular'), tint('#5194FF'), frame({ width: 18, height: 18 })]} />;
+    const full = <VStack spacing={10} modifiers={[padding({ all: 16 })]}>{label(34)}<ProgressView value={1} modifiers={[progressViewStyle('linear'), tint('#5194FF')]} /></VStack>;
+    return { banner: full, compactLeading: filled, compactTrailing: label(15), minimal: filled, expandedCenter: full };
+  }
   const interval = { lower: new Date(startedAt), upper: new Date(endsAt) };
   const countdown = (size: number) => <Text timerInterval={interval} countsDown modifiers={[font({ size, weight: 'semibold', design: 'rounded' }), monospacedDigit(), foregroundStyle('#5194FF')]} />;
   const ring = <ProgressView timerInterval={interval} countsDown modifiers={[progressViewStyle('circular'), tint('#5194FF'), frame({ width: 18, height: 18 })]} />;

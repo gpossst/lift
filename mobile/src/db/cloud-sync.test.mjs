@@ -22,9 +22,18 @@ mock.module('expo-sqlite', () => ({ openDatabaseSync: () => ({
 mock.module('drizzle-orm/expo-sqlite', () => ({ drizzle: () => ({}) }));
 const native = await import('./index.native.ts');
 let adapter = web;
-mock.module('@/db', () => Object.fromEntries(['acknowledgeCloudSyncBatch', 'getCloudSyncBatch', 'getCloudSyncCursor', 'hasPendingCloudSync', 'mergeCloudSyncChanges', 'recordCloudSyncFailure', 'rejectCloudSyncBatch'].map((name) => [name, (...args) => adapter[name](...args)])));
+mock.module('@/db', () => Object.fromEntries(['acknowledgeCloudSyncBatch', 'getCloudSyncBatch', 'getCloudSyncCursor', 'getRejectedCloudSyncChanges', 'reconcileCloudSyncConflicts', 'hasPendingCloudSync', 'mergeCloudSyncChanges', 'recordCloudSyncFailure', 'rejectCloudSyncBatch'].map((name) => [name, (...args) => adapter[name](...args)])));
 mock.module('@/lib/auth-client', () => ({ apiUrl: 'https://sync.test', authHeaders: async () => ({}) }));
 const { syncWorkoutData, setCloudSyncUser, subscribeWorkoutData } = await import('../lib/cloud-sync.ts');
+const { reconcileSyncConflicts } = await import('../lib/cloud-sync-conflicts.ts');
+const attempted = { entity: 'set', key: 'test', operation: 'upsert', baseRevision: 1, record: { weight: 100, reps: 8 }, conflict: true, reason: 'stale revision' };
+assert.equal(reconcileSyncConflicts([attempted], [
+  { ...attempted, revision: 2 },
+  { ...attempted, revision: 3, record: { weight: 110, reps: 8 } },
+]).length, 1, 'an intermediate matching payload must not hide a later competing edit');
+assert.equal(reconcileSyncConflicts([attempted], [{ ...attempted, revision: 2 }]).length, 0);
+assert.equal(reconcileSyncConflicts([attempted], [], true)[0].remoteRevision, 0, 'absent records stay reviewable without repeatedly replaying history');
+assert.equal(reconcileSyncConflicts([{ ...attempted, conflict: false }], [{ ...attempted, revision: 2 }]).length, 1, 'validation issues stay available for correction');
 const workerRoot = new URL('../../../worker/', import.meta.url);
 const requireWorker = createRequire(new URL('package.json', workerRoot));
 const { convertV4MiniflareOptions, Miniflare } = await import(requireWorker.resolve('miniflare'));
@@ -125,6 +134,17 @@ try {
     await syncWorkoutData();
     assert.equal(local.getRejectedCloudSyncChanges().length, 0);
     assert.equal(local.getWorkoutHistory(exerciseId)[0].weight, 115);
+    // Repair uploads may carry obsolete revisions although the values match.
+    // Resolve against the final log entry, including conflicts from older clients
+    // whose cursor has already advanced beyond the matching remote record.
+    const setKey = [workout.id, exerciseId, 1].join('\u001f');
+    local.markCloudSyncDirty('set', setKey);
+    const duplicate = local.getCloudSyncBatch();
+    local.acknowledgeCloudSyncBatch(duplicate.batchId, 999, duplicate.changes.map((item) => ({ entity: item.entity, key: item.key, status: 'conflict' })));
+    assert.equal(local.getRejectedCloudSyncChanges().length, 1);
+    await syncWorkoutData();
+    assert.equal(local.getRejectedCloudSyncChanges().length, 0, 'existing identical conflict resolves silently after replay');
+    assert.equal(local.hasPendingCloudSync(), false);
     // A competing device wins stale edits, but the attempted value stays reviewable.
     const remote = local.getCloudSyncBatch();
     assert.equal(remote, null);
@@ -135,6 +155,12 @@ try {
     assert.equal(local.getWorkoutHistory(exerciseId)[0].weight, 120);
     assert.equal(local.getRejectedCloudSyncChanges()[0].record.weight, 125);
     assert.equal(local.getRejectedCloudSyncChanges()[0].conflict, true);
+    assert.ok(Number.isSafeInteger(local.getRejectedCloudSyncChanges()[0].remoteRevision));
+    const replayRequests = [];
+    globalThis.fetch = async (url, init) => { replayRequests.push(String(url)); return serverFetch(url, init); };
+    await syncWorkoutData();
+    assert.ok(!replayRequests.some((url) => url.includes('cursor=0&')), 'known genuine conflicts do not repeatedly download all history');
+    globalThis.fetch = serverFetch;
     assert.equal(local.resubmitCloudSyncChange('set', local.getRejectedCloudSyncChanges()[0].key), false, 'resubmission cannot silently overwrite a device conflict');
     // A remote parent deletion keeps attempted child values reachable for review.
     const parentRevision = await DB.prepare('SELECT sync_revision AS revision FROM workouts WHERE user_id = ? AND local_id = ?').bind(name, workout.id).first();
@@ -147,6 +173,42 @@ try {
     await syncWorkoutData();
     assert.equal(local.getRejectedCloudSyncChanges().length, 0);
     assert.equal(local.hasPendingCloudSync(), false);
+    // Both swipe choices are durable offline and cover the whole workout.
+    for (const choice of ['keep', 'delete']) {
+      const original = local.createWorkout('pull');
+      local.saveWorkoutSet({ ...set, workoutId: original.id, weight: 60 });
+      local.saveWorkoutMuscleRatings(original.id, { chest: 6 });
+      local.recordRecommendationFeedback(original.id, exerciseId, 'manual');
+      local.endWorkout(original.id);
+      await syncWorkoutData();
+      const revision = (await DB.prepare('SELECT sync_revision AS revision FROM workouts WHERE user_id = ? AND local_id = ?').bind(name, original.id).first()).revision;
+      await push(new Request('https://sync.test/v1/sync', { method: 'POST', body: JSON.stringify({ batchId: `${name}-swipe-${choice}`, changes: [{ entity: 'workout', key: original.id, operation: 'delete', baseRevision: revision }] }) }), { DB }, name);
+      // A repair upload racing the deletion leaves a locally saved copy.
+      local.markCloudSyncDirty('workout', original.id);
+      await syncWorkoutData();
+      assert.equal(local.getRejectedCloudSyncChanges().find((item) => item.key === original.id).remoteOperation, 'delete');
+      globalThis.fetch = async () => { throw new Error('Offline'); };
+      assert.equal(local.resolveDeletedWorkout(original.id, choice), true);
+      assert.equal(local.resolveDeletedWorkout(original.id, choice), false, 'a repeated swipe cannot create a second copy');
+      assert.equal(local.getWorkoutVisitSummary(original.id), null);
+      assert.equal(local.getRejectedCloudSyncChanges().length, 0);
+      if (choice === 'keep') {
+        const restored = local.getCloudSyncBatch().changes.find((item) => item.entity === 'workout');
+        assert.ok(restored && restored.key !== original.id);
+        assert.equal(local.getWorkoutVisitSummary(restored.key).sets, 1);
+        assert.equal(local.getWorkoutHistory(exerciseId).find((item) => item.workoutId === restored.key).weight, 60);
+        globalThis.fetch = serverFetch;
+        await syncWorkoutData();
+        assert.equal((await DB.prepare('SELECT COUNT(*) AS count FROM workout_sets WHERE user_id = ? AND workout_local_id = ?').bind(name, restored.key).first()).count, 1);
+        assert.equal((await DB.prepare('SELECT exhaustion FROM workout_muscle_ratings WHERE user_id = ? AND workout_local_id = ?').bind(name, restored.key).first()).exhaustion, 6);
+        assert.equal((await DB.prepare('SELECT COUNT(*) AS count FROM recommendation_feedback WHERE user_id = ? AND workout_local_id = ?').bind(name, restored.key).first()).count, 1);
+      } else {
+        assert.equal(local.hasPendingCloudSync(), false, 'accepting a deletion does not send another cloud mutation');
+        globalThis.fetch = serverFetch;
+      }
+      assert.equal(await DB.prepare('SELECT 1 FROM workouts WHERE user_id = ? AND local_id = ?').bind(name, original.id).first(), null, 'the original cloud deletion remains intact');
+      assert.equal(local.getRejectedCloudSyncChanges().length, 0);
+    }
     // Transport failures keep the exact immutable payload and idempotency key.
     local.createWorkout('legs');
     const retryBatch = local.getCloudSyncBatch();
@@ -157,6 +219,21 @@ try {
     globalThis.fetch = serverFetch;
     await syncWorkoutData();
     assert.equal(local.hasPendingCloudSync(), false);
+    // Archive a split, then restore a fresh device solely from server history.
+    const split = local.saveCustomSplit({ name: 'Upper A', muscles: ['chest', 'lats'] });
+    const historicalWorkout = local.createWorkout(split.id);
+    local.endWorkout(historicalWorkout.id);
+    await syncWorkoutData();
+    local.deleteCustomSplit(split.id);
+    await syncWorkoutData();
+    assert.equal((await DB.prepare('SELECT archived FROM user_splits WHERE user_id = ? AND id = ?').bind(name, split.id).first()).archived, 1);
+    local.clearLocalAccountData();
+    local.prepareCloudSyncForUser(name);
+    await syncWorkoutData();
+    assert.equal(local.getCustomSplits().length, 0, 'restored archives stay out of workout selection');
+    const restoredSplit = local.getWorkoutVisitSummary(historicalWorkout.id).workout.split;
+    assert.equal(local.getWorkoutSplitDefinition(restoredSplit).name, 'Upper A');
+    assert.deepEqual(local.getWorkoutSplitDefinition(restoredSplit).muscles, ['chest', 'lats']);
     assert.ok(requests > 0);
   }
   setCloudSyncUser(null);

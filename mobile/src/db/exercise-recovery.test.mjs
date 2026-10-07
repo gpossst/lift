@@ -71,3 +71,26 @@ assert.equal(getExerciseRecoveryExhaustion(multiplePrimary, [rating('older', 'sh
 for (const detailsJson of [null, 'null', '{', JSON.stringify({ primaryMuscles: 'chest', secondaryMuscles: [null, 3] })]) {
   assert.equal(getExerciseRecoveryExhaustion({ detailsJson }, separateMuscles, now), undefined);
 }
+
+// Both adapters supply all saved custom days to cold-start ranking and planning.
+for (const adapter of [web, native]) {
+  const upper = adapter.saveCustomSplit({ name: 'Upper A', muscles: ['chest', 'lats'] });
+  const workout = adapter.createWorkout(upper.id);
+  for (let setNumber = 1; setNumber <= 5; setNumber++) {
+    adapter.saveWorkoutSet({ exerciseId: exercise.id, workoutId: workout.id, setNumber, weight: 100, reps: 8, completedAt: new Date() });
+  }
+  const context = { trainingDays: 3 };
+  const score = (preferences = context) => adapter.getRankedExercises(workout.id, upper.id, preferences)
+    .find((item) => item.exercise.id === exercise.id).score;
+  const fallback = score({ ...context, splitSchedule: [] });
+  const fullBodyFrequency = score();
+  assert(fullBodyFrequency > fallback, 'a single custom day repeats on every training day');
+  adapter.saveCustomSplit({ name: 'Lower', muscles: ['quadriceps'] });
+  const upperLowerFrequency = score();
+  assert(upperLowerFrequency > fallback && upperLowerFrequency < fullBodyFrequency, 'the other scheduled day must dilute chest frequency');
+  adapter.saveCustomSplit({ name: 'Upper B', muscles: ['chest', 'lats'] });
+  assert(score() > upperLowerFrequency, 'a second Upper day adds chest exposure');
+  const explicit = { ...context, splitSchedule: adapter.getCustomSplits() };
+  assert.deepEqual(adapter.getRankedExercises(workout.id, upper.id, context), adapter.getRankedExercises(workout.id, upper.id, explicit));
+  assert.deepEqual(adapter.getExerciseRecommendations('preview', upper.id, 3, context), adapter.getExerciseRecommendations('preview', upper.id, 3, explicit));
+}

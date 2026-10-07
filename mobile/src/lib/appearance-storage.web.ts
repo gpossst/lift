@@ -8,6 +8,7 @@ export function readAppearance(): AppearancePreferences {
     return {
       mode: value.mode === 'dark' ? 'dark' : value.mode === 'light' ? 'light' : systemMode(),
       accent: value.accent === 'red' || value.accent === 'blue' || value.accent === 'yellow' ? value.accent : defaultAppearance.accent,
+      bodyShape: value.bodyShape === 'female' ? 'female' : defaultAppearance.bodyShape,
       showWorkoutRecommendations: typeof value.showWorkoutRecommendations === 'boolean'
         ? value.showWorkoutRecommendations
         : defaultAppearance.showWorkoutRecommendations,

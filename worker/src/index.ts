@@ -1,5 +1,6 @@
 import { createAuth, sendEmail, type AuthEnv } from './auth';
 import { emailLogoPngBase64 } from './email-logo';
+import { wordmark } from './wordmark';
 
 const emailLogoPng = Uint8Array.from(atob(emailLogoPngBase64), (character) => character.charCodeAt(0));
 
@@ -14,7 +15,7 @@ export interface Env extends AuthEnv {
 
 type SyncSet = { exerciseId: string; workoutId: string; setNumber: number; weight: number; reps: number; completedAt: number; muscles: string[]; updatedAt?: number };
 type SyncWorkout = { id: string; split: string; createdAt: number; endedAt: number | null; updatedAt?: number };
-type SyncSplit = { id: string; name: string; muscles: string[]; updatedAt?: number };
+type SyncSplit = { id: string; name: string; muscles: string[]; archived?: boolean; updatedAt?: number };
 type SyncRating = { workoutId: string; muscle: string; exhaustion: number; createdAt: number; updatedAt?: number };
 type FeedbackAction = 'accepted' | 'completed' | 'impression' | 'replaced' | 'removed' | 'skipped' | 'manual';
 type SyncFeedback = { workoutId: string; exerciseId: string; action: FeedbackAction; relatedExerciseId?: string | null; rank?: number | null; createdAt: number; updatedAt?: number };
@@ -27,9 +28,9 @@ type AuthenticatedUser = { id: string; displayName: string; imageUrl: string | n
 type PreferenceGoal = 'Build muscle' | 'Get stronger' | 'Lose fat' | 'Feel healthier';
 type Experience = 'new' | 'some' | 'experienced';
 type TrainingLocation = 'gym' | 'home' | 'both';
-type RecommendationPreferences = { goals: PreferenceGoal[] | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string[] | null; routineExerciseIdsBySplit: Record<string, string[]> | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string[] | null; sessionMinutes: number | null; optInSimilarUsers: boolean };
+type RecommendationPreferences = { goals: PreferenceGoal[] | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string[] | null; routineExerciseIdsBySplit: Record<string, string[]> | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string[] | null; sessionMinutes: number | null; optInSimilarUsers: boolean; useCustomSplits: boolean | null };
 type UserProfile = { userId: string; displayName: string; hasChosenDisplayName: boolean; imageUrl: string | null; recommendationPreferences: RecommendationPreferences };
-type ProfileRow = Omit<UserProfile, 'recommendationPreferences' | 'hasChosenDisplayName'> & { hasChosenDisplayName: number; goals: string | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string | null; routineExerciseIdsBySplit: string | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string | null; sessionMinutes: number | null; optInSimilarUsers: number };
+type ProfileRow = Omit<UserProfile, 'recommendationPreferences' | 'hasChosenDisplayName'> & { hasChosenDisplayName: number; goals: string | null; weightLb: number | null; heightInches: number | null; experience: Experience | null; favoriteExerciseIds: string | null; routineExerciseIdsBySplit: string | null; trainingLocation: TrainingLocation | null; trainingDays: number | null; gymId: string | null; availableEquipment: string | null; sessionMinutes: number | null; optInSimilarUsers: number; useCustomSplits: number | null };
 type Onboarding = { displayName?: string; goals: string[]; weightLb?: number; heightInches?: number; experience: 'new' | 'some' | 'experienced'; favoriteExerciseIds?: string[]; trainingLocation?: 'gym' | 'home' | 'both'; trainingDays: number };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
@@ -52,8 +53,8 @@ const page = (title: string, body: string) => {
   const nonce = crypto.randomUUID();
   const content = body.replaceAll('<script>', `<script nonce="${nonce}">`);
   const tokens = ':root{color-scheme:light dark;--bg:#F9F9F7;--surface:#EDEEE9;--surface-strong:#E3E5DF;--text:#11120F;--muted:#72776D;--subtle:#858980;--accent:#FFCC4A;--accent-text:#17180F;--danger:#E5484D}@media(prefers-color-scheme:dark){:root{--bg:#151612;--surface:#252720;--surface-strong:#34372E;--text:#F7F8F2;--muted:#A9AEA2;--subtle:#747B70}}';
-  const layout = "*{box-sizing:border-box}body{font:16px/1.55 Spline Sans,Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;max-width:720px;margin:auto;padding:40px 20px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}h1{font-size:clamp(2rem,7vw,2.75rem);line-height:1.02;letter-spacing:-.035em;font-weight:900}h2{margin-top:2rem;letter-spacing:-.02em;font-weight:900}p{color:var(--muted);font-weight:600}strong{color:var(--text)}a{color:var(--text);font-weight:800;text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}nav{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:40px;font-size:14px;font-weight:800}nav .brand{margin-right:auto;color:var(--text);font-size:1.25rem;font-weight:900;letter-spacing:-.03em;text-decoration:none}nav a{color:var(--muted);text-decoration:none}nav a:hover{color:var(--text)}label{display:block;margin:18px 0 6px;color:var(--muted);font-size:13px;font-weight:800}input{width:100%;height:56px;padding:0 18px;border:1.5px solid var(--surface-strong);border-radius:16px;background:var(--surface);color:var(--text);font:inherit;font-size:17px;font-weight:700}input::placeholder{color:var(--subtle)}label input[type=checkbox]{width:auto;height:auto;margin-right:8px}button{margin-top:20px;min-height:52px;padding:0 24px;border:0;border-radius:16px;background:var(--accent);color:var(--accent-text);font:inherit;font-size:16px;font-weight:900;cursor:pointer}button:disabled{cursor:default;opacity:.6}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.note{color:var(--muted)}.error{color:var(--danger);font-weight:700}";
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Lift</title><style nonce="${nonce}">${tokens}${layout}</style></head><body><nav><a class="brand" href="/">Lift</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="/delete-account">Delete account</a></nav>${content}</body></html>`, { headers: {
+  const layout = "*{box-sizing:border-box}body{font:16px/1.55 Spline Sans,Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;max-width:720px;margin:auto;padding:40px 20px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}h1{font-size:clamp(2rem,7vw,2.75rem);line-height:1.02;letter-spacing:-.035em;font-weight:900}h2{margin-top:2rem;letter-spacing:-.02em;font-weight:900}p{color:var(--muted);font-weight:600}strong{color:var(--text)}a{color:var(--text);font-weight:800;text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}nav{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:40px;font-size:14px;font-weight:800}nav .brand{display:flex;margin-right:auto;color:var(--text);text-decoration:none}nav a{color:var(--muted);text-decoration:none}nav a:hover{color:var(--text)}label{display:block;margin:18px 0 6px;color:var(--muted);font-size:13px;font-weight:800}input{width:100%;height:56px;padding:0 18px;border:1.5px solid var(--surface-strong);border-radius:16px;background:var(--surface);color:var(--text);font:inherit;font-size:17px;font-weight:700}input::placeholder{color:var(--subtle)}label input[type=checkbox]{width:auto;height:auto;margin-right:8px}button{margin-top:20px;min-height:52px;padding:0 24px;border:0;border-radius:16px;background:var(--accent);color:var(--accent-text);font:inherit;font-size:16px;font-weight:900;cursor:pointer}button:disabled{cursor:default;opacity:.6}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.note{color:var(--muted)}.error{color:var(--danger);font-weight:700}";
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Lift</title><style nonce="${nonce}">${tokens}${layout}</style></head><body><nav><a class="brand" href="/" aria-label="Lift home">${wordmark}</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="/delete-account">Delete account</a></nav>${content}</body></html>`, { headers: {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'public, max-age=300',
     'Content-Security-Policy': `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
@@ -119,7 +120,7 @@ function validPayload(value: unknown): value is SyncPayload {
   if (!Array.isArray(payload.workouts) || !Array.isArray(payload.sets) || !Array.isArray(payload.muscleRatings) || (payload.splits !== undefined && !Array.isArray(payload.splits)) || (payload.recommendationFeedback !== undefined && !Array.isArray(payload.recommendationFeedback)) || (payload.tombstones !== undefined && !Array.isArray(payload.tombstones))) return false;
   if (payload.workouts.length > 2_000 || payload.sets.length > 10_000 || payload.muscleRatings.length > 10_000 || (payload.splits?.length ?? 0) > 100 || (payload.recommendationFeedback?.length ?? 0) > 10_000 || (payload.tombstones?.length ?? 0) > 10_000) return false;
   if (!payload.workouts.every((workout) => workout && typeof workout === 'object' && isString(workout.id) && (['push', 'pull', 'legs'].includes(workout.split) || customSplitId(workout.split)) && isTimestamp(workout.createdAt) && (workout.endedAt === null || isTimestamp(workout.endedAt)) && (workout.endedAt === null || workout.endedAt >= workout.createdAt) && isVersion(workout.updatedAt, Math.max(workout.createdAt, workout.endedAt ?? 0)))) return false;
-  if (!(payload.splits ?? []).every((split) => split && typeof split === 'object' && customSplitId(split.id) && isString(split.name, 40) && Array.isArray(split.muscles) && split.muscles.length > 0 && split.muscles.length <= 12 && split.muscles.every((muscle) => splitMuscles.has(muscle)) && new Set(split.muscles).size === split.muscles.length && isVersion(split.updatedAt, 0))) return false;
+  if (!(payload.splits ?? []).every((split) => split && typeof split === 'object' && customSplitId(split.id) && isString(split.name, 40) && Array.isArray(split.muscles) && split.muscles.length > 0 && split.muscles.length <= 12 && split.muscles.every((muscle) => splitMuscles.has(muscle)) && new Set(split.muscles).size === split.muscles.length && (split.archived === undefined || typeof split.archived === 'boolean') && isVersion(split.updatedAt, 0))) return false;
   if (new Set((payload.splits ?? []).map((split) => split.id)).size !== (payload.splits ?? []).length) return false;
   const workoutIds = new Set(payload.workouts.map((workout) => workout.id));
   if (workoutIds.size !== payload.workouts.length) return false;
@@ -280,12 +281,12 @@ function mutationStatements(env: Env, userId: string, batchId: string, hash: str
   const record = change.record!;
   if (change.entity === 'split') {
     const split = record as unknown as SyncSplit;
-    statements.push(env.DB.prepare(`INSERT INTO user_splits (user_id, id, name, muscles, updated_at, sync_revision)
-      SELECT ?, ?, ?, ?, ?, ${batchRevision} WHERE ${batchMatches}
+    statements.push(env.DB.prepare(`INSERT INTO user_splits (user_id, id, name, muscles, archived, updated_at, sync_revision)
+      SELECT ?, ?, ?, ?, ?, ?, ${batchRevision} WHERE ${batchMatches}
         AND (MAX(COALESCE((SELECT sync_revision FROM user_splits WHERE user_id = ? AND id = ?), 0), COALESCE((SELECT sync_revision FROM sync_tombstones WHERE user_id = ? AND entity = 'split' AND record_key = ?), 0)) = ?
           OR COALESCE((SELECT sync_revision FROM user_splits WHERE user_id = ? AND id = ?), 0) = ${batchRevision})
-      ON CONFLICT(user_id, id) DO UPDATE SET name = excluded.name, muscles = excluded.muscles, updated_at = excluded.updated_at, sync_revision = excluded.sync_revision
-    `).bind(userId, split.id, split.name, JSON.stringify(split.muscles), now(), ...revisionArgs, ...gateArgs, userId, change.key, userId, change.key, change.baseRevision, userId, change.key, ...revisionArgs));
+      ON CONFLICT(user_id, id) DO UPDATE SET name = excluded.name, muscles = excluded.muscles, archived = excluded.archived, updated_at = excluded.updated_at, sync_revision = excluded.sync_revision
+    `).bind(userId, split.id, split.name, JSON.stringify(split.muscles), split.archived ? 1 : 0, now(), ...revisionArgs, ...gateArgs, userId, change.key, userId, change.key, change.baseRevision, userId, change.key, ...revisionArgs));
     statements.push(env.DB.prepare(`DELETE FROM sync_tombstones WHERE user_id = ? AND entity = 'split' AND record_key = ? AND sync_revision <= ? AND EXISTS (SELECT 1 FROM user_splits WHERE user_id = ? AND id = ? AND sync_revision = ${batchRevision})`).bind(userId, change.key, change.baseRevision, userId, change.key, ...revisionArgs));
     statements.push(env.DB.prepare(`INSERT OR IGNORE INTO sync_changes (user_id, revision, entity, record_key, deleted, payload)
       SELECT ?, ${batchRevision}, 'split', ?, 0, ? WHERE EXISTS (SELECT 1 FROM user_splits WHERE user_id = ? AND id = ? AND sync_revision = ${batchRevision})`).bind(userId, ...revisionArgs, change.key, payload, userId, change.key, ...revisionArgs));
@@ -425,14 +426,14 @@ async function profile(env: Env, userId: string) {
   const row = await env.DB.prepare(`SELECT auth_user_id AS userId, display_name AS displayName, has_chosen_display_name AS hasChosenDisplayName, image_url AS imageUrl,
     goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, routine_exercise_ids_by_split AS routineExerciseIdsBySplit, training_location AS trainingLocation,
     training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment,
-    session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers
+    session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, use_custom_splits AS useCustomSplits
     FROM user_info WHERE user_id = ?`).bind(userId).first<ProfileRow>();
   if (!row) throw new Error('Profile not found.');
   const { goals, favoriteExerciseIds, routineExerciseIdsBySplit, availableEquipment, optInSimilarUsers } = row;
   return { userId: row.userId, displayName: row.displayName, hasChosenDisplayName: row.hasChosenDisplayName === 1, imageUrl: row.imageUrl, recommendationPreferences: {
     goals: parseStringArray(goals), weightLb: row.weightLb, heightInches: row.heightInches, experience: row.experience, favoriteExerciseIds: parseStringArray(favoriteExerciseIds), routineExerciseIdsBySplit: parseRoutines(routineExerciseIdsBySplit),
     trainingLocation: row.trainingLocation, trainingDays: row.trainingDays, gymId: row.gymId,
-    availableEquipment: parseStringArray(availableEquipment), sessionMinutes: row.sessionMinutes, optInSimilarUsers: optInSimilarUsers === 1,
+    availableEquipment: parseStringArray(availableEquipment), sessionMinutes: row.sessionMinutes, optInSimilarUsers: optInSimilarUsers === 1, useCustomSplits: row.useCustomSplits === null ? null : row.useCustomSplits === 1,
   } };
 }
 
@@ -460,28 +461,29 @@ async function updateProfile(request: Request, env: Env, userId: string) {
   const preferences = body.recommendationPreferences;
   if (preferences !== undefined && (!preferences || typeof preferences !== 'object' || Array.isArray(preferences))) return json({ error: 'Invalid recommendation preferences.' }, 400);
   const data = preferences as Record<string, unknown> | undefined;
-  const keys = ['goals', 'weightLb', 'heightInches', 'experience', 'favoriteExerciseIds', 'routineExerciseIdsBySplit', 'trainingLocation', 'trainingDays', 'gymId', 'availableEquipment', 'sessionMinutes', 'optInSimilarUsers'];
+  const keys = ['goals', 'weightLb', 'heightInches', 'experience', 'favoriteExerciseIds', 'routineExerciseIdsBySplit', 'trainingLocation', 'trainingDays', 'gymId', 'availableEquipment', 'sessionMinutes', 'optInSimilarUsers', 'useCustomSplits'];
   if (data && Object.keys(data).some((key) => !keys.includes(key))) return json({ error: 'Invalid recommendation preferences.' }, 400);
   const validExperience = data?.experience === undefined || data.experience === null || ['new', 'some', 'experienced'].includes(data.experience as string);
   const validLocation = data?.trainingLocation === undefined || data.trainingLocation === null || ['gym', 'home', 'both'].includes(data.trainingLocation as string);
   const validGym = data?.gymId === undefined || data.gymId === null || isString(data.gymId, 80);
   const validOptIn = data?.optInSimilarUsers === undefined || typeof data.optInSimilarUsers === 'boolean';
+  const validCustomSplits = data?.useCustomSplits === undefined || typeof data.useCustomSplits === 'boolean';
   const validPreferences = !data || (optionalStringArray(data.goals, goalValues)
     && optionalNumber(data.weightLb, 50, 1_000)
     && optionalNumber(data.heightInches, 36, 108, true)
     && validRoutines(data.routineExerciseIdsBySplit) && validExperience && optionalStringArray(data.favoriteExerciseIds, undefined, 20) && validLocation
     && optionalNumber(data.trainingDays, 1, 7, true)
     && validGym && optionalStringArray(data.availableEquipment)
-    && optionalNumber(data.sessionMinutes, 5, 300, true) && validOptIn);
+    && optionalNumber(data.sessionMinutes, 5, 300, true) && validOptIn && validCustomSplits);
   if (!validPreferences) return json({ error: 'Invalid recommendation preferences.' }, 400);
-  const columns: Record<string, string> = { goals: 'goals', weightLb: 'weight_lb', heightInches: 'height_inches', experience: 'experience', favoriteExerciseIds: 'favorite_exercise_ids', routineExerciseIdsBySplit: 'routine_exercise_ids_by_split', trainingLocation: 'training_location', trainingDays: 'training_days', gymId: 'gym_id', availableEquipment: 'available_equipment', sessionMinutes: 'session_minutes', optInSimilarUsers: 'similar_users_opt_in' };
+  const columns: Record<string, string> = { goals: 'goals', weightLb: 'weight_lb', heightInches: 'height_inches', experience: 'experience', favoriteExerciseIds: 'favorite_exercise_ids', routineExerciseIdsBySplit: 'routine_exercise_ids_by_split', trainingLocation: 'training_location', trainingDays: 'training_days', gymId: 'gym_id', availableEquipment: 'available_equipment', sessionMinutes: 'session_minutes', optInSimilarUsers: 'similar_users_opt_in', useCustomSplits: 'use_custom_splits' };
   const assignments: string[] = [];
   const values: unknown[] = [];
   if (displayName !== undefined) { assignments.push('display_name = ?', 'has_chosen_display_name = 1'); values.push(displayName); }
   for (const key of keys) if (data?.[key] !== undefined) {
     assignments.push(`${columns[key]} = ?`);
     const value = data[key];
-    values.push(key === 'routineExerciseIdsBySplit' || key === 'goals' || key === 'favoriteExerciseIds' || key === 'availableEquipment' ? value === null ? null : JSON.stringify(value) : key === 'optInSimilarUsers' ? value ? 1 : 0 : value);
+    values.push(key === 'routineExerciseIdsBySplit' || key === 'goals' || key === 'favoriteExerciseIds' || key === 'availableEquipment' ? value === null ? null : JSON.stringify(value) : key === 'optInSimilarUsers' || key === 'useCustomSplits' ? value ? 1 : 0 : value);
   }
   if (!assignments.length) return json({ error: 'Provide a profile field to update.' }, 400);
   assignments.push('updated_at = ?'); values.push(now(), userId);
@@ -711,17 +713,17 @@ async function deleteAccount(env: Env, userId: string) {
 
 async function exportAccount(env: Env, userId: string) {
   const [profileRow, workouts, sets, muscles, ratings, feedback, splits, connections, blocks] = await Promise.all([
-    env.DB.prepare('SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, routine_exercise_ids_by_split AS routineExerciseIdsBySplit, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
+    env.DB.prepare('SELECT auth_user_id AS userId, display_name AS displayName, image_url AS imageUrl, goals, weight_lb AS weightLb, height_inches AS heightInches, experience, favorite_exercise_ids AS favoriteExerciseIds, routine_exercise_ids_by_split AS routineExerciseIdsBySplit, training_location AS trainingLocation, training_days AS trainingDays, gym_id AS gymId, available_equipment AS availableEquipment, session_minutes AS sessionMinutes, similar_users_opt_in AS optInSimilarUsers, use_custom_splits AS useCustomSplits, created_at AS createdAt, updated_at AS updatedAt FROM user_info WHERE user_id = ?').bind(userId).first(),
     env.DB.prepare('SELECT local_id AS id, split, created_at AS createdAt, ended_at AS endedAt FROM workouts WHERE user_id = ? ORDER BY created_at, local_id').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, weight, reps, completed_at AS completedAt FROM workout_sets WHERE user_id = ? ORDER BY completed_at, workout_local_id, exercise_id, set_number').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, set_number AS setNumber, muscle FROM set_muscles WHERE user_id = ? ORDER BY workout_local_id, exercise_id, set_number, muscle').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, muscle, exhaustion, created_at AS createdAt FROM workout_muscle_ratings WHERE user_id = ? ORDER BY created_at, workout_local_id, muscle').bind(userId).all(),
     env.DB.prepare('SELECT workout_local_id AS workoutId, exercise_id AS exerciseId, action, related_exercise_id AS relatedExerciseId, rank, created_at AS createdAt FROM recommendation_feedback WHERE user_id = ? ORDER BY created_at, workout_local_id, exercise_id, action').bind(userId).all(),
-    env.DB.prepare('SELECT id, name, json(muscles) AS muscles, updated_at AS updatedAt FROM user_splits WHERE user_id = ? ORDER BY name, id').bind(userId).all(),
+    env.DB.prepare('SELECT id, name, json(muscles) AS muscles, archived, updated_at AS updatedAt FROM user_splits WHERE user_id = ? ORDER BY name, id').bind(userId).all(),
     env.DB.prepare('SELECT friend_id AS friendId, created_at AS createdAt FROM friendships WHERE user_id = ? ORDER BY created_at').bind(userId).all(),
     env.DB.prepare('SELECT blocked_id AS blockedId, created_at AS createdAt FROM friend_blocks WHERE blocker_id = ? ORDER BY created_at').bind(userId).all(),
   ]);
-  return json({ exportedAt: new Date().toISOString(), profile: profileRow, workouts: workouts.results, sets: sets.results, setMuscles: muscles.results, muscleRatings: ratings.results, recommendationFeedback: feedback.results, splits: splits.results.map((split) => ({ ...split, muscles: JSON.parse(split.muscles as string) })), friendConnections: connections.results, friendBlocks: blocks.results });
+  return json({ exportedAt: new Date().toISOString(), profile: profileRow, workouts: workouts.results, sets: sets.results, setMuscles: muscles.results, muscleRatings: ratings.results, recommendationFeedback: feedback.results, splits: splits.results.map((split) => ({ ...split, archived: split.archived === 1, muscles: JSON.parse(split.muscles as string) })), friendConnections: connections.results, friendBlocks: blocks.results });
 }
 
 async function boundedRequest(request: Request) {

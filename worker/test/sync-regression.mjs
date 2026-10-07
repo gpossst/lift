@@ -26,6 +26,9 @@ for (const file of readdirSync('migrations').filter((name) => name.endsWith('.sq
     await DB.prepare("INSERT INTO set_muscles (user_id, workout_local_id, exercise_id, set_number, muscle) VALUES ('migration-user', 'legacy-workout', 'row', 1, 'middle back')").run();
     await DB.prepare("INSERT INTO workout_muscle_ratings (user_id, workout_local_id, muscle, exhaustion, created_at, updated_at, sync_revision) VALUES ('migration-user', 'legacy-workout', 'middle back', 4, 4, 4, 1)").run();
     await DB.prepare("INSERT INTO recommendation_feedback (user_id, workout_local_id, exercise_id, action, related_exercise_id, rank, created_at, updated_at, sync_revision) VALUES ('migration-user', 'legacy-workout', 'row', 'accepted', NULL, NULL, 5, 5, 1)").run();
+    await DB.prepare(`INSERT INTO sync_changes (user_id, revision, entity, record_key, deleted, payload)
+      VALUES ('migration-user', 1, 'rating', 'legacy-workout' || char(31) || 'middle back', 0,
+        json_object('workoutId', 'legacy-workout', 'muscle', 'middle back', 'exhaustion', 4, 'createdAt', 4))`).run();
   }
   const source = readFileSync(join('migrations', file), 'utf8');
   const triggers = source.match(/CREATE TRIGGER[\s\S]*?END;/gi) ?? [];
@@ -36,6 +39,12 @@ for (const file of readdirSync('migrations').filter((name) => name.endsWith('.sq
 if (!(await DB.prepare("SELECT 1 FROM set_muscles WHERE user_id = 'migration-user' AND muscle = 'middle back'").first())
   || !(await DB.prepare("SELECT 1 FROM recommendation_feedback WHERE user_id = 'migration-user' AND action = 'accepted'").first())) throw new Error('Custom split migration failed to preserve workout relationships.');
 if ((await DB.prepare("SELECT exhaustion FROM workout_muscle_ratings WHERE user_id = 'migration-user'").first())?.exhaustion !== 8) throw new Error('Rating scale migration failed to rescale legacy check-ins.');
+const migratedRatings = await (await pull({ DB }, 'migration-user', new URL('https://test/v1/sync?cursor=0'))).json();
+const migratedRating = migratedRatings.changes.findLast((change) => change.entity === 'rating');
+if (migratedRating?.record.exhaustion !== 8 || migratedRating.revision !== 2) throw new Error('Rating scale repair did not publish canonical records with a fresh revision.');
+const oldRating = await DB.prepare("SELECT id, payload FROM sync_changes WHERE user_id = 'migration-user' AND entity = 'rating' AND revision = 1").first();
+const incrementalRatings = await (await pull({ DB }, 'migration-user', new URL(`https://test/v1/sync?cursor=${oldRating.id}`))).json();
+if (JSON.parse(oldRating.payload).exhaustion !== 4 || incrementalRatings.changes[0]?.record.exhaustion !== 8) throw new Error('Rating repair must preserve receipts and reach clients past the old cursor.');
 const deletionPage = await handler.fetch(new Request('https://test/delete-account'), { DB, SUPPORT_EMAIL: 'support@lift.test' });
 if (deletionPage.status !== 200 || !(await deletionPage.text()).includes('Delete your Lift account')) throw new Error('Public deletion resource is unavailable.');
 let deletionRequestCount = 0;
@@ -129,10 +138,16 @@ const exported = await (await exportAccount(env, 'user')).json();
 if (exported.splits.length !== 1 || exported.splits[0].id !== splitId || exported.splits[0].name !== splitRecord.name || JSON.stringify(exported.splits[0].muscles) !== JSON.stringify(splitRecord.muscles)) throw new Error('Custom split was not included in account export.');
 const invalidCustom = workout('invalid-custom'); invalidCustom.record.split = 'custom:too-short';
 if ((await send('invalid-custom', [invalidCustom])).response.status !== 400) throw new Error('Malformed custom split ID passed sync validation.');
-const splitDelete = await send('custom-delete', [{ entity: 'split', key: splitId, operation: 'delete', baseRevision: customCreated.body.revision }]);
+const archived = await send('custom-archive', [{ ...splitChange, baseRevision: customCreated.body.revision, record: { ...splitRecord, archived: true } }]);
+if (archived.response.status !== 200 || (await DB.prepare('SELECT archived FROM user_splits WHERE user_id = ? AND id = ?').bind('user', splitId).first()).archived !== 1) throw new Error('Custom split archive was not persisted.');
+const archivedExport = await (await exportAccount(env, 'user')).json();
+if (archivedExport.splits[0].archived !== true || archivedExport.splits[0].name !== splitRecord.name) throw new Error('Archive export lost the historical definition.');
+const invalidArchive = await send('custom-invalid-archive', [{ ...splitChange, baseRevision: archived.body.revision, record: { ...splitRecord, archived: 'true' } }]);
+if (invalidArchive.response.status !== 400) throw new Error('Invalid archive state passed validation.');
+const splitDelete = await send('custom-delete', [{ entity: 'split', key: splitId, operation: 'delete', baseRevision: archived.body.revision }]);
 if (splitDelete.response.status !== 200 || await DB.prepare('SELECT 1 FROM user_splits WHERE user_id = ? AND id = ?').bind('user', splitId).first()) throw new Error('Custom split deletion did not remove the definition.');
 const splitChanges = await DB.prepare("SELECT entity, deleted FROM sync_changes WHERE user_id = ? AND record_key = ? ORDER BY id").bind('user', splitId).all();
-if (splitChanges.results.length !== 2 || splitChanges.results[0].entity !== 'split' || splitChanges.results[1].deleted !== 1) throw new Error('Custom split upsert/delete revisions were not recorded.');
+if (splitChanges.results.length !== 3 || splitChanges.results[0].entity !== 'split' || splitChanges.results[2].deleted !== 1) throw new Error('Custom split upsert/delete revisions were not recorded.');
 
 // A server revision, not the device clock, decides a later edit.
 const initial = await send('clock-a', [workout('clock', 4_000_000_000)]);

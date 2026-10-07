@@ -1,3 +1,4 @@
+import { reconcileSyncConflicts } from '@/lib/cloud-sync-conflicts';
 import { validateReceipt } from '@/lib/cloud-sync-receipt';
 import { assertValidWorkoutSet } from '@/lib/workout-set-validation';
 // The product database is Expo SQLite + Drizzle on iOS/Android. Expo SQLite's web
@@ -16,7 +17,7 @@ export type WorkoutStats = { visits: number; sets: number; volume: number };
 export type WorkoutActivity = { date: string; volume: number; sets: number; visits: number };
 export type WorkoutSplitTrend = { split: 'ALL' | 'PUSH' | 'PULL' | 'LEGS'; points: { weekStart: string; volume: number }[] };
 export type WorkoutSplit = 'push' | 'pull' | 'legs' | `custom:${string}`;
-export type CustomSplit = { id: `custom:${string}`; name: string; muscles: string[] };
+export type CustomSplit = { id: `custom:${string}`; name: string; muscles: string[]; archived?: boolean };
 export type Workout = StoredWorkout;
 export type WorkoutVisitSummary = { workout: Workout; sets: number; exercises: number; volume: number; reps: number };
 export type WorkoutVisitExercise = { id: string; name: string; sets: number; volume: number };
@@ -31,7 +32,7 @@ export type CloudSyncChange = { entity: CloudSyncEntity; key: string; operation:
 export type CloudSyncRemoteChange = Omit<CloudSyncChange, 'baseRevision'> & { revision: number };
 export type CloudSyncBatch = { batchId: string; changes: CloudSyncChange[] };
 export type CloudSyncMutationResult = { entity: CloudSyncEntity; key: string; status: 'accepted' | 'conflict'; revision?: number };
-export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; conflict?: boolean };
+export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; conflict?: boolean; remoteRevision?: number; remoteOperation?: 'upsert' | 'delete' };
 const key = 'lift-preview-sets';
 const workoutsKey = 'lift-preview-workouts';
 const ratingsKey = 'lift-preview-muscle-ratings';
@@ -87,7 +88,7 @@ const createSplitId = () => `custom:${'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.rep
   return (digit === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
 })}` as CustomSplit['id'];
 
-export function getCustomSplits(): CustomSplit[] { return readCustomSplits().sort((a, b) => a.name.localeCompare(b.name)); }
+export function getCustomSplits(): CustomSplit[] { return readCustomSplits().filter((split) => !split.archived).sort((a, b) => a.name.localeCompare(b.name)); }
 export function saveCustomSplit(input: { id?: CustomSplit['id']; name: string; muscles: string[] }): CustomSplit {
   const name = input.name.trim();
   const muscles = [...new Set(input.muscles.map((muscle) => muscle.trim()).filter(Boolean))];
@@ -99,14 +100,16 @@ export function saveCustomSplit(input: { id?: CustomSplit['id']; name: string; m
   writeCustomSplits(splits); markCloudSyncDirty('split', split.id);
   return split;
 }
+// Keep deleted definitions available to history; only active splits appear in the plan.
 export function deleteCustomSplit(id: CustomSplit['id']): void {
-  const splits = readCustomSplits(); const next = splits.filter((item) => item.id !== id);
-  if (next.length === splits.length) return;
-  writeCustomSplits(next); queueCloudSyncTombstone('split', id);
+  const splits = readCustomSplits(); const split = splits.find((item) => item.id === id);
+  if (!split || split.archived) return;
+  split.archived = true;
+  writeCustomSplits(splits); markCloudSyncDirty('split', id);
 }
 export function getWorkoutSplitDefinition(split: WorkoutSplit) {
   const builtin = builtinSplits.find((item) => item.id === split);
-  return builtin ? { ...builtin, muscles: [...builtin.muscles] } : getCustomSplits().find((item) => item.id === split) ?? null;
+  return builtin ? { ...builtin, muscles: [...builtin.muscles] } : readCustomSplits().find((item) => item.id === split) ?? null;
 }
 
 function syncDemoWorkoutData() {
@@ -130,6 +133,9 @@ export function getFeaturedExercises(): Exercise[] { return getExercises().filte
 
 export function getRecommendedWorkoutSplit(now = new Date(), useCustomSplits = false): WorkoutSplit {
   const ratings = readRatings();
+  const custom = getCustomSplits();
+  const historicalDefinitions = readCustomSplits();
+  const musclesById = new Map([...builtinSplits, ...historicalDefinitions].map((definition) => [definition.id, definition.muscles]));
   const muscleRatings: MuscleExhaustionRating[] = [];
   const history = getWorkoutVisits().map((visit) => {
     const completedAt = visit.workout.endedAt ?? visit.workout.createdAt;
@@ -138,14 +144,15 @@ export function getRecommendedWorkoutSplit(now = new Date(), useCustomSplits = f
       split: visit.workout.split,
       completedAt,
       sets: visit.sets,
+      muscles: musclesById.get(visit.workout.split),
     };
   });
-  const custom = getCustomSplits();
   const definitions = useCustomSplits && custom.length ? custom : builtinSplits;
   return recommendWorkoutSplit(history, now, muscleRatings, definitions) as WorkoutSplit;
 }
 
 export function createWorkout(split: WorkoutSplit): Workout {
+  if (split.startsWith('custom:') && !getCustomSplits().some((item) => item.id === split)) throw new Error(`Unknown or archived workout split: ${split}`);
   const workout = { id: `workout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, split, createdAt: new Date(), endedAt: null };
   writeWorkouts([...readWorkouts(), workout]);
   markCloudSyncDirty('workout', workout.id);
@@ -359,10 +366,12 @@ function recommendationsFromHistory(workoutId: string, split: WorkoutSplit, limi
   const completedSets = read().filter((set) => set.workoutId === workoutId || workouts.get(set.workoutId)?.endedAt || !workouts.has(set.workoutId))
     .sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.setNumber - b.setNumber);
   const feedback = readRecommendationFeedback().sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.workoutId.localeCompare(b.workoutId) || a.exerciseId.localeCompare(b.exerciseId));
-  const definition = getWorkoutSplitDefinition(split) ?? undefined;
+  const customSplits = split.startsWith('custom:') ? getCustomSplits() : undefined;
+  const definition = customSplits ? customSplits.find(({ id }) => id === split) : getWorkoutSplitDefinition(split) ?? undefined;
+  const recommendationContext = { ...context, splitSchedule: context?.splitSchedule ?? customSplits };
   return rankOnly
-    ? rankCatalogExercises(getExercises(), completedSets, muscleRatings, workoutId, split, undefined, context, feedback, definition)
-    : rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, context, feedback, definition);
+    ? rankCatalogExercises(getExercises(), completedSets, muscleRatings, workoutId, split, undefined, recommendationContext, feedback, definition)
+    : rankExerciseRecommendations(getExercises(), completedSets, muscleRatings, workoutId, split, limit, undefined, recommendationContext, feedback, definition);
 }
 
 
@@ -643,6 +652,44 @@ export function rejectCloudSyncBatch(batchId: string, reason: string, invalidCha
   writeRejectedChanges(rejected);
   writeOutbox(remaining);
 }
+/** Resolve only conflicts whose attempted values are already saved remotely. */
+export function reconcileCloudSyncConflicts(changes: CloudSyncRemoteChange[], fullReplay = false) {
+  writeRejectedChanges(reconcileSyncConflicts(getRejectedCloudSyncChanges(), changes, fullReplay));
+  // Reapply matching deletions now that their review entries are cleared.
+  mergeCloudSyncChanges(changes.filter((change) => change.operation === 'delete'), getCloudSyncCursor());
+}
+
+export function resolveDeletedWorkout(workoutId: string, choice: 'delete' | 'keep'): boolean {
+  const issues = getRejectedCloudSyncChanges();
+  const workout = readWorkouts().find((item) => item.id === workoutId);
+  if (!workout || !issues.some((item) => item.entity === 'workout' && item.key === workoutId && item.conflict && item.remoteOperation === 'delete')) return false;
+  const belongs = (entity: string, key: string) => (entity === 'workout' && key === workoutId) || (['set', 'rating', 'feedback'].includes(entity) && key.startsWith(workoutId + cloudKeySeparator));
+  const queued = readOutbox();
+  if (queued.some((item) => item.batchId && belongs(item.entity, item.key))) return false;
+  const restoredId = `workout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sets = read().filter((item) => item.workoutId === workoutId);
+  const ratings = readRatings();
+  const feedback = readRecommendationFeedback().filter((item) => item.workoutId === workoutId);
+  // Persist the restored copy before removing the original, including offline.
+  if (choice === 'keep') {
+    writeWorkouts([...readWorkouts(), { ...workout, id: restoredId }]);
+    write([...read(), ...sets.map((item) => ({ ...item, workoutId: restoredId }))]);
+    ratings[restoredId] = { ...ratings[workoutId] }; writeRatings(ratings);
+    writeRecommendationFeedback([...readRecommendationFeedback(), ...feedback.map((item) => ({ ...item, workoutId: restoredId }))]);
+    enqueueCloudSync('workout', restoredId, 'upsert');
+    for (const set of sets) enqueueCloudSync('set', cloudSetKey(restoredId, set.exerciseId, set.setNumber), 'upsert');
+    for (const muscle of Object.keys(ratings[restoredId])) enqueueCloudSync('rating', [restoredId, muscle].join(cloudKeySeparator), 'upsert');
+    for (const item of feedback) enqueueCloudSync('feedback', [restoredId, item.exerciseId, item.action].join(cloudKeySeparator), 'upsert');
+  }
+  writeWorkouts(readWorkouts().filter((item) => item.id !== workoutId));
+  write(read().filter((item) => item.workoutId !== workoutId));
+  delete ratings[workoutId]; writeRatings(ratings);
+  writeRecommendationFeedback(readRecommendationFeedback().filter((item) => item.workoutId !== workoutId));
+  writeRejectedChanges(issues.filter((item) => !belongs(item.entity, item.key)));
+  writeOutbox(readOutbox().filter((item) => !belongs(item.entity, item.key)));
+  writeTombstones(readTombstones().filter((item) => !belongs(item.entity, item.key)));
+  return true;
+}
 /** Rebuild a refused upload from current local data, with a fresh batch ID. */
 export function resubmitCloudSyncChange(entity: CloudSyncEntity, key: string): boolean {
   const issue = getRejectedCloudSyncChanges().find((item) => item.entity === entity && item.key === key);
@@ -701,7 +748,7 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
     const issues = getRejectedCloudSyncChanges();
     const retainedDelete = change.operation === 'delete' && issues.some((item) => (item.entity === change.entity && item.key === change.key) || (change.entity === 'workout' && item.key.startsWith(change.key + cloudKeySeparator)));
     if (retainedDelete && change.entity === 'workout' && !issues.some((item) => item.entity === 'workout' && item.key === change.key)) {
-      writeRejectedChanges([...issues, { entity: 'workout', key: change.key, operation: 'delete', baseRevision: change.revision, record: localSyncRecord('workout', change.key) ?? undefined, conflict: true, reason: 'Another device deleted this workout. Review its local sets, then delete the workout here to resolve the conflict.' }]);
+      writeRejectedChanges([...issues, { entity: 'workout', key: change.key, operation: 'delete', baseRevision: change.revision, record: localSyncRecord('workout', change.key) ?? undefined, conflict: true, remoteRevision: change.revision, remoteOperation: 'delete', reason: 'Another device deleted this workout. Review its local sets, then delete the workout here to resolve the conflict.' }]);
     }
     if (!pending.has(identity) && !retainedDelete) {
       const pieces = change.key.split(cloudKeySeparator);
@@ -714,7 +761,7 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
         }
         if (change.entity === 'set') write(read().filter((item) => !(item.workoutId === pieces[0] && item.exerciseId === pieces[1] && item.setNumber === Number(pieces[2]))));
         if (change.entity === 'rating') { const ratings = readRatings(); if (ratings[pieces[0]]) delete ratings[pieces[0]][pieces[1]]; writeRatings(ratings); }
-        if (change.entity === 'split') writeCustomSplits(readCustomSplits().filter((item) => item.id !== change.key));
+        if (change.entity === 'split') writeCustomSplits(readCustomSplits().map((item) => item.id === change.key ? { ...item, archived: true } : item));
       } else if (change.record) {
         const record = change.record;
         if (change.entity === 'workout') {
@@ -735,7 +782,7 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
         }
         if (change.entity === 'split' && String(record.id).startsWith('custom:') && Array.isArray(record.muscles)) {
           const splits = readCustomSplits(); const index = splits.findIndex((item) => item.id === record.id);
-          const split: CustomSplit = { id: String(record.id) as CustomSplit['id'], name: String(record.name), muscles: record.muscles.filter((muscle): muscle is string => typeof muscle === 'string') };
+          const split: CustomSplit = { id: String(record.id) as CustomSplit['id'], name: String(record.name), muscles: record.muscles.filter((muscle): muscle is string => typeof muscle === 'string'), archived: record.archived === true };
           if (index < 0) splits.push(split); else splits[index] = split; writeCustomSplits(splits);
         }
       }

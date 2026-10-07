@@ -4,6 +4,7 @@ import { Search, X } from 'react-native-feather';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 
 import { useAppearance } from '@/components/appearance-provider';
+import { EmptyArt } from '@/components/empty-art';
 import { StatsExerciseRow, type StatsExercise } from '@/components/stats-exercise-row';
 import { searchExercises } from '@/lib/exercise-search';
 
@@ -25,7 +26,7 @@ export function ExerciseSearchSheet({ visible, focus, exercises, onClose }: { vi
           <Pressable onPress={close} hitSlop={10} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close"><X width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable>
         </View>
         <View style={[styles.searchField, { backgroundColor: colors.surface }]}><Search width={17} height={17} color={colors.subtleText} strokeWidth={2.4} /><TextInput value={query} onChangeText={setQuery} placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.searchInput, { color: colors.text }]} accessibilityLabel="Search exercises" autoFocus={focus} autoCorrect={false} autoCapitalize="none" returnKeyType="search" /></View>
-        <FlatList data={filtered} keyExtractor={(exercise) => exercise.id} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} renderItem={renderExercise} ListEmptyComponent={<Text style={[styles.emptyCopy, { color: colors.mutedText }]}>No matching exercises</Text>} />
+        <FlatList data={filtered} keyExtractor={(exercise) => exercise.id} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} renderItem={renderExercise} ListEmptyComponent={<View style={{ paddingTop: 24 }}><EmptyArt name="search" width={132} /><Text style={[styles.emptyCopy, { color: colors.mutedText, textAlign: 'center' }]}>No matching exercises</Text></View>} />
       </Animated.View>
     </View>
   </Modal>;

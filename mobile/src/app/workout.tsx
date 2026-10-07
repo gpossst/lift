@@ -1,13 +1,18 @@
+import { ExerciseSearchControls } from '@/components/exercise-search-controls';
+import { getPrimaryMuscles, matchesEquipment, matchesMuscle, staticFilter, uniqueSorted } from '@/lib/exercise-filters';
 import { searchExercises } from '@/lib/exercise-search';
 import { isValidWorkoutSetValues } from '@/lib/workout-set-validation';
 import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ChevronLeft, Delete, Info, Plus, X } from "react-native-feather";
-import { useEffect, useMemo, useRef, useState } from "react";
-import Animated, { FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft, FadeOutRight, interpolate, interpolateColor, LinearTransition, SlideInDown, SlideOutDown, useAnimatedStyle, useSharedValue, withSequence, withSpring } from "react-native-reanimated";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Animated, { FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft, FadeOutRight, Easing, interpolate, interpolateColor, LayoutAnimationConfig, LinearTransition, SlideInDown, SlideOutDown, type SharedValue, useAnimatedReaction, useAnimatedStyle, useReducedMotion, ZoomIn, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
+import { Gesture, GestureDetector, ScrollView as GestureScrollView } from "react-native-gesture-handler";
+import { scheduleOnRN } from "react-native-worklets";
 import Svg, { Defs, G, Line, LinearGradient, Rect, Stop } from "react-native-svg";
 import {
   ActivityIndicator,
+  FlatList,
   Alert,
   Modal,
   Platform,
@@ -15,7 +20,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   Vibration,
   View,
@@ -29,6 +33,7 @@ import {
   getNextSetNumberForWorkout,
   getRecentExerciseExhaustion,
   getWorkoutHistory,
+  getWorkoutVisitSummary,
   recordRecommendationFeedback,
   saveWorkoutSet,
   type Exercise,
@@ -36,6 +41,7 @@ import {
 } from "@/db";
 import { exerciseRequiresWeight } from "@/db/exercise-catalog";
 import { useAppearance } from "@/components/appearance-provider";
+import { EmptyArt } from '@/components/empty-art';
 import { ExerciseThumb } from "@/components/exercise-thumb";
 import { ExerciseDetailSheet } from "@/components/exercise-detail-sheet";
 import { StatsPanel } from "@/components/stats-panel";
@@ -44,6 +50,7 @@ import { getProgressiveOverloadLoadOptions, getProgressiveOverloadRecommendation
 import { useRecommendationContext } from "@/hooks/use-recommendation-context";
 import { normalizeRestTimerSeconds } from "@/lib/appearance";
 import { syncRestLiveActivity } from "@/lib/rest-live-activity";
+import { requestRestNotificationPermission } from "@/lib/rest-notification";
 import { availableBarWeights, BAR_WEIGHT_LB, formatPlateCounts, MAX_BAR_WEIGHT_LB, PLATE_INCREMENT_LB, platesPerSide } from "@/lib/plate-loading";
 
 type Field = "weight" | "reps";
@@ -60,10 +67,37 @@ const restTicks = Array.from({ length: restTickCount }, (_, index) => {
   const inner = index % 5 === 0 ? 120 : 128;
   return { x1: 150 + inner * Math.sin(angle), y1: 150 - inner * Math.cos(angle), x2: 150 + 144 * Math.sin(angle), y2: 150 - 144 * Math.cos(angle) };
 });
+// Own component so the per-frame redraw doesn't re-render the whole workout screen.
+// endsAt null = fully lit (the done-colored copy).
+function RestDialTicks({ endsAt, duration, trackColor, litColor }: { endsAt: number | null; duration: number; trackColor: string; litColor: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (endsAt === null) return;
+    let frame = requestAnimationFrame(function step() {
+      setNow(Date.now());
+      frame = requestAnimationFrame(step);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [endsAt]);
+  const litTicks = endsAt === null ? restTickCount : Math.max(0, endsAt - now) / (duration * 1_000) * restTickCount;
+  return <>{restTicks.map((tick, index) => {
+    // Remaining time is the clockwise run of ticks ending at 12 o'clock.
+    // The boundary tick fades with the fractional remainder; 12 o'clock goes out with the last tick.
+    const position = index === 0 ? restTickCount - 1 : index;
+    const level = Math.min(1, Math.max(0, litTicks - (restTickCount - 1 - position)));
+    const strokeWidth = index % 5 === 0 ? 5 : 4;
+    return <G key={index}>
+      {level < 1 && <Line {...tick} stroke={trackColor} strokeWidth={strokeWidth} strokeLinecap="round" />}
+      {level > 0 && <Line {...tick} stroke={litColor} strokeOpacity={level} strokeWidth={strokeWidth} strokeLinecap="round" />}
+    </G>;
+  })}</>;
+}
 const plateLayout = LinearTransition.duration(180);
 const leftPlateEnter = FadeInLeft.duration(180);
 const rightPlateEnter = FadeInRight.duration(180);
 const recentSetEnter = FadeInRight.duration(220);
+const supersetTabEnter = ZoomIn.duration(200);
+const supersetTabLayout = LinearTransition.duration(200);
 const leftPlateExit = FadeOutLeft.duration(120);
 const rightPlateExit = FadeOutRight.duration(120);
 
@@ -184,10 +218,113 @@ function readSupersetIds(value: string | string[] | undefined, currentExerciseId
   return [currentExerciseId];
 }
 
+type SupersetDrag = {
+  id: SharedValue<string | null>;
+  dx: SharedValue<number>;
+  to: SharedValue<number>;
+  layouts: SharedValue<Record<string, { x: number; width: number }>>;
+};
+const supersetTabGap = 8; // Matches styles.supersetTabs gap.
+
+function supersetDropIndex(ids: string[], layouts: SupersetDrag["layouts"]["value"], id: string, dx: number) {
+  "worklet";
+  const from = layouts[id];
+  if (!from) return ids.indexOf(id);
+  const center = from.x + from.width / 2 + dx;
+  return ids.filter((other) => other !== id && layouts[other] && layouts[other].x + layouts[other].width / 2 < center).length;
+}
+
+// Tap switches exercises; press-and-hold then drag reorders the superset.
+// Neighbors slide aside live; the new order is committed once the tab settles.
+function SupersetTab({ exercise, ids, active, colors, drag, onSwitch, onReorder }: {
+  exercise: Exercise;
+  ids: string[];
+  active: boolean;
+  colors: ReturnType<typeof useAppearance>["colors"];
+  drag: SupersetDrag;
+  onSwitch: () => void;
+  onReorder: (ids: string[]) => void;
+}) {
+  const id = exercise.id;
+  const shift = useSharedValue(0);
+  const lifted = useSharedValue(0);
+  const liftHaptic = () => void Haptics.selectionAsync().catch(() => {});
+  const settle = () => {
+    "worklet";
+    lifted.value = withTiming(0, { duration: 150 });
+    const from = ids.indexOf(id);
+    const to = drag.to.value;
+    const layouts = drag.layouts.value;
+    if (to === from || !layouts[id] || !layouts[ids[to]]) {
+      drag.dx.set(withTiming(0, { duration: 150 }, () => { drag.id.set(null); }));
+      return;
+    }
+    const slot = layouts[ids[to]];
+    const targetX = to > from ? slot.x + slot.width - layouts[id].width : slot.x;
+    const next = ids.filter((other) => other !== id);
+    next.splice(to, 0, id);
+    drag.dx.set(withTiming(targetX - layouts[id].x, { duration: 150 }, (finished) => { if (finished) scheduleOnRN(onReorder, next); }));
+  };
+  const pan = Gesture.Pan().activateAfterLongPress(220)
+    .onStart(() => {
+      drag.id.set(id);
+      drag.dx.set(0);
+      drag.to.set(ids.indexOf(id));
+      lifted.value = withTiming(1, { duration: 150 });
+      scheduleOnRN(liftHaptic);
+    })
+    .onUpdate((event) => {
+      drag.dx.set(event.translationX);
+      const to = supersetDropIndex(ids, drag.layouts.value, id, event.translationX);
+      if (to !== drag.to.value) { drag.to.set(to); scheduleOnRN(liftHaptic); }
+    })
+    .onFinalize(() => { if (drag.id.value === id) settle(); });
+  const tap = Gesture.Tap().onEnd(() => { scheduleOnRN(onSwitch); });
+  // Slide neighbors out of the dragged tab's way; snap back instantly once the drag clears.
+  useAnimatedReaction(() => {
+    const dragged = drag.id.value;
+    if (dragged === null || dragged === id) return 0;
+    const from = ids.indexOf(dragged);
+    const index = ids.indexOf(id);
+    const to = drag.to.value;
+    const width = (drag.layouts.value[dragged]?.width ?? 0) + supersetTabGap;
+    return from < index && index <= to ? -width : to <= index && index < from ? width : 0;
+  }, (target) => { shift.value = drag.id.value === null ? 0 : withTiming(target, { duration: 150 }); });
+  const selected = useSharedValue(active ? 1 : 0);
+  useEffect(() => { selected.value = withTiming(active ? 1 : 0, { duration: 200 }); }, [active, selected]);
+  const selectedStyle = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(selected.value, [0, 1], [colors.surface, colors.accent]) }));
+  const selectedTextStyle = useAnimatedStyle(() => ({ color: interpolateColor(selected.value, [0, 1], [colors.mutedText, colors.accentText]) }));
+  const dragStyle = useAnimatedStyle(() => {
+    const dragged = drag.id.value === id;
+    return {
+      zIndex: dragged ? 1 : 0,
+      opacity: 1 - lifted.value * 0.12,
+      transform: [{ translateX: dragged ? drag.dx.value : shift.value }, { scale: 1 + lifted.value * 0.06 }],
+    };
+  });
+  return <GestureDetector gesture={Gesture.Exclusive(pan, tap)}>
+    <Animated.View
+      entering={supersetTabEnter}
+      onLayout={({ nativeEvent: { layout } }) => {
+        // Update in place on the UI thread; spreading from JS drops sibling tabs' concurrent writes.
+        drag.layouts.modify((layouts) => { "worklet"; layouts[id] = { x: layout.x, width: layout.width }; return layouts; });
+      }}
+      hitSlop={{ top: 5, bottom: 5 }}
+      style={[styles.supersetTab, selectedStyle, dragStyle]}
+      accessible
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`Switch to ${exercise.name}`}
+      accessibilityHint="Press and hold, then drag to reorder"
+    ><Animated.Text numberOfLines={1} style={[styles.supersetTabText, selectedTextStyle]}>{exercise.name}</Animated.Text></Animated.View>
+  </GestureDetector>;
+}
+
 export default function WorkoutScreen() {
 	const { colors, restTimerEnabled, useRecommendedRestTimer, restTimerSeconds } = useAppearance();
-  const { bottom: bottomInset } = useSafeAreaInsets();
-  const { width: inputAreaWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { width: inputAreaWidth, height: windowHeight } = useWindowDimensions();
+  const reducedMotion = useReducedMotion();
   const params = useLocalSearchParams<{
     id: string;
     name: string;
@@ -248,13 +385,35 @@ export default function WorkoutScreen() {
   const historySheetVisible = useSheetPresence(historyOpen);
   const [infoOpen, setInfoOpen] = useState(false);
   const [supersetPickerOpen, setSupersetPickerOpen] = useState(false);
+  const supersetSheetVisible = useSheetPresence(supersetPickerOpen);
   const [supersetQuery, setSupersetQuery] = useState("");
+  const [supersetMuscleFilters, setSupersetMuscleFilters] = useState<string[]>([]);
+  const [supersetEquipmentFilters, setSupersetEquipmentFilters] = useState<string[]>([]);
   const [restDuration, setRestDuration] = useState(restTimerSeconds);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   const [restNow, setRestNow] = useState(() => Date.now());
-  const [restDone, setRestDone] = useState(false);
   const restScale = useSharedValue(1);
   const restTimeAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: restScale.value }] }));
+  // Accent circle that floods out from the dial center when rest ends, clipping in a done-colored copy of the screen.
+  const restContainerRef = useRef<View>(null);
+  const restDialRef = useRef<View>(null);
+  const [restSize, setRestSize] = useState({ width: inputAreaWidth, height: windowHeight });
+  const [restCenter, setRestCenter] = useState({ x: inputAreaWidth / 2, y: windowHeight / 2 });
+  const restFillMaxRadius = Math.hypot(restSize.width, restSize.height);
+  const restFill = useSharedValue(0);
+  const restFillClipStyle = useAnimatedStyle(() => {
+    const radius = restFill.value * restFillMaxRadius;
+    return { left: restCenter.x - radius, top: restCenter.y - radius, width: radius * 2, height: radius * 2, borderRadius: radius };
+  });
+  const restFillContentStyle = useAnimatedStyle(() => {
+    const radius = restFill.value * restFillMaxRadius;
+    return { left: radius - restCenter.x, top: radius - restCenter.y };
+  });
+  function measureRestDial() {
+    const container = restContainerRef.current;
+    if (!container) return;
+    restDialRef.current?.measureLayout(container, (x, y, width, height) => setRestCenter({ x: x + width / 2, y: y + height / 2 }));
+  }
   const setLabelScale = useSharedValue(1);
   const setLabelAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: setLabelScale.value }] }));
   const valueScale = useSharedValue(1);
@@ -268,19 +427,30 @@ export default function WorkoutScreen() {
   const supersetExercises = useMemo(() => supersetIds
     .map((id) => exerciseCatalog.find((exercise) => exercise.id === id))
     .filter((exercise): exercise is Exercise => Boolean(exercise)), [supersetIds]);
-  const supersetCandidates = useMemo(() => {
-    return searchExercises(exerciseCatalog.filter((exercise) => !supersetIds.includes(exercise.id)), supersetQuery).slice(0, 40);
-  }, [supersetIds, supersetQuery]);
+  const availableSupersetExercises = useMemo(() => exerciseCatalog.filter((exercise) => !supersetIds.includes(exercise.id)), [supersetIds]);
+  const supersetMuscleOptions = useMemo(() => uniqueSorted(availableSupersetExercises.flatMap(getPrimaryMuscles)), [availableSupersetExercises]);
+  const supersetEquipmentOptions = useMemo(() => [...uniqueSorted(availableSupersetExercises.map((exercise) => exercise.equipment)), staticFilter], [availableSupersetExercises]);
+  const supersetCandidates = useMemo(() => searchExercises(availableSupersetExercises.filter((exercise) =>
+    matchesMuscle(exercise, supersetMuscleFilters) && matchesEquipment(exercise, supersetEquipmentFilters)
+  ), supersetQuery), [availableSupersetExercises, supersetEquipmentFilters, supersetMuscleFilters, supersetQuery]);
+  function clearSupersetSearch() {
+    setSupersetQuery("");
+    setSupersetMuscleFilters([]);
+    setSupersetEquipmentFilters([]);
+  }
   useEffect(() => {
     if (restEndsAt === null) return;
     const tick = () => {
       const now = Date.now();
       if (skippingRestRef.current) return;
       setRestNow(now);
-      if (now >= restEndsAt) {
+      if (now - restEndsAt > 2_000) {
+        // Returning after rest ended in the background: the notification already buzzed, so just close.
+        setRestEndsAt(null);
+      } else if (now >= restEndsAt) {
         // Hold the modal briefly so the inverted screen and pulse register before it closes.
         skippingRestRef.current = true;
-        setRestDone(true);
+        restFill.value = reducedMotion ? 1 : withTiming(1, { duration: 650, easing: Easing.out(Easing.cubic) });
         restScale.value = withSequence(
           withSpring(1.14, { duration: 160, dampingRatio: 0.5 }),
           withSpring(1, { duration: 300, dampingRatio: 0.6 }),
@@ -289,18 +459,20 @@ export default function WorkoutScreen() {
         Vibration.vibrate([0, 400, 200, 400]);
         setTimeout(() => {
           skippingRestRef.current = false;
-          setRestDone(false);
           setRestEndsAt(null);
-        }, 900);
+        }, 1200);
       }
     };
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
-  }, [restEndsAt, restScale]);
+  }, [reducedMotion, restEndsAt, restFill, restScale]);
   useEffect(() => {
     syncRestLiveActivity(restEndsAt, restDuration);
   }, [restEndsAt, restDuration]);
   useEffect(() => () => syncRestLiveActivity(null), []);
+  useEffect(() => {
+    if (restTimerEnabled) requestRestNotificationPermission();
+  }, [restTimerEnabled]);
   useEffect(() => {
     if (!contextReady) return;
     const timer = setTimeout(() => {
@@ -422,7 +594,10 @@ export default function WorkoutScreen() {
   }
   function goBack() {
     if (field === "reps" && usesWeight) setField("weight");
-    else router.back();
+    else router.navigate({
+      pathname: "/exercises",
+      params: { workoutId, split: getWorkoutVisitSummary(workoutId)?.workout.split },
+    });
   }
   function toggleAddedWeight() {
     if (includesAddedWeight) {
@@ -441,6 +616,7 @@ export default function WorkoutScreen() {
     const duration = useRecommendedRestTimer ? prescription.restSeconds : normalizeRestTimerSeconds(restTimerSeconds);
     skippingRestRef.current = false;
     restScale.value = 1;
+    restFill.value = 0;
     setRestDuration(duration);
     setRestNow(now);
     setRestEndsAt(now + duration * 1_000);
@@ -471,6 +647,7 @@ export default function WorkoutScreen() {
     }, duration + 120);
   }
   function switchExercise(exercise: Exercise, ids = supersetIds) {
+    setSwitchDirection(ids.indexOf(exercise.id) < ids.indexOf(exerciseId) ? -1 : 1);
     // Superset exercises are views within this workout, not separate screens.
     // Updating the current route's params preserves its single stack entry.
     router.setParams({
@@ -479,17 +656,61 @@ export default function WorkoutScreen() {
       superset: JSON.stringify(ids),
     });
   }
+  const [switchDirection, setSwitchDirection] = useState<1 | -1>(1);
+  const exerciseEnter = (switchDirection > 0 ? FadeInRight : FadeInLeft).duration(220);
+  const supersetDrag: SupersetDrag = {
+    id: useSharedValue<string | null>(null),
+    dx: useSharedValue(0),
+    to: useSharedValue(-1),
+    layouts: useSharedValue({}),
+  };
+  const supersetOrder = supersetIds.join();
+  useLayoutEffect(() => {
+    // The committed order now matches what the drag showed, so drop the offsets.
+    supersetDrag.id.set(null);
+    supersetDrag.dx.set(0);
+  }, [supersetOrder]); // eslint-disable-line react-hooks/exhaustive-deps
+  function reorderSuperset(ids: string[]) {
+    router.setParams({ superset: JSON.stringify(ids) });
+  }
   function addSupersetExercise(exercise: Exercise) {
     const ids = [...supersetIds, exercise.id];
     setSupersetPickerOpen(false);
-    setSupersetQuery("");
+    clearSupersetSearch();
     switchExercise(exercise, ids);
   }
   const validInput = field === "weight" ? Number(weight) > 0 && Number(weight) <= 10_000 && isValidWorkoutSetValues({ weight: Number(weight), reps: 1 }) : isValidWorkoutSetValues({ weight: usesWeight ? Number(weight) : 0, reps: Number(reps) }) && setNumber <= 100;
   const action = field === "weight" ? "Next" : "Log set";
   const restRemaining = restEndsAt === null ? 0 : Math.max(0, Math.ceil((restEndsAt - restNow) / 1_000));
-  const restLitTicks = restEndsAt === null ? 0 : Math.max(0, restEndsAt - restNow) / (restDuration * 1_000) * restTickCount;
   const formatRest = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  // Rendered twice: the normal screen, and a done-colored copy revealed through the expanding accent circle.
+  const renderRestScreen = (done: boolean) => (
+    <View style={[styles.restScreen, { paddingTop: insets.top + 28, paddingLeft: insets.left + 24, paddingRight: insets.right + 24, paddingBottom: insets.bottom + 15 }]}>
+      <Text style={[styles.restTitle, { color: done ? colors.accentText : colors.mutedText }]}>Rest</Text>
+      <View style={styles.restBody}>
+        <View ref={done ? undefined : restDialRef} onLayout={done ? undefined : measureRestDial} style={styles.restDial}>
+          <Svg width="100%" height="100%" viewBox="0 0 300 300" accessibilityElementsHidden>
+            <RestDialTicks endsAt={done ? null : restEndsAt} duration={restDuration} trackColor={colors.surfaceStrong} litColor={done ? colors.accentText : colors.accent} />
+          </Svg>
+          <Animated.View style={[styles.restTimeBlock, restTimeAnimatedStyle]}>
+            <Text accessibilityLiveRegion={done ? "none" : "polite"} style={[styles.restTime, { color: done ? colors.accentText : colors.text }]}>{formatRest(restRemaining)}</Text>
+            <Text style={[styles.restTotal, { color: done ? colors.accentText : colors.subtleText }]}>of {formatRest(restDuration)}</Text>
+          </Animated.View>
+        </View>
+        <View style={styles.restAdjustments}>
+          <Pressable hitSlop={10} onPress={() => adjustRest(-15)} style={({ pressed }) => [styles.restAdjustButton, { backgroundColor: done ? `${colors.accentText}1F` : colors.surface }, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Reduce rest by 15 seconds">
+            <Text style={[styles.restAdjustText, { color: done ? colors.accentText : colors.text }]}>−15</Text>
+          </Pressable>
+          <Pressable hitSlop={10} onPress={() => adjustRest(15)} style={({ pressed }) => [styles.restAdjustButton, { backgroundColor: done ? `${colors.accentText}1F` : colors.surface }, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Add 15 seconds of rest">
+            <Text style={[styles.restAdjustText, { color: done ? colors.accentText : colors.text }]}>+15</Text>
+          </Pressable>
+        </View>
+      </View>
+      <Pressable onPress={skipRest} style={({ pressed }) => [styles.skipRestButton, { backgroundColor: done ? colors.accentText : colors.accent }, pressed && styles.restPressed]} accessibilityRole="button">
+        <Text style={[styles.skipRestText, { color: done ? colors.accent : colors.accentText }]}>Skip rest</Text>
+      </Pressable>
+    </View>
+  );
   const recentSets = history.slice(-5);
   const recommendation = useMemo(
     () => getProgressiveOverloadRecommendation([
@@ -505,7 +726,7 @@ export default function WorkoutScreen() {
   );
   const recommendationValue = `${usesWeight && recommendation.weight !== undefined ? `${recommendation.weight} lb × ` : ""}${recommendation.reps} reps`;
   const recommendationLabel = ({ start: "START", increase: recommendation.weight === 0 ? "ADD REPS" : "ADD WEIGHT", retain: "HOLD", reduce: "EASE BACK", deload: "LIGHT DAY" } as const)[recommendation.action];
-  const valueDisplay = <Animated.Text key={field} entering={FadeIn.duration(180)} numberOfLines={1} adjustsFontSizeToFit style={[styles.value, { color: typed[field] || !value ? colors.text : colors.mutedText }, valueAnimatedStyle]}>
+  const valueDisplay = <Animated.Text key={`${exerciseId}-${field}`} entering={FadeIn.duration(180)} numberOfLines={1} adjustsFontSizeToFit style={[styles.value, { color: typed[field] || !value ? colors.text : colors.mutedText }, valueAnimatedStyle]}>
     {value || "0"}{field === "weight" ? " lb" : " reps"}
   </Animated.Text>;
   function applyRecommendation() {
@@ -535,12 +756,12 @@ export default function WorkoutScreen() {
     ))}
   </View>;
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+    <LayoutAnimationConfig skipEntering><SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <Pressable onPress={goBack} hitSlop={16} accessibilityRole="button" accessibilityLabel={field === "reps" && usesWeight ? "Back to weight" : "Close exercise"}>
           {field === "reps" && usesWeight ? <ChevronLeft width={28} height={28} color={colors.text} strokeWidth={2} /> : <X width={28} height={28} color={colors.text} strokeWidth={2} />}
         </Pressable>
-        <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.text }]}>{name}</Text>
+        <Animated.Text key={exerciseId} entering={exerciseEnter} numberOfLines={1} style={[styles.headerTitle, { color: colors.text }]}>{name}</Animated.Text>
         <Pressable
           onPress={() => setInfoOpen(true)}
           hitSlop={16}
@@ -551,32 +772,30 @@ export default function WorkoutScreen() {
         </Pressable>
       </View>
       <View style={styles.supersetBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.supersetTabs}>
-          {supersetExercises.length > 1 && supersetExercises.map((exercise) => {
-            const active = exercise.id === exerciseId;
-            return <Pressable
-              key={exercise.id}
-              onPress={() => !active && switchExercise(exercise)}
-              hitSlop={{ top: 5, bottom: 5 }}
-              style={({ pressed }) => [styles.supersetTab, { backgroundColor: active ? colors.accent : colors.surface }, pressed && !active && styles.supersetTabPressed]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`Switch to ${exercise.name}`}
-            ><Text numberOfLines={1} style={[styles.supersetTabText, { color: active ? colors.accentText : colors.mutedText }]}>{exercise.name}</Text></Pressable>;
-          })}
-          <Pressable
+        <GestureScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.supersetTabs}>
+          {supersetExercises.length > 1 && supersetExercises.map((exercise) => <SupersetTab
+            key={exercise.id}
+            exercise={exercise}
+            active={exercise.id === exerciseId}
+            ids={supersetIds}
+            colors={colors}
+            drag={supersetDrag}
+            onSwitch={() => exercise.id !== exerciseId && switchExercise(exercise)}
+            onReorder={reorderSuperset}
+          />)}
+          <Animated.View layout={supersetTabLayout}><Pressable
             onPress={() => setSupersetPickerOpen(true)}
             hitSlop={{ top: 5, bottom: 5 }}
             style={({ pressed }) => [styles.addSupersetButton, { borderColor: colors.surfaceStrong }, pressed && styles.supersetTabPressed]}
             accessibilityRole="button"
             accessibilityLabel="Add an exercise to this superset"
-          ><Plus width={15} height={15} color={colors.text} strokeWidth={3} /><Text style={[styles.addSupersetText, { color: colors.text }]}>Superset</Text></Pressable>
-        </ScrollView>
+          ><Plus width={15} height={15} color={colors.text} strokeWidth={3} /><Text style={[styles.addSupersetText, { color: colors.text }]}>Superset</Text></Pressable></Animated.View>
+        </GestureScrollView>
       </View>
-      <View style={styles.exerciseBlock}>
+      <Animated.View key={exerciseId} entering={exerciseEnter} style={styles.exerciseBlock}>
         <Animated.Text style={[styles.exerciseName, { color: colors.text }, setLabelAnimatedStyle]}>SET {setNumber}</Animated.Text>
         {!requiresWeight && <Pressable onPress={toggleAddedWeight} hitSlop={8} accessibilityRole="button" accessibilityLabel={includesAddedWeight ? "Remove added weight" : "Add weight to this exercise"}><Text style={[styles.weightMode, { color: colors.mutedText }]}>{includesAddedWeight ? "− REMOVE ADDED WEIGHT" : "+ ADD WEIGHT"}</Text></Pressable>}
-      </View>
+      </Animated.View>
       <View style={styles.valueBlock}>
         <View style={styles.valueRow}>
           {field === "weight" && supportsPlateDial ? <Pressable
@@ -676,43 +895,12 @@ export default function WorkoutScreen() {
         </Pressable>
       </View>
       <Modal visible={restEndsAt !== null} animationType="fade" presentationStyle="fullScreen" onRequestClose={skipRest}>
-        <SafeAreaView edges={["top", "left", "right"]} style={[styles.restModal, { backgroundColor: restDone ? colors.accent : colors.background }]}>
-          <View style={[styles.restScreen, { paddingBottom: bottomInset + 15 }]}>
-            <Text style={[styles.restTitle, { color: restDone ? colors.accentText : colors.mutedText }]}>Rest</Text>
-            <View style={styles.restBody}>
-              <View style={styles.restDial}>
-                <Svg width="100%" height="100%" viewBox="0 0 300 300" accessibilityElementsHidden>
-                  {restTicks.map((tick, index) => {
-                    // Remaining time is the clockwise run of ticks ending at 12 o'clock.
-                    // The boundary tick fades with the fractional remainder; 12 o'clock goes out with the last tick.
-                    const position = index === 0 ? restTickCount - 1 : index;
-                    const level = restDone ? 1 : Math.min(1, Math.max(0, restLitTicks - (restTickCount - 1 - position)));
-                    const strokeWidth = index % 5 === 0 ? 5 : 4;
-                    return <G key={index}>
-                      {level < 1 && <Line {...tick} stroke={colors.surfaceStrong} strokeWidth={strokeWidth} strokeLinecap="round" />}
-                      {level > 0 && <Line {...tick} stroke={restDone ? colors.accentText : colors.accent} strokeOpacity={level} strokeWidth={strokeWidth} strokeLinecap="round" />}
-                    </G>;
-                  })}
-                </Svg>
-                <Animated.View style={[styles.restTimeBlock, restTimeAnimatedStyle]}>
-                  <Text accessibilityLiveRegion="polite" style={[styles.restTime, { color: restDone ? colors.accentText : colors.text }]}>{formatRest(restRemaining)}</Text>
-                  <Text style={[styles.restTotal, { color: restDone ? colors.accentText : colors.subtleText }]}>of {formatRest(restDuration)}</Text>
-                </Animated.View>
-              </View>
-              <View style={styles.restAdjustments}>
-                <Pressable hitSlop={10} onPress={() => adjustRest(-15)} style={({ pressed }) => [styles.restAdjustButton, { backgroundColor: restDone ? `${colors.accentText}1F` : colors.surface }, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Reduce rest by 15 seconds">
-                  <Text style={[styles.restAdjustText, { color: restDone ? colors.accentText : colors.text }]}>−15</Text>
-                </Pressable>
-                <Pressable hitSlop={10} onPress={() => adjustRest(15)} style={({ pressed }) => [styles.restAdjustButton, { backgroundColor: restDone ? `${colors.accentText}1F` : colors.surface }, pressed && styles.restPressed]} accessibilityRole="button" accessibilityLabel="Add 15 seconds of rest">
-                  <Text style={[styles.restAdjustText, { color: restDone ? colors.accentText : colors.text }]}>+15</Text>
-                </Pressable>
-              </View>
-            </View>
-            <Pressable onPress={skipRest} style={({ pressed }) => [styles.skipRestButton, { backgroundColor: restDone ? colors.accentText : colors.accent }, pressed && styles.restPressed]} accessibilityRole="button">
-              <Text style={[styles.skipRestText, { color: restDone ? colors.accent : colors.accentText }]}>Skip rest</Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
+        <View ref={restContainerRef} onLayout={(event) => setRestSize(event.nativeEvent.layout)} style={[styles.restModal, { backgroundColor: colors.background }]}>
+          {renderRestScreen(false)}
+          <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.restFill, { backgroundColor: colors.accent }, restFillClipStyle]}>
+            <Animated.View style={[styles.restFillContent, { width: restSize.width, height: restSize.height }, restFillContentStyle]}>{renderRestScreen(true)}</Animated.View>
+          </Animated.View>
+        </View>
       </Modal>
       <Modal
         transparent
@@ -741,21 +929,23 @@ export default function WorkoutScreen() {
           </>}
         </View>
       </Modal>
-      <Modal transparent visible={supersetPickerOpen} animationType="none" onRequestClose={() => setSupersetPickerOpen(false)}>
+      <Modal transparent visible={supersetSheetVisible} animationType="none" onRequestClose={() => setSupersetPickerOpen(false)}>
         <View style={styles.modal}>
-          <Animated.View entering={FadeIn.duration(180)} style={styles.backdropLayer}><Pressable onPress={() => setSupersetPickerOpen(false)} style={styles.backdrop} /></Animated.View>
-          <Animated.View entering={SlideInDown.duration(280)} style={[styles.supersetSheet, { backgroundColor: colors.background }]}>
+          {supersetPickerOpen && <>
+          <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdropLayer}><Pressable onPress={() => setSupersetPickerOpen(false)} style={styles.backdrop} accessibilityRole="button" accessibilityLabel="Close superset picker" /></Animated.View>
+          <Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} accessibilityViewIsModal style={[styles.supersetSheet, { backgroundColor: colors.background }]}>
             <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
             <View style={styles.sheetHeader}>
               <View><Text style={[ui.eyebrow, { color: colors.mutedText }]}>SUPERSET</Text><Text style={[styles.pickerTitle, { color: colors.text }]}>Add an exercise</Text></View>
-              <Pressable onPress={() => setSupersetPickerOpen(false)} hitSlop={12} style={styles.sheetClose}><X width={24} height={24} color={colors.mutedText} strokeWidth={2} /></Pressable>
+              <Pressable onPress={() => setSupersetPickerOpen(false)} hitSlop={12} style={styles.sheetClose} accessibilityRole="button" accessibilityLabel="Close superset picker"><X width={24} height={24} color={colors.mutedText} strokeWidth={2} /></Pressable>
             </View>
-            <TextInput value={supersetQuery} onChangeText={setSupersetQuery} autoFocus placeholder="Search exercises" placeholderTextColor={colors.subtleText} style={[styles.supersetSearch, { backgroundColor: colors.surface, color: colors.text }]} />
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.pickerList}>
-              {supersetCandidates.map((exercise) => <Pressable key={exercise.id} onPress={() => addSupersetExercise(exercise)} style={({ pressed }) => [styles.pickerRow, { borderColor: colors.surfaceStrong }, pressed && styles.supersetTabPressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name} to superset`}><ExerciseThumb exercise={exercise} size={46} /><View style={styles.pickerCopy}><Text numberOfLines={1} style={[styles.pickerName, { color: colors.text }]}>{exercise.name}</Text><Text numberOfLines={1} style={[styles.pickerMeta, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View><Plus width={19} height={19} color={colors.text} strokeWidth={2.5} /></Pressable>)}
-              {!supersetCandidates.length && <Text style={[styles.emptyPicker, { color: colors.mutedText }]}>No available exercises match that search.</Text>}
-            </ScrollView>
+            <ExerciseSearchControls autoFocus query={supersetQuery} onQueryChange={setSupersetQuery} muscleOptions={supersetMuscleOptions} muscleFilters={supersetMuscleFilters} onMuscleFiltersChange={setSupersetMuscleFilters} equipmentOptions={supersetEquipmentOptions} equipmentFilters={supersetEquipmentFilters} onEquipmentFiltersChange={setSupersetEquipmentFilters} />
+            <FlatList data={supersetCandidates} keyExtractor={(exercise) => exercise.id} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.pickerList}
+              renderItem={({ item: exercise }) => <Pressable onPress={() => addSupersetExercise(exercise)} style={({ pressed }) => [styles.pickerRow, { borderColor: colors.surfaceStrong }, pressed && styles.supersetTabPressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name} to superset`}><ExerciseThumb exercise={exercise} size={46} /><View style={styles.pickerCopy}><Text numberOfLines={1} style={[styles.pickerName, { color: colors.text }]}>{exercise.name}</Text><Text numberOfLines={1} style={[styles.pickerMeta, { color: colors.mutedText }]}>{exercise.area} · {exercise.equipment}</Text></View><Plus width={19} height={19} color={colors.text} strokeWidth={2.5} /></Pressable>}
+              ListEmptyComponent={<View><EmptyArt name="search" width={132} /><Text style={[styles.emptyPicker, { color: colors.mutedText }]}>No available exercises match that search.</Text><Pressable onPress={clearSupersetSearch} accessibilityRole="button" accessibilityLabel="Reset search" style={styles.resetSupersetSearch}><Text style={[styles.resetSupersetSearchText, { color: colors.text }]}>Reset search</Text></Pressable></View>}
+            />
           </Animated.View>
+          </>}
         </View>
       </Modal>
       <Modal transparent visible={infoOpen} animationType="none" onRequestClose={() => setInfoOpen(false)}>
@@ -773,7 +963,7 @@ export default function WorkoutScreen() {
           </Animated.View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </SafeAreaView></LayoutAnimationConfig>
   );
 }
 const styles = StyleSheet.create({
@@ -918,10 +1108,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   restModal: { flex: 1 },
-  restScreen: { flex: 1, paddingHorizontal: 24, paddingTop: 28, alignItems: "center" },
+  restScreen: { flex: 1, alignItems: "center" },
   restTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.3 },
   restBody: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
   restDial: { width: 300, height: 300, alignItems: "center", justifyContent: "center" },
+  restFill: { position: "absolute", overflow: "hidden" },
+  restFillContent: { position: "absolute" },
   restTimeBlock: { position: "absolute", alignItems: "center" },
   restTime: { fontSize: 76, lineHeight: 82, fontWeight: "900", fontVariant: ["tabular-nums"], letterSpacing: -4 },
   restTotal: { marginTop: 2, fontSize: 15, fontWeight: "800", fontVariant: ["tabular-nums"] },
@@ -978,7 +1170,8 @@ const styles = StyleSheet.create({
   infoStepNumber: { width: 24, height: 24, borderRadius: 12, textAlign: "center", textAlignVertical: "center", lineHeight: 24, fontSize: 12, fontWeight: "900" },
   infoStepText: { flex: 1, fontSize: 15, lineHeight: 22, fontWeight: "600" },
   pickerTitle: { marginTop: 3, fontSize: 24, fontWeight: "900", letterSpacing: -0.9 },
-  supersetSearch: { height: 48, paddingHorizontal: 15, borderRadius: 15, fontSize: 15, fontWeight: "700" },
+  resetSupersetSearch: { alignSelf: "center", paddingHorizontal: 16, paddingVertical: 10 },
+  resetSupersetSearchText: { fontSize: 13, fontWeight: "800" },
   pickerList: { paddingTop: 10, paddingBottom: 20 },
   pickerRow: { minHeight: 62, paddingVertical: 8, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   pickerCopy: { flex: 1, minWidth: 0 },

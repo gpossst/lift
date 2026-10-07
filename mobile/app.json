@@ -2,7 +2,7 @@
   "expo": {
     "name": "LIFT",
     "slug": "mobile",
-    "version": "1.3.2",
+    "version": "1.3.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lift",
@@ -11,6 +11,9 @@
       "bundleIdentifier": "com.garrettp.lift",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
       }
     },
     "android": {

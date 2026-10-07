@@ -1,10 +1,12 @@
+import { ExerciseSearchControls } from '@/components/exercise-search-controls';
+import { formatLabel, getExerciseMetadata, getPrimaryMuscles, matchesEquipment, matchesMuscle, staticFilter, uniqueSorted } from '@/lib/exercise-filters';
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Check, ChevronDown, ChevronRight, Home, Plus, Search, X } from 'react-native-feather';
 import Animated, { FadeIn, FadeOut, FadeOutLeft, LinearTransition, SlideInDown } from 'react-native-reanimated';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { endWorkout, getExerciseRecommendations, getRankedExercises, getExercises, getWorkoutSplitDefinition, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
@@ -15,12 +17,10 @@ import { ExerciseThumb } from '@/components/exercise-thumb';
 import { MuscleCoverageGraphic } from '@/components/split-body-graphic';
 import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { useAppearance } from '@/components/appearance-provider';
+import { EmptyArt } from '@/components/empty-art';
 
 const exercises = getExercises();
-type ExerciseMetadata = { primaryMuscles: string[]; secondaryMuscles: string[]; force?: string };
-const exerciseMetadata = new WeakMap<Exercise, ExerciseMetadata>();
 type Sort = 'ranked' | 'az' | 'area' | 'equipment';
-const staticFilter = '__static__';
 const meaningfulExposureMs = 10_000;
 
 const sortLabels: Record<Sort, string> = { ranked: 'For you', az: 'Name', area: 'Muscle group', equipment: 'Equipment' };
@@ -274,7 +274,7 @@ function ExerciseCatalog({ visible, query, onQueryChange, muscleOptions, muscleF
   const { colors } = useAppearance();
   const renderItem = useCallback(({ item }: { item: Exercise }) => <ExerciseRow exercise={item} onChoose={onChoose} />, [onChoose]);
   return <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}><View style={styles.sheetOverlay}><Animated.View entering={FadeIn.duration(180)} style={styles.sheetBackdrop}><Pressable onPress={onClose} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close exercise library" /></Animated.View><Animated.View entering={SlideInDown.duration(280)} style={[styles.sheet, { backgroundColor: colors.background }]}><View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} /><View style={styles.sheetHeader}><View><Text style={[styles.sheetTitle, { color: colors.text }]}>Exercise library</Text><Text style={[styles.sheetSubtitle, { color: colors.mutedText }]}>Find your own movement</Text></View><Pressable onPress={onClose} hitSlop={10} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close"><X width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable></View>
-    <View style={styles.searchWrap}><View style={[styles.searchBox, { backgroundColor: colors.surface }]}><Search width={19} height={19} color={colors.mutedText} strokeWidth={2.35} /><TextInput value={query} onChangeText={onQueryChange} placeholder="Search names, aliases, or muscles" placeholderTextColor={colors.subtleText} autoCapitalize="none" autoCorrect={false} returnKeyType="search" style={[styles.searchInput, { color: colors.text }]} accessibilityLabel="Search exercises" />{query.length > 0 && <Pressable onPress={() => onQueryChange('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Clear search"><X width={18} height={18} color={colors.mutedText} strokeWidth={2.5} /></Pressable>}</View><FilterRow options={muscleOptions} selected={muscleFilters} onSelect={onMuscleFiltersChange} /><FilterRow options={equipmentOptions} selected={equipmentFilters} onSelect={onEquipmentFiltersChange} /></View>
+    <View style={styles.searchWrap}><ExerciseSearchControls query={query} onQueryChange={onQueryChange} muscleOptions={muscleOptions} muscleFilters={muscleFilters} onMuscleFiltersChange={onMuscleFiltersChange} equipmentOptions={equipmentOptions} equipmentFilters={equipmentFilters} onEquipmentFiltersChange={onEquipmentFiltersChange} /></View>
     <FlatList data={results} keyExtractor={(exercise) => exercise.id} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.catalogList} ListHeaderComponentStyle={styles.listHeaderContainer} ListHeaderComponent={<View style={styles.listHeader}><Text style={[ui.eyebrow, { color: colors.mutedText }]}>{hasActiveFilters ? `${results.length} ${results.length === 1 ? 'MOVEMENT' : 'MOVEMENTS'}` : 'ALL EXERCISES'}</Text><>{query.trim() ? <Text style={[styles.sortValue, { color: colors.mutedText }]}>Best match</Text> : <Pressable onPress={onToggleSorts} hitSlop={6} style={styles.sortButton} accessibilityRole="button" accessibilityLabel={`Sort by ${sortLabels[sort]}`} accessibilityState={{ expanded: showSorts }}><Text style={[styles.sortPrefix, { color: colors.subtleText }]}>SORT:</Text><Text style={[styles.sortValue, { color: colors.text }]}>{sortLabels[sort]}</Text><ChevronDown width={14} height={14} color={colors.text} strokeWidth={2.6} /></Pressable>}</>{!query.trim() && showSorts && <View style={[styles.sortMenu, { backgroundColor: colors.background, borderColor: colors.surfaceStrong }]}>{(Object.keys(sortLabels) as Sort[]).map((option) => <Pressable key={option} onPress={() => onSort(option)} style={styles.sortOption} accessibilityRole="button" accessibilityState={{ selected: option === sort }}><Text style={[styles.sortOptionText, { color: colors.mutedText }, option === sort && { color: colors.text }]}>{sortLabels[option]}</Text>{option === sort && <Check width={16} height={16} color={colors.text} strokeWidth={3} />}</Pressable>)}</View>}</View>} ListEmptyComponent={<EmptyState query={query} onClear={onClear} />} renderItem={renderItem} />
   </Animated.View></View></Modal>;
 }
@@ -330,31 +330,11 @@ function getWorkoutCoverage(workoutExerciseIds: readonly string[]) {
   return { primary: [...primary], secondary: [...secondary].filter((muscle) => !primary.has(muscle)) };
 }
 
-function EmptyState({ query, onClear }: { query: string; onClear: () => void }) { return <View style={styles.empty}><Text style={styles.emptyTitle}>Nothing found</Text><Text style={styles.emptyCopy}>{query ? `No movements match “${query}”.` : 'No movements match this focus.'}</Text><Pressable onPress={onClear} style={styles.resetButton}><Text style={styles.resetText}>Reset search</Text></Pressable></View>; }
-
-function FilterRow({ options, selected, onSelect }: { options: string[]; selected: string[]; onSelect: (values: string[]) => void }) { const { colors } = useAppearance(); const selectedValues = selected ?? []; return <View style={styles.filterGroup}><ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filters}>{options.map((option) => { const isSelected = selectedValues.includes(option); return <Pressable key={option} onPress={() => onSelect(isSelected ? selectedValues.filter((value) => value !== option) : [...selectedValues, option])} accessibilityRole="button" accessibilityState={{ selected: isSelected }} hitSlop={{ top: 4, bottom: 4 }} style={[styles.filterPill, { backgroundColor: isSelected ? colors.accent : colors.surface }]}><Text style={[styles.filterText, { color: isSelected ? colors.accentText : colors.mutedText }]}>{formatLabel(option)}</Text></Pressable>; })}</ScrollView></View>; }
-
-function matchesMuscle(exercise: Exercise, filters: string[] | null) { return !filters?.length || filters.some((filter) => getPrimaryMuscles(exercise).includes(filter)); }
-
-function matchesEquipment(exercise: Exercise, filters: string[] | null) {
-  return !filters?.length || filters.some((filter) => filter === staticFilter ? isStaticExercise(exercise) : filter === exercise.equipment);
-}
-
-function uniqueSorted(values: string[]) { return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
-
-function formatLabel(value: string) { return value === staticFilter ? 'Static' : value.replace(/\b\w/g, (letter) => letter.toUpperCase()); }
-
-function getPrimaryMuscles(exercise: Exercise): string[] {
-  return getExerciseMetadata(exercise).primaryMuscles;
-}
+function EmptyState({ query, onClear }: { query: string; onClear: () => void }) { return <View style={styles.empty}><EmptyArt name="search" /><Text style={styles.emptyTitle}>Nothing found</Text><Text style={styles.emptyCopy}>{query ? `No movements match “${query}”.` : 'No movements match this focus.'}</Text><Pressable onPress={onClear} style={styles.resetButton}><Text style={styles.resetText}>Reset search</Text></Pressable></View>; }
 
 function exerciseMuscleLabel(exercise: Exercise) {
   const muscles = getPrimaryMuscles(exercise);
   return muscles.length ? muscles.map(formatLabel).join(' · ') : exercise.area;
-}
-
-function isStaticExercise(exercise: Exercise) {
-  return getExerciseMetadata(exercise).force === 'static';
 }
 
 function matchesSplit(exercise: Exercise, split?: string, splitMuscles?: string[]) {
@@ -370,20 +350,6 @@ function matchesSplit(exercise: Exercise, split?: string, splitMuscles?: string[
   if (split === 'push') return exercise.area === 'CHEST' || exercise.area === 'SHOULDERS' || hasPrimary('triceps');
   if (split === 'pull') return exercise.area === 'BACK' || hasPrimary('biceps') || hasPrimary('forearms');
   return true;
-}
-
-function getExerciseMetadata(exercise: Exercise): ExerciseMetadata {
-  const cached = exerciseMetadata.get(exercise);
-  if (cached) return cached;
-  let parsed: Partial<ExerciseMetadata> = {};
-  try { parsed = JSON.parse(exercise.detailsJson ?? '{}'); } catch { /* Catalog rows remain usable without details. */ }
-  const metadata = {
-    primaryMuscles: Array.isArray(parsed.primaryMuscles) ? parsed.primaryMuscles : [],
-    secondaryMuscles: Array.isArray(parsed.secondaryMuscles) ? parsed.secondaryMuscles : [],
-    force: typeof parsed.force === 'string' ? parsed.force : undefined,
-  };
-  exerciseMetadata.set(exercise, metadata);
-  return metadata;
 }
 
 const ExerciseRow = memo(function ExerciseRow({ exercise, onChoose }: { exercise: Exercise; onChoose: (exercise: Exercise) => void }) { const { colors } = useAppearance(); return <Pressable onPress={() => onChoose(exercise)} style={({ pressed }) => [styles.row, { borderColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Add ${exercise.name}`}><ExerciseThumb exercise={exercise} size={46} /><View style={styles.rowCopy}><Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>{exercise.name}</Text><View style={styles.metaRow}><Text numberOfLines={1} style={[styles.area, { color: colors.mutedText }]}>{exerciseMuscleLabel(exercise)}</Text><View style={[styles.metaDot, { backgroundColor: colors.subtleText }]} /><Text numberOfLines={1} style={[styles.equipment, { color: colors.mutedText }]}>{exercise.equipment}</Text></View></View></Pressable>; });
@@ -435,12 +401,6 @@ const styles = StyleSheet.create({
   sheetSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '700' },
   closeButton: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   searchWrap: { paddingHorizontal: 24, paddingBottom: 10 },
-  searchBox: { height: 52, paddingHorizontal: 16, borderRadius: 17, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  searchInput: { flex: 1, fontSize: 15, fontWeight: '800', height: '100%' },
-  filterGroup: { marginTop: 8 },
-  filters: { gap: 7, paddingVertical: 4 }, filterScroll: { marginVertical: -4 },
-  filterPill: { height: 32, paddingHorizontal: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  filterText: { fontSize: 12, fontWeight: '900' },
   catalogList: { paddingHorizontal: 24, paddingBottom: 38 },
   listHeaderContainer: { zIndex: 100, elevation: 100, overflow: 'visible' },
   listHeader: { position: 'relative', zIndex: 100, overflow: 'visible', height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

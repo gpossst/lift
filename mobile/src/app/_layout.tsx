@@ -15,8 +15,12 @@ import { createWorkout, getRecommendedWorkoutSplit, getRejectedCloudSyncChanges,
 import { setCloudSyncUser, syncWorkoutData } from '@/lib/cloud-sync';
 import { clearPendingOnboarding, submitOnboarding, takePendingOnboarding } from '@/lib/onboarding';
 import { authClient } from '@/lib/auth-client';
+import { getProfile } from '@/lib/profile';
+import { syncRestLiveActivity } from '@/lib/rest-live-activity';
 
 SplashScreen.preventAutoHideAsync();
+// Rest state lives only in the workout screen, so a cold launch means any rest timer from a killed process is orphaned.
+syncRestLiveActivity(null);
 
 // react-native-graph trips Reanimated's inline-style heuristic internally.
 LogBox.ignoreLogs(["shared value's .value inside reanimated inline style"]);
@@ -44,6 +48,9 @@ export default function RootLayout() {
 function CloudSyncLifecycle() {
   const { data: session, isPending } = authClient.useSession();
   const userId = session?.user.id;
+  const { setUseCustomSplits } = useAppearance();
+  const applySplitPlan = useRef(setUseCustomSplits);
+  applySplitPlan.current = setUseCustomSplits;
   useEffect(() => {
     if (isPending || !userId) {
       setCloudSyncUser(null);
@@ -58,6 +65,11 @@ function CloudSyncLifecycle() {
     let active = true;
     let lastNotice = '';
     const synchronize = () => {
+      // The split plan is account-wide; null means this account never chose one, so keep the local value.
+      void getProfile().then((profile) => {
+        const synced = profile.recommendationPreferences?.useCustomSplits;
+        if (active && typeof synced === 'boolean') applySplitPlan.current(synced);
+      }).catch(() => undefined);
       void syncWorkoutData().then(() => {
         if (!active) return;
         const issues = getRejectedCloudSyncChanges();
@@ -67,7 +79,7 @@ function CloudSyncLifecycle() {
         lastNotice = notice;
         Alert.alert('Some changes need attention', 'Some changes could not sync and are kept on this device. Review them in Settings.', [
           { text: 'Later', style: 'cancel' },
-          { text: 'Review', onPress: () => router.push('/settings') },
+          { text: 'Review', onPress: () => router.navigate('/settings') },
         ]);
       }).catch(() => undefined);
     };

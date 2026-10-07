@@ -1,12 +1,13 @@
 import { createContext, useContext, useMemo, useState, type PropsWithChildren } from 'react';
 
-import { colorsFor, defaultAppearance, normalizeRestTimerSeconds, systemMode, type AccentId, type AppearanceMode, type AppearancePreferences } from '@/lib/appearance';
+import { colorsFor, defaultAppearance, normalizeRestTimerSeconds, systemMode, type AccentId, type AppearanceMode, type AppearancePreferences, type BodyShape } from '@/lib/appearance';
 import { readAppearance, writeAppearance } from '@/lib/appearance-storage';
 
 type AppearanceContextValue = AppearancePreferences & {
   colors: ReturnType<typeof colorsFor>;
   setMode: (mode: AppearanceMode) => void;
   setAccent: (accent: AccentId) => void;
+  setBodyShape: (bodyShape: BodyShape) => void;
   setShowWorkoutRecommendations: (show: boolean) => void;
   setUseCustomSplits: (enabled: boolean) => void;
   setRestTimerEnabled: (enabled: boolean) => void;
@@ -31,6 +32,7 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
     colors: colorsFor(preferences),
     setMode: (mode: AppearanceMode) => update({ ...preferences, mode }),
     setAccent: (accent: AccentId) => update({ ...preferences, accent }),
+    setBodyShape: (bodyShape: BodyShape) => update({ ...preferences, bodyShape }),
     setShowWorkoutRecommendations: (showWorkoutRecommendations: boolean) => update({ ...preferences, showWorkoutRecommendations }),
     setUseCustomSplits: (useCustomSplits: boolean) => update({ ...preferences, useCustomSplits }),
     setRestTimerEnabled: (restTimerEnabled: boolean) => update({ ...preferences, restTimerEnabled }),

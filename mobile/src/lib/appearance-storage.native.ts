@@ -7,6 +7,7 @@ database.execSync('CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY 
 
 export function readAppearance(): AppearancePreferences {
   const mode = database.getFirstSync<{ value: string }>('SELECT value FROM preferences WHERE key = ?', ['appearance-mode'])?.value;
+  const bodyShape = database.getFirstSync<{ value: string }>('SELECT value FROM preferences WHERE key = ?', ['body-shape'])?.value;
   const accent = database.getFirstSync<{ value: string }>('SELECT value FROM preferences WHERE key = ?', ['appearance-accent'])?.value;
   const recommendations = database.getFirstSync<{ value: string }>('SELECT value FROM preferences WHERE key = ?', ['show-workout-recommendations'])?.value;
   const useCustomSplits = database.getFirstSync<{ value: string }>('SELECT value FROM preferences WHERE key = ?', ['use-custom-splits'])?.value;
@@ -16,6 +17,7 @@ export function readAppearance(): AppearancePreferences {
   return {
     mode: mode === 'dark' ? 'dark' : mode === 'light' ? 'light' : systemMode(),
     accent: accent === 'red' || accent === 'blue' || accent === 'yellow' ? accent : defaultAppearance.accent,
+    bodyShape: bodyShape === 'female' ? 'female' : defaultAppearance.bodyShape,
     showWorkoutRecommendations: recommendations === 'false' ? false : defaultAppearance.showWorkoutRecommendations,
     useCustomSplits: useCustomSplits === 'true',
     restTimerEnabled: restTimerEnabled === 'false' ? false : defaultAppearance.restTimerEnabled,
@@ -25,6 +27,7 @@ export function readAppearance(): AppearancePreferences {
 }
 
 export function writeAppearance(value: AppearancePreferences) {
+  database.runSync('INSERT INTO preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', ['body-shape', value.bodyShape]);
   database.runSync('INSERT INTO preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', ['appearance-mode', value.mode]);
   database.runSync('INSERT INTO preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', ['appearance-accent', value.accent]);
   database.runSync('INSERT INTO preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', ['show-workout-recommendations', String(value.showWorkoutRecommendations)]);

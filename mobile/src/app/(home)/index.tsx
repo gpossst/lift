@@ -1,16 +1,18 @@
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated as NativeAnimated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Circle } from '@shopify/react-native-skia';
-import { ChevronRight, Clock } from 'react-native-feather';
+import { Award, ChevronRight, Clock } from 'react-native-feather';
+import LottieView from 'lottie-react-native';
 import { LineGraph, type SelectionDotProps } from 'react-native-graph';
-import Animated, { FadeIn, FadeInDown, FadeOut, interpolate, SlideInDown, SlideOutDown, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, ZoomIn, interpolate, SlideInDown, SlideOutDown, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
 import { useSheetPresence } from '@/hooks/use-sheet-presence';
 import Svg, { Defs, Line, LinearGradient, Polygon, Polyline, Stop } from 'react-native-svg';
-import { closeExpiredWorkouts, getActiveWorkout, getCompletedWorkoutExerciseDetails, getExercises, getWorkoutHistories, getWorkoutSplitTrends, getWorkoutVisitExerciseDetails, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
+import { closeExpiredWorkouts, getActiveWorkout, getCompletedWorkoutExerciseDetails, getCustomSplits, getExercises, getWorkoutHistories, getWorkoutSplitTrends, getWorkoutVisitExerciseDetails, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
+import { EmptyArt } from '@/components/empty-art';
 import { SplitRoutinePrompt } from '@/components/split-routine-prompt';
 import { SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
@@ -51,18 +53,34 @@ function loadHomeData() {
 		activeExercises: activeWorkout ? getWorkoutVisitExerciseDetails(activeWorkout.id) : [],
 		visits: getWorkoutVisits(),
 		trends: getWorkoutSplitTrends(8),
+		customSplits: getCustomSplits(),
 	};
 }
 
+/** Average session volume per week for one custom split, bucketed like getWorkoutSplitTrends. */
+function customSplitTrend(split: string, visits: WorkoutVisitSummary[], weekStarts: string[]) {
+	const start = new Date();
+	start.setHours(0, 0, 0, 0);
+	start.setDate(start.getDate() - (weekStarts.length * 7 - 1));
+	const totals = weekStarts.map(() => ({ volume: 0, sessions: 0 }));
+	for (const visit of visits) {
+		const index = Math.floor(((visit.workout.endedAt ?? visit.workout.createdAt).getTime() - start.getTime()) / 86_400_000 / 7);
+		if (visit.workout.split !== split || !totals[index]) continue;
+		totals[index].volume += visit.volume;
+		totals[index].sessions += 1;
+	}
+	return { split, points: weekStarts.map((weekStart, index) => ({ weekStart, volume: totals[index].volume / (totals[index].sessions || 1) })) };
+}
+
 export default function HomeScreen() {
-	const { colors } = useAppearance();
+	const { colors, useCustomSplits } = useAppearance();
 	const { data: session } = authClient.useSession();
 	const userId = session?.user.id;
 	const [expiredWorkoutCount] = useState(() => closeExpiredWorkouts());
 	const [now] = useState(() => Date.now());
-	const [{ activeWorkout, activeExercises, visits, trends }, setHomeData] = useState(loadHomeData);
+	const [{ activeWorkout, activeExercises, visits, trends: defaultTrends, customSplits }, setHomeData] = useState(loadHomeData);
 	const firstHomeFocus = useRef(true);
-	const [selectedSplit, setSelectedSplit] = useState<'ALL' | 'PUSH' | 'PULL' | 'LEGS'>('ALL');
+	const [selectedSplit, setSelectedSplit] = useState('ALL');
 	const [selectedPoint, setSelectedPoint] = useState<VolumePoint | null>(null);
 	const [friendRecords, setFriendRecords] = useState<FriendPersonalRecord[]>([]);
 	const [ownRecords, setOwnRecords] = useState<PersonalRecord[]>([]);
@@ -77,7 +95,7 @@ export default function HomeScreen() {
 	].sort((a, b) => b.time - a.time).slice(0, 3);
 	const notifications = [
 		...(returnPlan ? [{ key: 'plan', kicker: 'YOUR NEXT WORKOUT', title: new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`)), onPress: () => router.push('/start'), accent: true }] : []),
-		...recentEvents.map((event) => ({ ...event, accent: false })),
+		...recentEvents.map((event) => ({ ...event, accent: false, pr: true })),
 		...(friendCount === 0 ? [{ key: 'friends', kicker: 'FRIENDS', title: 'Add friends to see updates', onPress: () => router.push('/friends'), accent: false }] : []),
 		...(profilePreferences && profilePreferences.weightLb == null && profilePreferences.heightInches == null ? [{ key: 'measurements', kicker: 'BODY MEASUREMENTS', title: 'Add your height and weight', onPress: () => router.push('/settings/profile'), accent: false }] : []),
 	];
@@ -124,6 +142,11 @@ export default function HomeScreen() {
 	const daysThisWeek = weekDays.filter((day) => trainedDays.has(dateKey(day))).length;
 	const goal = trainingDays != null && trainingDays > 0 ? trainingDays : null;
 	const streak = weekStreak(trainedVisits.map(({ workout }) => workout.endedAt ?? workout.createdAt), today);
+	const allTrend = defaultTrends.find((trend) => trend.split === 'ALL');
+	const trends: { split: string; points: { weekStart: string; volume: number }[] }[] = useCustomSplits && customSplits.length && allTrend
+		? [allTrend, ...customSplits.map((split) => customSplitTrend(split.id, visits, allTrend.points.map((point) => point.weekStart))).filter((trend) => trend.points.some((point) => point.volume > 0))]
+		: defaultTrends;
+	const trendLabel = (split: string) => split === 'ALL' ? 'All' : customSplits.find((custom) => custom.id === split)?.name ?? split[0] + split.slice(1).toLowerCase();
 	const activeTrend = trends.find((trend) => trend.split === selectedSplit) ?? trends[0];
 	const chartPoints = activeTrend?.points.map((point) => ({ volume: point.volume, date: new Date(`${point.weekStart}T12:00:00`) }))
 		?? Array.from({ length: 8 }, (_, index) => ({ volume: 0, date: new Date(now - (7 - index) * 7 * 86_400_000) }));
@@ -141,7 +164,7 @@ export default function HomeScreen() {
 		</View>
 		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 			{activeWorkout ? <ResumeCard title={`${workoutSplitLabel(activeWorkout.split)} workout`} meta={activeMeta || ''} colors={colors} onPress={() => router.navigate({ pathname: '/exercises', params: { split: activeWorkout.split, workoutId: activeWorkout.id } })} /> : notifications.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={notificationWidth + notificationGap} decelerationRate="fast" style={styles.notificationScroll} contentContainerStyle={styles.notificationRow}>
-				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}><View style={styles.notificationCopy}><Text style={[ui.eyebrow, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
+				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}>{'pr' in notification && <Award width={22} height={22} color={goalGold} strokeWidth={2.4} />}<View style={styles.notificationCopy}><Text style={[ui.eyebrow, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
 			</ScrollView>}
 
 			<MonthActivity visits={visits} colors={colors} goal={goal} daysThisWeek={daysThisWeek} streak={streak} />
@@ -149,7 +172,7 @@ export default function HomeScreen() {
 			<SectionHeader title="Volume" />
 			<View style={[styles.card, { backgroundColor: colors.surface }]}>
 				{activeTrend ? <>
-					<SegmentedPicker options={[...trends].sort((a, b) => Number(b.split === 'ALL') - Number(a.split === 'ALL')).map((trend) => ({ value: trend.split, label: trend.split === 'ALL' ? 'All' : trend.split[0] + trend.split.slice(1).toLowerCase(), accessibilityLabel: `Show ${trend.split.toLowerCase()} volume` }))} selected={activeTrend.split} onSelect={(split) => { setSelectedSplit(split); setSelectedPoint(null); }} compact />
+					<SegmentedPicker options={[...trends].sort((a, b) => Number(b.split === 'ALL') - Number(a.split === 'ALL')).map((trend) => ({ value: trend.split, label: trendLabel(trend.split), accessibilityLabel: `Show ${trendLabel(trend.split).toLowerCase()} volume` }))} selected={activeTrend.split} onSelect={(split) => { setSelectedSplit(split); setSelectedPoint(null); }} compact />
 					<View style={styles.totalRow}>
 						<AnimatedVolume volume={displayedPoint?.volume ?? 0} colors={colors} />
 						{!selectedPoint && volumeChange !== null && <Text style={[styles.totalDelta, { color: volumeChange > 0 ? '#5194FF' : volumeChange < 0 ? '#FF5151' : colors.mutedText }]} accessibilityLabel={`${volumeChange >= 0 ? 'Up' : 'Down'} ${Math.abs(volumeChange)} percent from last week`}>{volumeChange === 0 ? '±0%' : `${volumeChange > 0 ? '▲' : '▼'} ${Math.abs(volumeChange)}%`}</Text>}
@@ -157,7 +180,7 @@ export default function HomeScreen() {
 					<Text style={[styles.totalMeta, { color: colors.mutedText }]}>{trendContext}</Text>
 					<VolumeChart points={chartPoints} onSelect={setSelectedPoint} onInteractionEnd={() => setSelectedPoint(null)} colors={colors} />
 					<View style={styles.axisRow}><Text style={[styles.axisLabel, { color: colors.subtleText }]}>{weekLabel(chartPoints[0].date)}</Text><Text style={[styles.axisLabel, { color: colors.subtleText }]}>This week</Text></View>
-				</> : <Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Log a workout to see your volume trend.</Text>}
+				</> : <View><EmptyArt name="chart" width={120} /><Text style={[styles.emptyCopy, { color: colors.mutedText, textAlign: 'center' }]}>Log a workout to see your volume trend.</Text></View>}
 			</View>
 		</ScrollView>
 	</SafeAreaView>;
@@ -172,11 +195,11 @@ function ResumeCard({ title, meta, colors, onPress }: { title: string; meta: str
 	const press = useSharedValue(0);
 	const pulse = useSharedValue(1);
 	useEffect(() => { if (!reduceMotion) pulse.value = withRepeat(withTiming(.25, { duration: 900 }), -1, true); }, [pulse, reduceMotion]);
-	const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: interpolate(press.value, [0, 1], [1, .98]) }] }));
-	const buttonStyle = useAnimatedStyle(() => ({ opacity: interpolate(press.value, [0, 1], [1, .82]), transform: [{ scale: interpolate(press.value, [0, 1], [1, .9]) }] }));
+	const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: interpolate(press.value, [0, 1], [1, .995]) }] }));
+	const buttonStyle = useAnimatedStyle(() => ({ opacity: interpolate(press.value, [0, 1], [1, .82]), transform: [{ scale: interpolate(press.value, [0, 1], [1, .97]) }] }));
 	const dotStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
-	const spring = (value: number) => { press.set(reduceMotion ? value : withSpring(value, { duration: value ? 140 : 320, dampingRatio: value ? 1 : .55 })); };
-	return <Animated.View entering={FadeInDown.springify().damping(16)} style={[styles.resumeWrap, cardStyle]}>
+	const spring = (value: number) => { press.set(reduceMotion ? value : withSpring(value, { duration: value ? 120 : 260, dampingRatio: value ? 1 : .75 })); };
+	return <Animated.View entering={FadeInDown.springify().duration(250).dampingRatio(.8).withInitialValues({ transform: [{ translateY: 6 }] })} style={[styles.resumeWrap, cardStyle]}>
 		<Pressable onPress={onPress} onPressIn={() => spring(1)} onPressOut={() => spring(0)} style={[styles.resume, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel={`Resume ${title}. ${meta}`}>
 			<View style={styles.notificationCopy}>
 				<View style={styles.resumeKicker}><Animated.View style={[styles.resumeDot, { backgroundColor: colors.accentText }, dotStyle]} /><Text style={[ui.eyebrow, { color: colors.accentText }]}>IN PROGRESS</Text></View>
@@ -209,9 +232,9 @@ function AnimatedVolume({ volume, colors }: { volume: number; colors: AppColors 
 	return <Text style={[styles.totalValue, { color: colors.text, fontVariant: ['tabular-nums'] }]} accessibilityLabel={`${formatVolume(volume)} lb`}>{formatVolume(displayedVolume)}<Text style={[styles.totalUnit, { color: colors.mutedText }]}> lb</Text></Text>;
 }
 
-function HeroStat({ value, unit, label, colors}: { value: string; unit?: string; label: string; colors: AppColors }) {
+function HeroStat({ value, unit, label, colors, icon }: { value: string; unit?: string; label: string; colors: AppColors; icon?: ReactNode }) {
 	return <View style={styles.heroStat} accessible accessibilityLabel={`${label} ${value}${unit ? ` ${unit}` : ''}`}>
-		<Text style={[styles.heroStatValue, { color: colors.text }]}>{value}{unit && <Text style={[styles.heroStatUnit, { color: colors.mutedText }]}> {unit}</Text>}</Text>
+		{icon ? <View style={styles.heroStatValueRow}>{icon}{unit && <Text style={[styles.heroStatUnit, { color: colors.mutedText }]}>{unit}</Text>}</View> : <Text style={[styles.heroStatValue, { color: colors.text }]}>{value}{unit && <Text style={[styles.heroStatUnit, { color: colors.mutedText }]}> {unit}</Text>}</Text>}
 		<Text style={[styles.heroStatLabel, { color: colors.mutedText }]}>{label}</Text>
 	</View>;
 }
@@ -262,6 +285,23 @@ function WebLineGraph({ points, onSelect, onInteractionEnd, colors }: VolumeChar
 	</Pressable>;
 }
 
+// Flame badge with the streak count inside. Sits at its last (resting) frame; replays the pop,
+// and zooms the new number in, whenever the streak rises while home is mounted.
+function StreakFlame({ streak }: { streak: number }) {
+	const lottie = useRef<LottieView>(null);
+	const previous = useRef(streak);
+	const [rose, setRose] = useState(false);
+	const reducedMotion = useReducedMotion();
+	useEffect(() => {
+		if (streak > previous.current && !reducedMotion) { lottie.current?.play(0); setRose(true); }
+		previous.current = streak;
+	}, [streak, reducedMotion]);
+	return <View style={styles.streakFlame}>
+		<LottieView ref={lottie} source={require('../../../assets/streak-flame.json')} autoPlay={false} loop={false} progress={1} style={StyleSheet.absoluteFill} />
+		<Animated.Text key={streak} entering={rose ? ZoomIn.delay(150).springify() : undefined} style={styles.streakFlameCount}>{streak}</Animated.Text>
+	</View>;
+}
+
 function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits: WorkoutVisitSummary[]; colors: AppColors; goal: number | null; daysThisWeek: number; streak: number }) {
 	const [workoutPicker, setWorkoutPicker] = useState<{ date: Date; visits: WorkoutVisitSummary[] } | null>(null);
 	const workoutPickerVisible = useSheetPresence(workoutPicker !== null);
@@ -297,7 +337,7 @@ function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits:
 				<View style={[styles.statDivider, { backgroundColor: colors.surfaceStrong }]} />
 				<HeroStat value={String(daysThisWeek)} unit={goal != null ? `/ ${goal}` : undefined} label={goal != null && daysThisWeek >= goal ? 'Goal met' : 'This week'} colors={colors} />
 				<View style={[styles.statDivider, { backgroundColor: colors.surfaceStrong }]} />
-				<HeroStat value={String(streak)} unit={streak === 1 ? 'wk' : 'wks'} label="Streak" colors={colors} />
+				<HeroStat value={String(streak)} unit={streak === 1 ? 'wk' : 'wks'} label="Streak" colors={colors} icon={streak > 0 && <StreakFlame streak={streak} />} />
 			</View>
 			<View style={styles.calendarRow}>{'SMTWTFS'.split('').map((letter, index) => <Text key={index} style={[styles.calendarWeekday, { width: cellWidth, color: colors.subtleText }]}>{letter}</Text>)}</View>
 			<View style={styles.calendarGrid} onLayout={({ nativeEvent: { layout } }) => setGridWidth((width) => width === layout.width ? width : layout.width)}>{!!gridWidth && rows.map((week, rowIndex) => <View key={rowIndex} style={styles.calendarRow}>{week.map((day, columnIndex) => {
@@ -355,7 +395,7 @@ const styles = StyleSheet.create({
 	notificationScroll: { marginHorizontal: -contentPadding, marginBottom: -8 }, notificationRow: { paddingHorizontal: contentPadding, gap: notificationGap }, notification: { minHeight: 66, paddingVertical: 12, paddingLeft: 18, paddingRight: 14, borderRadius: 20, borderCurve: 'continuous', flexDirection: 'row', alignItems: 'center', gap: 8 }, notificationCopy: { flex: 1, minWidth: 0 }, notificationText: { marginTop: 3, fontSize: 16, fontWeight: '900', letterSpacing: -.4 },
 	resumeWrap: { marginBottom: -8 }, resume: { paddingVertical: 16, paddingLeft: 18, paddingRight: 14, borderRadius: 22, borderCurve: 'continuous', flexDirection: 'row', alignItems: 'center', gap: 12 }, resumeKicker: { flexDirection: 'row', alignItems: 'center', gap: 6 }, resumeDot: { width: 7, height: 7, borderRadius: 4 }, resumeTitle: { marginTop: 4, fontSize: 22, fontWeight: '900', letterSpacing: -.7 }, resumeMeta: { marginTop: 2, fontSize: 12, fontWeight: '700', opacity: .8 }, resumeButton: { height: 38, paddingLeft: 14, paddingRight: 10, borderRadius: 19, flexDirection: 'row', alignItems: 'center', gap: 2 }, resumeButtonText: { fontSize: 14, fontWeight: '900' },
 	statRow: { marginBottom: 18, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center' }, statDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginHorizontal: 14 },
-	heroStat: { flex: 1 }, heroStatValue: { fontSize: 22, fontWeight: '900', letterSpacing: -.6, fontVariant: ['tabular-nums'] }, heroStatUnit: { fontSize: 12, fontWeight: '800', letterSpacing: 0 }, heroStatLabel: { marginTop: 1, fontSize: 11, fontWeight: '700' },
+	heroStat: { flex: 1 }, heroStatValueRow: { height: 27, flexDirection: 'row', alignItems: 'center', gap: 4 }, streakFlame: { width: 30, height: 30, marginVertical: -2, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 4 }, streakFlameCount: { color: '#FFF', fontSize: 14, fontWeight: '900', fontVariant: ['tabular-nums'] }, heroStatValue: { fontSize: 22, fontWeight: '900', letterSpacing: -.6, fontVariant: ['tabular-nums'] }, heroStatUnit: { fontSize: 12, fontWeight: '800', letterSpacing: 0 }, heroStatLabel: { marginTop: 1, fontSize: 11, fontWeight: '700' },
 	totalRow: { marginTop: 20, flexDirection: 'row', alignItems: 'baseline', gap: 10 },
 	totalValue: { fontSize: 34, fontWeight: '900', letterSpacing: -1.2, fontVariant: ['tabular-nums'] }, totalUnit: { fontSize: 15, fontWeight: '800', letterSpacing: 0 },
 	totalDelta: { fontSize: 13, fontWeight: '900', fontVariant: ['tabular-nums'] }, totalMeta: { marginTop: 2, fontSize: 12, fontWeight: '700' },

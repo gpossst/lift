@@ -6,7 +6,7 @@ export type Exercise = { id: string; name: string; area: string; mark: string; c
 export function getExercises(): Exercise[];
 export function getFeaturedExercises(): Exercise[];
 export type WorkoutSplit = 'push' | 'pull' | 'legs' | `custom:${string}`;
-export type CustomSplit = { id: `custom:${string}`; name: string; muscles: string[] };
+export type CustomSplit = { id: `custom:${string}`; name: string; muscles: string[]; archived?: boolean };
 export function getCustomSplits(): CustomSplit[];
 export function saveCustomSplit(split: { id?: CustomSplit['id']; name: string; muscles: string[] }): CustomSplit;
 export function deleteCustomSplit(id: CustomSplit['id']): void;
@@ -42,7 +42,7 @@ export type CloudSyncChange = { entity: CloudSyncEntity; key: string; operation:
 export type CloudSyncRemoteChange = Omit<CloudSyncChange, 'baseRevision'> & { revision: number };
 export type CloudSyncBatch = { batchId: string; changes: CloudSyncChange[] };
 export type CloudSyncMutationResult = { entity: CloudSyncEntity; key: string; status: 'accepted' | 'conflict'; revision?: number };
-export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; conflict?: boolean };
+export type CloudSyncRejectedChange = CloudSyncChange & { reason: string; conflict?: boolean; remoteRevision?: number; remoteOperation?: 'upsert' | 'delete' };
 export function markCloudSyncDirty(entity?: CloudSyncEntity, key?: string): void;
 export function hasPendingCloudSync(): boolean;
 export function recordCloudSyncFailure(): void;
@@ -51,6 +51,8 @@ export function acknowledgeCloudSyncBatch(batchId: string, revision: number, res
 export function rejectCloudSyncBatch(batchId: string, reason: string, invalidChanges?: { entity: CloudSyncEntity; key: string }[]): void;
 export function resubmitCloudSyncChange(entity: CloudSyncEntity, key: string): boolean;
 export function getRejectedCloudSyncChanges(): CloudSyncRejectedChange[];
+export function reconcileCloudSyncConflicts(changes: CloudSyncRemoteChange[], fullReplay?: boolean): void;
+export function resolveDeletedWorkout(workoutId: string, choice: 'delete' | 'keep'): boolean;
 export function getCloudSyncCursor(): number;
 export function prepareCloudSyncForUser(userId: string): boolean;
 export function clearLocalAccountData(): void;

@@ -8,16 +8,18 @@ import Animated, { Easing, FadeInUp, SlideInLeft, SlideInRight, ZoomIn, useAnima
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getExercises, getWorkoutAchievements, getWorkoutHistories, getWorkoutMuscles, getWorkoutMuscleRatings, getWorkoutVisitExerciseDetails, getWorkoutVisitSummary, getWorkoutVisits, saveWorkoutMuscleRatings, type WorkoutMuscle } from '@/db';
 import { exerciseRequiresWeight } from '@/db/exercise-catalog';
+import { tintFlexFills } from '@/components/flex-animation';
 import { MuscleBodyGraphic } from '@/components/muscle-body-graphic';
 import { RulerSlider } from '@/components/ruler-slider';
 import { useAppearance } from '@/components/appearance-provider';
+import { EmptyArt } from '@/components/empty-art';
 import { syncWorkoutData } from '@/lib/cloud-sync';
 import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { hasAskedReturnPlan } from '@/lib/return-plan';
 import { authClient } from '@/lib/auth-client';
 import { exerciseProgress } from '@/lib/summary-progress';
 
-type Page = 'rating' | 'celebration' | 'complete';
+type Page = 'rating' | 'complete';
 const exhaustionLabel = (value: number) => value <= 2 ? 'Fresh' : value <= 4 ? 'Worked' : value <= 7 ? 'Tired' : 'Spent';
 const formatVolume = (volume: number) => volume >= 10_000 ? `${Math.round(volume / 1000)}k` : volume >= 1_000 ? `${(volume / 1000).toFixed(1)}k` : String(volume);
 const weightRequiredExerciseIds = new Set(getExercises().filter(exerciseRequiresWeight).map((exercise) => exercise.id));
@@ -26,24 +28,28 @@ const formatDuration = (ms: number) => {
   return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m` : `${minutes}m`;
 };
 
-export default function WorkoutSummaryScreen() {
+// Summary is a hidden tab, so it stays mounted between workouts; keying on the workout resets its state and replays the animations.
+export default function WorkoutSummaryRoute() {
+  const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
+  return <WorkoutSummaryScreen key={workoutId} workoutId={workoutId} />;
+}
+
+function WorkoutSummaryScreen({ workoutId }: { workoutId?: string }) {
   const { colors } = useAppearance();
   const { data: session } = authClient.useSession();
-  const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
   const visit = workoutId ? getWorkoutVisitSummary(workoutId) : null;
   const isFirstCompletedWorkout = getWorkoutVisits().length === 1 && !!session?.user.id && !hasAskedReturnPlan(session.user.id);
   const muscles = useMemo(() => workoutId ? getWorkoutMuscles(workoutId) : [], [workoutId]);
   const stored = useMemo(() => workoutId ? getWorkoutMuscleRatings(workoutId) : [], [workoutId]);
   const achievements = useMemo(() => workoutId ? getWorkoutAchievements(workoutId) : [], [workoutId]);
   const exercises = useMemo(() => workoutId ? getWorkoutVisitExerciseDetails(workoutId) : [], [workoutId]);
-  const [page, setPage] = useState<Page>(muscles.length ? 'rating' : 'celebration');
+  const [page, setPage] = useState<Page>(muscles.length ? 'rating' : 'complete');
   const [index, setIndex] = useState(0);
   const [forward, setForward] = useState<boolean>();
   const [answers, setAnswers] = useState<Record<string, number>>(() => Object.fromEntries(stored.map((rating) => [rating.id, rating.exhaustion])));
   const ratings = useMemo(() => muscles.flatMap((item) => answers[item.id] === undefined ? [] : [{ ...item, exhaustion: answers[item.id] }]), [muscles, answers]);
-  const finishCelebration = useCallback(() => setPage('complete'), []);
   const finish = () => router.replace(visit && isFirstCompletedWorkout ? '/return-plan' : '/');
-  if (!visit) return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}><View style={styles.empty}><Text style={[styles.emptyTitle, { color: colors.text }]}>Workout unavailable</Text><Pressable onPress={finish} style={[ui.primaryButton, { backgroundColor: colors.accent }]}><Text style={[ui.primaryButtonText, { color: colors.accentText }]}>Back home</Text></Pressable></View></SafeAreaView>;
+  if (!visit) return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}><View style={styles.empty}><EmptyArt name="rack" /><Text style={[styles.emptyTitle, { color: colors.text }]}>Workout unavailable</Text><Pressable onPress={finish} style={[ui.primaryButton, { backgroundColor: colors.accent }]}><Text style={[ui.primaryButtonText, { color: colors.accentText }]}>Back home</Text></Pressable></View></SafeAreaView>;
   const duration = formatDuration((visit.workout.endedAt ?? visit.workout.createdAt).getTime() - visit.workout.createdAt.getTime());
   const muscle = muscles[index];
   const selected = muscle ? answers[muscle.id] ?? 5 : undefined;
@@ -59,34 +65,12 @@ export default function WorkoutSummaryScreen() {
       saveWorkoutMuscleRatings(workoutId, next);
       void syncWorkoutData().catch(() => undefined);
     }
-    setPage('celebration');
+    setPage('complete');
   };
-  if (page === 'celebration') return <FlexCelebration onFinish={finishCelebration} />;
   return <SafeAreaView style={[ui.screen, { backgroundColor: colors.background }]}>
-    {page === 'rating' && muscle && <Rating muscle={muscle} index={index} count={muscles.length} forward={forward} value={selected ?? 5} onBack={() => { if (!index) return finish(); setForward(false); setIndex((value) => value - 1); }} onSelect={(value) => setAnswers((current) => ({ ...current, [muscle.id]: value }))} onContinue={continueRating} onSkip={() => setPage('celebration')} />}
+    {page === 'rating' && muscle && <Rating muscle={muscle} index={index} count={muscles.length} forward={forward} value={selected ?? 5} onBack={() => { if (!index) return finish(); setForward(false); setIndex((value) => value - 1); }} onSelect={(value) => setAnswers((current) => ({ ...current, [muscle.id]: value }))} onContinue={continueRating} onSkip={() => setPage('complete')} />}
     {page === 'complete' && <Complete workoutId={visit.workout.id} completedAt={visit.workout.endedAt ?? visit.workout.createdAt} split={workoutSplitLabel(visit.workout.split)} duration={duration} sets={visit.sets} volume={visit.volume} reps={visit.reps} achievements={achievements} exercises={exercises} ratings={ratings} onFinish={finish} />}
   </SafeAreaView>;
-}
-
-function FlexCelebration({ onFinish }: { onFinish: () => void }) {
-  const { accent, colors } = useAppearance();
-  const reducedMotion = useReducedMotion();
-  const [failed, setFailed] = useState(false);
-  const opacity = useSharedValue(1);
-  const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  const fadeOut = useCallback(() => {
-    opacity.set(withTiming(0, { duration: 240, easing: Easing.inOut(Easing.cubic) }));
-    setTimeout(onFinish, 240);
-  }, [opacity, onFinish]);
-  // Lottie's finish event drives the exit; the timer only covers reduced motion and a missed event.
-  useEffect(() => {
-    const timer = setTimeout(fadeOut, reducedMotion || failed ? 900 : 3000);
-    return () => clearTimeout(timer);
-  }, [fadeOut, reducedMotion, failed]);
-  const source = accent === 'red' ? require('../../assets/workout-celebration-red.json') : accent === 'blue' ? require('../../assets/workout-celebration-blue.json') : require('../../assets/workout-celebration-yellow.json');
-  return <Animated.View style={[styles.celebration, { backgroundColor: reducedMotion || failed ? colors.accent : '#17180F' }, fadeStyle]} accessible accessibilityLabel="Good Job! Workout complete">
-    {reducedMotion || failed ? <View style={styles.celebrationFallback}><Text style={[styles.celebrationText, { color: colors.accentText }]}>GOOD</Text><Text style={[styles.celebrationText, { color: colors.accentText }]}>JOB</Text></View> : <LottieView autoPlay loop={false} resizeMode="cover" source={source} style={styles.celebrationAnimation} webStyle={styles.celebrationAnimation} onAnimationFinish={fadeOut} onAnimationFailure={() => setFailed(true)} />}
-  </Animated.View>;
 }
 
 function Rating({ muscle, index, count, forward, value, onBack, onSelect, onContinue, onSkip }: { muscle: WorkoutMuscle; index: number; count: number; forward?: boolean; value: number; onBack: () => void; onSelect: (value: number) => void; onContinue: () => void; onSkip: () => void }) {
@@ -106,6 +90,10 @@ function Complete({ workoutId, completedAt, split, duration, sets, volume, reps,
   const date = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(completedAt);
   const newBests = achievements.filter((item) => item.level === 'gold');
   const totalReps = exercises.reduce((total, exercise) => total + exercise.sets.reduce((sum, set) => sum + set.reps, 0), 0);
+  // A PR gets its own beat first; the summary mounts after so its stagger plays fresh.
+  const [celebrating, setCelebrating] = useState(newBests.length > 0 && !reducedMotion);
+  const endCelebration = useCallback(() => setCelebrating(false), []);
+  if (celebrating) return <PrCelebration names={newBests.map((item) => item.name)} onFinish={endCelebration} />;
   return <View style={[styles.summaryPage, { backgroundColor: colors.background }]}>
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.summaryContent}>
       <Animated.View entering={reducedMotion ? undefined : FadeInUp.duration(400).easing(Easing.out(Easing.cubic))} style={[styles.summaryHero, { backgroundColor: colors.inverse }]}>
@@ -143,11 +131,39 @@ function Complete({ workoutId, completedAt, split, duration, sets, volume, reps,
   </View>;
 }
 
+function PrCelebration({ names, onFinish }: { names: string[]; onFinish: () => void }) {
+  const { colors } = useAppearance();
+  const source = useMemo(() => tintFlexFills(require('../../assets/flex-pr.json'), colors.accent), [colors.accent]);
+  const opacity = useSharedValue(1);
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const [done, setDone] = useState(false);
+  const fadeOut = useCallback(() => {
+    if (done) return;
+    setDone(true);
+    opacity.set(withTiming(0, { duration: 240, easing: Easing.inOut(Easing.cubic) }));
+    setTimeout(onFinish, 240);
+  }, [done, opacity, onFinish]);
+  // Lottie's finish event drives the exit; the timer covers a missed event.
+  useEffect(() => {
+    const timer = setTimeout(fadeOut, 3600);
+    return () => clearTimeout(timer);
+  }, [fadeOut]);
+  return <Animated.View style={[styles.celebration, { backgroundColor: colors.background }, fadeStyle]}>
+    <Pressable onPress={fadeOut} style={styles.celebrationContent} accessibilityRole="button" accessibilityLabel={`New personal record: ${names.join(', ')}. Tap to continue`}>
+      <LottieView autoPlay loop={false} resizeMode="contain" source={source} style={styles.celebrationAnimation} webStyle={styles.celebrationAnimation} onAnimationFinish={fadeOut} onAnimationFailure={fadeOut} />
+      {/* Lands as the arm locks out (frame 47 of the 30fps animation). */}
+      <Animated.Text entering={ZoomIn.delay(1550).springify().damping(20).stiffness(220)} style={[styles.celebrationTitle, { color: colors.text }]}>NEW PR</Animated.Text>
+      <Animated.Text entering={FadeInUp.delay(1750).duration(300)} style={[styles.celebrationDetail, { color: colors.mutedText }]} numberOfLines={2}>{names.join(' · ')}</Animated.Text>
+    </Pressable>
+  </Animated.View>;
+}
+
 const styles = StyleSheet.create({
   celebration: { flex: 1 },
-  celebrationAnimation: { width: '100%', height: '100%' },
-  celebrationFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 28 },
-  celebrationText: { fontSize: 88, lineHeight: 96, fontWeight: '900', letterSpacing: -6, textAlign: 'center' },
+  celebrationContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  celebrationAnimation: { width: 260, height: 260 },
+  celebrationTitle: { marginTop: 8, fontSize: 64, lineHeight: 70, fontWeight: '900', letterSpacing: -3 },
+  celebrationDetail: { marginTop: 6, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   page: { flex: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 18 },
   ratingHeader: { height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   skipText: { fontSize: 13, fontWeight: '800' },

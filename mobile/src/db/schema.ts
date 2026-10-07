@@ -20,6 +20,7 @@ export const workouts = sqliteTable('workouts', {
 });
 
 export const customSplits = sqliteTable('custom_splits', {
+  archived: integer('archived').notNull().default(0),
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   musclesJson: text('muscles_json').notNull(),

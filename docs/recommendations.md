@@ -6,6 +6,21 @@ for recent fatigue, and returns a lightweight sets/reps/rest prescription that
 fits the requested session length. These remain heuristics, not medical advice
 or a claim that one number of sets is optimal for every user.
 
+## Workout day selection
+
+Day selection shares recent-work penalties across splits by muscle overlap,
+including custom days with different IDs. A visit with identical muscle targets
+contributes its full set count and recency penalty; partial overlap contributes
+the fraction of the candidate day's muscles trained. Visits older than seven
+days and future visits do not contribute. Latest muscle check-ins still apply
+independently across splits. Both database adapters supply historical split
+muscles even when that split is outside the currently selected mode.
+
+This uses split targets as a proxy for logged muscle work, since day-selection
+history contains total sets rather than exercise-level muscle dose. Deleted
+split definitions cannot contribute overlap unless their muscles are supplied
+in history; their visits still count for a matching split ID.
+
 ## Recommendation-first workout flow
 
 The workout exercise screen leads with a short set of recommended movements.
@@ -15,10 +30,38 @@ selection.
 
 ## Implicit routine learning
 
+The recommendation experience is designed for lifters who want to repeat and
+progress their usual movements. Once a routine emerges, suggestions should feel
+like the next part of that routine, adjusted for recovery and session limits.
+New lifters without history still receive the existing coverage-based defaults.
+
 The planner learns from workout history without requiring a routine builder:
 
 - Completed sessions build recency-weighted exercise continuity; extra sets in
   the same session affect volume and muscle dose, not preference.
+- An exercise performed in at least two distinct workouts within 90 days gains
+  a bounded habit bonus of up to 60 points. Its recency-weighted frequency is
+  measured against workouts training the same primary muscles, so unrelated
+  split days do not dilute the habit. Confidence builds over three weighted
+  visits and declines as use ages or competing movements become more common.
+  Recent primary-muscle dose and use within 48 hours reduce this bonus; recent
+  removals and replacements also weaken it. Skips retain their small ranking
+  penalty but do not erase a learned habit.
+  Repeated recent removals/replacements totaling at least 20 penalty points
+  suppress that movement in the plan while it remains in the manual catalog.
+- Repeatedly performed movements and explicitly saved split routines remain
+  eligible regardless of the saved experience level, including higher-level
+  catalog movements and familiar strongman or plyometric movements.
+  Split relevance, exclusions, and the severe-fatigue gate still apply.
+- With an established habit or saved split routine, a plan includes at most one
+  unfamiliar movement, drawn from featured catalog anchors. Familiarity also
+  includes a recent completed visit, a favorite, or recent manual-selection
+  feedback. Cold-start plans and full catalog ranking retain their broader pool.
+  Useful familiar movements can therefore fill the plan without forcing novelty.
+- Selected plans put saved routine exercises in their explicitly saved order,
+  followed by other movements in their recency-weighted observed order. Selection still reserves the same muscle dose and time before this
+  presentation ordering. Strong history shows “A regular part of your training”
+  ahead of the saved-routine or favorite reason; recovery reasons take priority.
 - Progression from sessions within 90 days and recent manual selections add
   recency-weighted preference evidence. Saved favorites are a prior that fades
   as recency-weighted session and manual-selection evidence accumulates.
@@ -172,6 +215,15 @@ coverage credit. Hidden equipment or search results do not
 affect the visible catalog ranking. Ineligible movements remain available for
 manual selection in the library.
 
+Weekly muscle frequency uses distinct resistance workouts from the last 28 days.
+Before that history exists, both database adapters supply the full custom split
+rotation: training days multiplied by the fraction of slots targeting each
+muscle, with a minimum of one weekly exposure. A single Full Body split on a
+three-day plan therefore starts at three exposures; Upper A/Upper B/Lower starts
+at two upper-body exposures. Default P/P/L retains its existing core coverage.
+Direct planner callers can supply `context.splitSchedule` (repeated slots count
+separately); without a custom schedule, the fallback remains one exposure.
+
 Peer comparisons are fetched separately when needed; workout synchronization
 does not request them or depend on their availability.
 
@@ -190,13 +242,30 @@ prompt snoozes further prompts on that device for seven days. Users with exercis
 ranking disabled are not prompted. A completed, non-demo workout with logged
 sets also establishes a baseline; an empty or active workout does not.
 
+Settings → Workouts provides “Set usual exercises” for every custom split and
+Push, Pull, and Legs, independently of the Home prompt or its snooze. The editor
+loads the saved routine, supports adding/removing exercises and ordering with
+up/down controls, and can clear a routine by saving an empty selection. Cancel
+leaves the saved routine unchanged.
+
 `recommendationPreferences.routineExerciseIdsBySplit` stores a map of split IDs to
 exercise IDs in the profile. It is separate from legacy favorites and needs
 migration `0019_split_routines.sql`. Only the current split's routine contributes
 to ranking, using the same 20-point fading prior as favorites (without double-counting an
-exercise). Logged behavior and recovery constraints continue to guide the plan.
+exercise). Saved routines are preferences, not exact prescriptions: selected
+exercises follow the saved order, while exercises without a primary muscle in
+the split's targets remain ineligible. Catalog ranking remains score-based. Ineligible saved exercises do not establish a routine for limiting
+discovery. Logged behavior and recovery constraints continue to guide the plan.
 
 ## Scenario validation and historical replay
+
+Workout split selection averages decayed fatigue across the split's distinct
+target muscles, with unreported muscles contributing zero. Equal per-muscle
+fatigue therefore carries the same penalty for chest-only, upper/lower, P/P/L,
+and full-body splits. Numerical score ties preserve the configured split order.
+Localized fatigue still favors splits with a smaller affected fraction;
+exercise selection independently excludes movements involving severely fatigued
+muscles, including within a broader split.
 
 Run from `mobile/`:
 
@@ -209,10 +278,11 @@ bun run replay:recommendations --baseline /tmp/lift-baseline.json --out /tmp/lif
 bun run replay:recommendations --engine /absolute/path/to/exercise-recommendations.ts --baseline /tmp/lift-baseline.json
 ```
 
-The 16 named scenarios cover the audited failures and combinations of fatigue,
+The 21 named scenarios cover the audited failures and combinations of fatigue,
 misses, ramps, fractional/discrete loads, bodyweight progression, current-session
 adjustments, goal changes, volume caps, muscle frequency, coverage, preferences,
-movement patterns, evidence age, timing, and filtering a cached ranking. These
+movement patterns, evidence age, timing, learned habits, changing choices,
+limited discovery, observed exercise order, and filtering a cached ranking. These
 run in the normal test suite alongside the existing native/web adapter tests.
 
 The default replay uses six fixed synthetic observed histories, spanning P/P/L,

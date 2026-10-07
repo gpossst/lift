@@ -7,6 +7,7 @@ export const accentOptions = [
 ] as const;
 
 export type AppearanceMode = 'light' | 'dark';
+export type BodyShape = 'male' | 'female';
 
 export function systemMode(): AppearanceMode {
   return Appearance.getColorScheme() === 'dark' ? 'dark' : 'light';
@@ -15,6 +16,7 @@ export type AccentId = (typeof accentOptions)[number]['id'];
 export type AppearancePreferences = {
   mode: AppearanceMode;
   accent: AccentId;
+  bodyShape: BodyShape;
   showWorkoutRecommendations: boolean;
   useCustomSplits: boolean;
   restTimerEnabled: boolean;
@@ -25,6 +27,7 @@ export type AppearancePreferences = {
 export const defaultAppearance: AppearancePreferences = {
   mode: 'light',
   accent: 'yellow',
+  bodyShape: 'male',
   showWorkoutRecommendations: true,
   useCustomSplits: false,
   restTimerEnabled: true,

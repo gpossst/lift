@@ -3,7 +3,7 @@ import { availableBarWeights, BAR_WEIGHT_LB, PLATE_INCREMENT_LB } from './plate-
 
 export type RecommendationSet = { exerciseId: string; workoutId: string; completedAt: Date; weight?: number; reps?: number };
 export type MuscleExhaustionRating = { workoutId: string; split: string; muscle: string; exhaustion: number; completedAt: Date };
-export type WorkoutFocusHistory = { split: string; completedAt: Date; sets: number; exhaustion?: number };
+export type WorkoutFocusHistory = { split: string; completedAt: Date; sets: number; exhaustion?: number; muscles?: readonly string[] };
 export type WorkoutSplitDefinition = { id: string; name: string; muscles: readonly string[] };
 export type RecommendationFeedbackAction = 'accepted' | 'completed' | 'impression' | 'replaced' | 'removed' | 'skipped' | 'manual';
 export type RecommendationFeedback = {
@@ -13,6 +13,8 @@ export type RecommendationFeedback = {
 export type RecommendationContext = {
   goals?: readonly string[]; experience?: 'new' | 'some' | 'experienced'; trainingDays?: number; sessionMinutes?: number; weightLb?: number;
   routineExerciseIdsBySplit?: Readonly<Record<string, readonly string[]>>;
+  /** Rotation slots; repeated entries count as repeated scheduled exposures. */
+  splitSchedule?: readonly WorkoutSplitDefinition[];
   favoriteExerciseIds?: readonly string[]; excludedExerciseIds?: readonly string[];
   cohortHints?: { optIn?: boolean; peerCount?: number; muscleCoverage?: Readonly<Record<string, number>> };
 };
@@ -63,14 +65,26 @@ function fatigueSignal(rating: MuscleExhaustionRating | undefined, now: Date) {
 
 export function getRecommendedWorkoutSplit(history: readonly WorkoutFocusHistory[], now = new Date(), muscleRatings: readonly MuscleExhaustionRating[] = [], definitions: readonly WorkoutSplitDefinition[] = defaultWorkoutSplits): string {
   const ratings = latestRatings(muscleRatings, now);
+  const musclesById = new Map([...defaultWorkoutSplits, ...definitions].map((definition) => [definition.id, definition.muscles]));
+  const visits = history.filter((visit) => visit.completedAt <= now && now.getTime() - visit.completedAt.getTime() <= 7 * day);
   return definitions.map(({ id: split, muscles }, order) => {
-    const visits = history.filter((visit) => visit.split === split && visit.completedAt <= now);
-    const latest = visits.reduce<WorkoutFocusHistory | null>((result, visit) => !result || visit.completedAt > result.completedAt ? visit : result, null);
-    const ageDays = latest ? Math.max(0, (now.getTime() - latest.completedAt.getTime()) / day) : 7;
-    const weeklySets = visits.filter((visit) => now.getTime() - visit.completedAt.getTime() <= 7 * day).reduce((total, visit) => total + visit.sets, 0);
-    const fatigue = muscles.reduce((total, muscle) => total + fatigueSignal(ratings.get(muscle), now) * 8, 0);
-    return { split, order, score: Math.min(ageDays, 7) * 2 - weeklySets - fatigue };
-  }).sort((a, b) => b.score - a.score || a.order - b.order)[0]!.split;
+    const targets = new Set(muscles);
+    let recency = 0; let weeklySets = 0;
+    for (const visit of visits) {
+      // Split-level sets are a proxy for muscle work when exercise dose is unavailable.
+      // Identical targets share the full penalty; partial overlap shares only a fraction.
+      const trained = new Set(visit.muscles ?? musclesById.get(visit.split) ?? []);
+      const overlap = visit.split === split ? 1 : targets.size
+        ? [...targets].filter((muscle) => trained.has(muscle)).length / targets.size : 0;
+      const ageDays = (now.getTime() - visit.completedAt.getTime()) / day;
+      recency = Math.max(recency, (7 - ageDays) * overlap);
+      weeklySets += visit.sets * overlap;
+    }
+    // Average across targets so split breadth does not multiply equal muscle fatigue.
+    // Unrated muscles contribute zero; exercise selection still gates severe fatigue.
+    const fatigue = [...targets].reduce((total, muscle) => total + fatigueSignal(ratings.get(muscle), now), 0) / Math.max(1, targets.size) * 8;
+    return { split, order, score: (7 - recency) * 2 - weeklySets - fatigue };
+  }).sort((a, b) => Math.abs(b.score - a.score) > 1e-9 ? b.score - a.score : a.order - b.order)[0]!.split;
 }
 function detailsFor(exercise: Pick<Exercise, 'detailsJson'>): Record<string, unknown> {
   try {
@@ -86,13 +100,13 @@ function isResistance(details: Record<string, unknown>) {
   const category = details.category;
   return category !== 'stretching' && category !== 'cardio';
 }
-function isEligibleForSplit(details: Record<string, unknown>, muscles: readonly string[], context: RecommendationContext = {}) {
+function isEligibleForSplit(details: Record<string, unknown>, muscles: readonly string[], context: RecommendationContext = {}, familiar = false) {
   const category = details.category;
   const level = details.level;
   const conditioningGoal = context.goals?.some((goal) => /lean|lose fat|health|fitness/i.test(goal));
-  if (level === 'expert' && context.experience !== 'experienced') return false;
-  if (category === 'strongman' && context.experience !== 'experienced') return false;
-  if (category === 'plyometrics' && !conditioningGoal && context.experience !== 'experienced') return false;
+  if (!familiar && level === 'expert' && context.experience !== 'experienced') return false;
+  if (!familiar && category === 'strongman' && context.experience !== 'experienced') return false;
+  if (!familiar && category === 'plyometrics' && !conditioningGoal && context.experience !== 'experienced') return false;
   return isResistance(details) && musclesFor(details, 'primaryMuscles').some((muscle) => muscles.includes(muscle));
 }
 function doseFor(details: Record<string, unknown>, muscles: readonly string[]) {
@@ -378,12 +392,14 @@ function recommendExercises(
   // Infrequent training needs more work per visit; frequent training can spread the same work across visits.
   const desiredSessionDose = Math.max(2, baseSessionDose + 3 - trainingDays);
   // Estimate muscle exposure from distinct completed workouts, not set count.
-  // Without recent history, assume the default P/P/L rotation (core can span all
-  // three splits); a custom split conservatively starts at one weekly exposure.
+  // Without recent history, use the entire scheduled rotation. If a custom
+  // schedule is unavailable, retain the conservative one-exposure fallback.
+  const customSplit = split.startsWith('custom:');
+  const schedule = context.splitSchedule?.length ? context.splitSchedule : customSplit ? undefined : defaultWorkoutSplits;
   const desiredWeeklyDose = new Map(target.map((muscle) => {
-    const scheduledShare = definition && !defaultWorkoutSplits.some(({ id }) => id === definition.id)
-      ? 1 / trainingDays
-      : muscle === 'abdominals' ? 1 : defaultWorkoutSplits.filter(({ muscles }) => muscles.includes(muscle)).length / defaultWorkoutSplits.length;
+    const scheduledShare = schedule
+      ? schedule.filter(({ id, muscles }) => muscles.includes(muscle) || (muscle === 'abdominals' && !id.startsWith('custom:'))).length / schedule.length
+      : 1 / trainingDays;
     const share = recentWorkouts.size ? (muscleWorkouts.get(muscle)?.size ?? 0) / recentWorkouts.size : scheduledShare;
     const frequency = Math.max(1, trainingDays * share);
     return [muscle, muscle === 'abdominals' ? Math.max(2, frequency) : desiredSessionDose * frequency];
@@ -396,6 +412,24 @@ function recommendExercises(
   const cohortCoverage = context.cohortHints?.optIn && (context.cohortHints.peerCount ?? 0) >= 5 ? context.cohortHints.muscleCoverage : undefined;
   const routineExerciseIds = new Set(context.routineExerciseIdsBySplit?.[split]);
   const favoriteExerciseIds = new Set([...context.favoriteExerciseIds ?? [], ...routineExerciseIds]);
+  // Compare choices within workouts that train the same primary muscles. Pull
+  // and leg days must not dilute a regular push-day movement, and extra sets
+  // in one visit must not count as repeated preference evidence.
+  const habitWorkouts = new Map<string, Map<string, Date>>();
+  const sessionsByExercise = new Map([...histories].map(([id, history]) => [id, completedSessions(history)]));
+  for (const id of histories.keys()) {
+    const info = metadata.get(id);
+    if (!info || !isResistance(info.details)) continue;
+    for (const session of sessionsByExercise.get(id)!) {
+      if (now.getTime() - session.completedAt.getTime() > 90 * day) continue;
+      for (const muscle of info.primary) {
+        const workouts = habitWorkouts.get(muscle) ?? new Map<string, Date>();
+        const previous = workouts.get(session.workoutId);
+        if (!previous || previous < session.completedAt) workouts.set(session.workoutId, session.completedAt);
+        habitWorkouts.set(muscle, workouts);
+      }
+    }
+  }
   const feedbackByExercise = new Map<string, RecommendationFeedback[]>();
   for (const item of feedback) {
     // Rejections in this workout apply immediately; positive signals wait for completion.
@@ -404,8 +438,9 @@ function recommendExercises(
   }
   const candidates = [...metadata.values()].filter(({ exercise, details }) => {
     const level = typeof details.level === 'string' ? details.level : '';
-    return isEligibleForSplit(details, target, context) && (rankOnly || !currentIds.has(exercise.id)) && !excluded.has(exercise.id)
-      && !((!context.experience || context.experience === 'new') && !exercise.isFeatured && /intermediate|expert|advanced/.test(level))
+    const familiar = routineExerciseIds.has(exercise.id) || (sessionsByExercise.get(exercise.id) ?? []).filter((session) => now.getTime() - session.completedAt.getTime() <= 90 * day).length >= 2;
+    return isEligibleForSplit(details, target, context, familiar) && (rankOnly || !currentIds.has(exercise.id)) && !excluded.has(exercise.id)
+      && !((!context.experience || context.experience === 'new') && !exercise.isFeatured && !familiar && /intermediate|expert|advanced/.test(level))
       && recoveryFatigueFor(details, recentRatings, now) < severeFatigue;
   }).map(({ exercise, details, dose, pattern, primary: allPrimary }) => {
     const primary = allPrimary.filter((muscle) => target.includes(muscle));
@@ -417,8 +452,20 @@ function recommendExercises(
     const hoursSinceUse = history.at(-1) ? (now.getTime() - history.at(-1)!.completedAt.getTime()) / 3_600_000 : Infinity;
     const recoveryPenalty = (fatigue >= moderateFatigue ? fatigue * 20 : 0) + [...dose].reduce((sum, [muscle, amount]) => sum + (recentDose.get(muscle) ?? 0) * amount * 6, 0)
       + (hoursSinceUse < 48 ? (48 - hoursSinceUse) / 8 : 0);
-    const sessions = completedSessions(history);
+    const sessions = sessionsByExercise.get(exercise.id) ?? [];
     const sessionPreference = sessions.slice(-6).reduce((total, session) => total + 3 * preferenceRecency(session.completedAt, now), 0);
+    const habitSessions = sessions.filter((session) => now.getTime() - session.completedAt.getTime() <= 90 * day);
+    const habitEvidence = habitSessions.reduce((total, session) => total + preferenceRecency(session.completedAt, now), 0);
+    const comparableWorkouts = new Map<string, Date>();
+    for (const muscle of primary) for (const [id, completedAt] of habitWorkouts.get(muscle) ?? []) {
+      const previous = comparableWorkouts.get(id);
+      if (!previous || previous < completedAt) comparableWorkouts.set(id, completedAt);
+    }
+    const comparableEvidence = [...comparableWorkouts.values()].reduce((total, completedAt) => total + preferenceRecency(completedAt, now), 0);
+    // A bounded habit bonus becomes meaningful after repeated visits, fades
+    // after breaks, and weakens when the user starts choosing alternatives.
+    const habitStrength = habitSessions.length >= 2 && comparableEvidence > 0
+      ? 60 * Math.min(1, habitEvidence / comparableEvidence) * Math.min(1, habitEvidence / 3) : 0;
     const progressionSessions = sessions.filter((session) => session.performance !== null && now.getTime() - session.completedAt.getTime() <= 90 * day).slice(-6);
     const progressionPreference = isProgressing(progressionSessions)
       ? 4 * progressionSessions.reduce((total, session) => total + preferenceRecency(session.completedAt, now), 0) / progressionSessions.length : 0;
@@ -434,6 +481,8 @@ function recommendExercises(
       }, 0);
     const manualPreference = weightedFeedback(['manual']);
     const rejectionPreference = weightedFeedback(['removed', 'replaced']);
+    const readiness = Math.min(1, hoursSinceUse / 48, Math.max(0, 1 - Math.max(...primary.map((muscle) => recentDose.get(muscle) ?? 0)) / desiredSessionDose));
+    const habitBonus = habitStrength * Math.max(0, 1 + rejectionPreference / 20) * readiness;
     const skipPenalty = weightedFeedback(['skipped']);
     const goalBonus = context.goals?.some((goal) => /strong/i.test(goal)) && details.mechanic === 'compound' ? 2
       : context.goals?.some((goal) => /muscle|bigger/i.test(goal)) ? primary.length
@@ -447,13 +496,14 @@ function recommendExercises(
       .reduce((total, item) => total + preferenceRecency(item.createdAt, now), 0);
     const featuredBonus = exercise.isFeatured ? 1 + 7 * (1 - Math.min(1, sessionEvidence + rejectionEvidence)) : 0;
     const favoritePrior = favoriteExerciseIds.has(exercise.id) ? Math.max(0, 20 * Math.pow(.5, (sessionEvidence + manualEvidence) / 6) + rejectionPreference) : 0;
-    const preference = sessionPreference + progressionPreference + manualPreference + favoritePrior + rejectionPreference;
+    const preference = sessionPreference + habitBonus + progressionPreference + manualPreference + favoritePrior + rejectionPreference;
     const relatedWorkouts = sessions.map(({ workoutId: id, completedAt }) => ({ ids: exercisesByWorkout.get(id)!, weight: preferenceRecency(completedAt, now) }));
-    return { exercise, dose, primary, pattern, fatigue, prescription, relativeLoadPercent, recoveryPenalty, preference, skipPenalty, goalBonus, cohortBonus, equipmentBonus, featuredBonus, favoritePrior, relatedWorkouts };
+    const known = habitSessions.length > 0 || favoriteExerciseIds.has(exercise.id) || manualPreference > 0;
+    return { exercise, dose, primary, pattern, fatigue, prescription, relativeLoadPercent, recoveryPenalty, preference, rejectionPreference, skipPenalty, goalBonus, cohortBonus, equipmentBonus, featuredBonus, favoritePrior, habitBonus, habitStrength, known, relatedWorkouts };
   });
   const anchorIds = new Set(currentIds);
   const scoreCandidate = (candidate: typeof candidates[number]) => {
-    const { exercise, dose, primary, pattern, fatigue, prescription, relativeLoadPercent, recoveryPenalty, preference, skipPenalty, goalBonus, cohortBonus, equipmentBonus, featuredBonus, favoritePrior, relatedWorkouts } = candidate;
+    const { exercise, dose, primary, pattern, fatigue, prescription, relativeLoadPercent, recoveryPenalty, preference, skipPenalty, goalBonus, cohortBonus, equipmentBonus, featuredBonus, favoritePrior, habitBonus, relatedWorkouts } = candidate;
     // Average useful coverage by muscle dose so extra catalog tags cannot inflate it.
     // Keep actual per-muscle dose unchanged for history and planned volume.
     const totalDose = [...dose.values()].reduce((sum, amount) => sum + amount, 0);
@@ -472,12 +522,14 @@ function recommendExercises(
     const togetherBonus = Math.min(togetherCount, 4) * 2;
     const score = (sessionNeed * 18 + weeklyNeed * 2 + patternBonus + preference + skipPenalty + togetherBonus + goalBonus + cohortBonus + equipmentBonus + featuredBonus - recoveryPenalty - redundantExercises * 5) / prescription.estimatedMinutes;
     const mostNeeded = primary.slice().sort((a, b) => (sessionDose.get(a) ?? 0) - (sessionDose.get(b) ?? 0))[0] ?? split;
-    return { exercise, dose, pattern, score, prescription, relativeLoadPercent, reason: fatigue >= moderateFatigue ? `Lower volume while your ${labelMuscle(mostNeeded)} recovers` : favoritePrior ? routineExerciseIds.has(exercise.id) ? 'Part of your usual routine' : 'One of your favorites' : sessionNeed > 0 ? `Build your ${labelMuscle(mostNeeded)} work` : weeklyNeed > 0 ? `Support this week's ${labelMuscle(mostNeeded)} work` : 'Continue your recent training pattern' };
+    return { exercise, dose, pattern, score, prescription, relativeLoadPercent, reason: fatigue >= moderateFatigue ? `Lower volume while your ${labelMuscle(mostNeeded)} recovers` : habitBonus >= 10 ? 'A regular part of your training' : favoritePrior ? routineExerciseIds.has(exercise.id) ? 'Part of your usual routine' : 'One of your favorites' : sessionNeed > 0 ? `Build your ${labelMuscle(mostNeeded)} work` : weeklyNeed > 0 ? `Support this week's ${labelMuscle(mostNeeded)} work` : 'Continue your recent training pattern' };
   };
   const compare = (a: ReturnType<typeof scoreCandidate>, b: ReturnType<typeof scoreCandidate>) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name) || a.exercise.id.localeCompare(b.exercise.id);
   const toRecommendation = ({ exercise, reason, score, relativeLoadPercent, prescription }: ReturnType<typeof scoreCandidate>): ExerciseRecommendation => ({ exercise, reason, score, relativeLoadPercent, ...prescription });
   // Catalog ranking scores all eligible movements against the actual session, without reserving planned dose or time.
   if (rankOnly) return candidates.map(scoreCandidate).sort(compare).map(toRecommendation);
+  const hasHabit = candidates.some((candidate) => candidate.habitStrength >= 10 || routineExerciseIds.has(candidate.exercise.id));
+  let discoveries = 0;
   const suggested: ExerciseRecommendation[] = [];
   const completedMinutes = [...currentSetCounts].reduce((minutes, [exerciseId, sets]) => {
     const exercise = metadata.get(exerciseId)?.exercise ?? { detailsJson: '{}' };
@@ -489,6 +541,10 @@ function recommendExercises(
     let winner: ReturnType<typeof scoreCandidate> | undefined; let winnerIndex = -1;
     for (let index = 0; index < candidates.length; index++) {
       const candidate = candidates[index]!;
+      if (candidate.rejectionPreference <= -20) continue;
+      // Once a routine is learned, keep discovery small and use catalog anchors
+      // rather than filling every gap with arbitrary unfamiliar movements.
+      if (hasHabit && !candidate.known && (!candidate.exercise.isFeatured || discoveries >= 1)) continue;
       // Weekly need and preference bonuses cannot exceed this session's dose.
       const sets = Math.min(candidate.prescription.sets, ...[...candidate.dose].map(([muscle, amount]) => Math.floor((remainingSessionDose(muscle) + 1e-9) / amount)));
       if (sets < 1) continue;
@@ -497,12 +553,39 @@ function recommendExercises(
       if (item.score > 0 && item.prescription.estimatedMinutes <= remainingMinutes && (!winner || compare(item, winner) < 0)) { winner = item; winnerIndex = index; }
     }
     if (!winner) break;
+    if (!candidates[winnerIndex]!.known) discoveries++;
     suggested.push(toRecommendation(winner));
     addDose(sessionDose, winner.dose, winner.prescription.sets); addDose(weeklyDose, winner.dose, winner.prescription.sets);
     remainingMinutes -= winner.prescription.estimatedMinutes;
     anchorIds.add(winner.exercise.id); sessionPatterns.add(winner.pattern); candidates.splice(winnerIndex, 1);
   }
-  return suggested;
+  // Selection still reserves dose and time. Present the resulting plan in the
+  // user's observed exercise order, instead of always putting short lifts first.
+  const firstSetsByWorkout = new Map<string, Map<string, Date>>();
+  for (const [id, history] of histories) for (const set of history) {
+    if (now.getTime() - set.completedAt.getTime() > 90 * day) continue;
+    const firstSets = firstSetsByWorkout.get(set.workoutId) ?? new Map<string, Date>();
+    const previous = firstSets.get(id);
+    if (!previous || set.completedAt < previous) firstSets.set(id, set.completedAt);
+    firstSetsByWorkout.set(set.workoutId, firstSets);
+  }
+  const usualPosition = new Map(suggested.map(({ exercise }) => {
+    let weightedPosition = 0; let evidence = 0; let visits = 0;
+    for (const firstSets of firstSetsByWorkout.values()) {
+      const first = firstSets.get(exercise.id);
+      if (!first) continue;
+      const weight = preferenceRecency(first, now);
+      weightedPosition += [...firstSets.values()].filter((time) => time < first).length * weight;
+      evidence += weight; visits++;
+    }
+    return [exercise.id, visits >= 2 ? weightedPosition / evidence : Infinity];
+  }));
+  // Explicit routines take precedence over inferred history; other suggestions
+  // retain their learned order after the saved exercises.
+  const savedPosition = new Map((context.routineExerciseIdsBySplit?.[split] ?? []).map((id, index) => [id, index]));
+  return suggested.sort((a, b) =>
+    (savedPosition.get(a.exercise.id) ?? Infinity) - (savedPosition.get(b.exercise.id) ?? Infinity)
+    || usualPosition.get(a.exercise.id)! - usualPosition.get(b.exercise.id)!);
 }
 
 /** Balances logged dose and reserves enough time for each workout suggestion. */

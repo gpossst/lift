@@ -58,7 +58,7 @@ const graphics: Record<SplitId, SplitGraphic> = {
 };
 
 export function SplitBodyGraphic({ split, muscles, large = false }: { split: string; muscles?: readonly string[]; large?: boolean }) {
-	const { colors } = useAppearance();
+	const { colors, bodyShape } = useAppearance();
   const { primary, secondary } = graphics[split as SplitId] ?? {
     primary: { front: muscles?.flatMap((muscle) => muscleParts[muscle]?.front ?? []) ?? [], back: muscles?.flatMap((muscle) => muscleParts[muscle]?.back ?? []) ?? [] },
     secondary: { front: [], back: [] },
@@ -71,7 +71,7 @@ export function SplitBodyGraphic({ split, muscles, large = false }: { split: str
     ];
   };
   const sharedProps = {
-    gender: 'male' as const,
+    gender: bodyShape,
     scale: large ? 0.65 : 0.2,
     border: 'none' as const,
     defaultFill: colors.surfaceStrong,
@@ -92,7 +92,7 @@ export function SplitBodyGraphic({ split, muscles, large = false }: { split: str
  * Everything else stays neutral, making gaps in the session easy to spot.
  */
 export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split, targetMuscles }: { primaryMuscles: readonly string[]; secondaryMuscles: readonly string[]; split: string; targetMuscles?: readonly string[] }) {
-	const { colors } = useAppearance();
+	const { colors, bodyShape } = useAppearance();
 	// Hueless so it never collides with any accent; still clearly darker/lighter than untargeted muscles.
 	const missedColor = colors.mutedText;
   // react-native-body-highlighter snapshots highlight data on mount, so use the
@@ -114,7 +114,7 @@ export function MuscleCoverageGraphic({ primaryMuscles, secondaryMuscles, split,
       ...primaryParts.map((part) => ({ ...part, color: colors.accent })),
     ];
   };
-  const sharedProps = { gender: 'male' as const, scale: 0.62, border: 'none' as const, defaultFill: colors.surfaceStrong, defaultStroke: 'none' };
+  const sharedProps = { gender: bodyShape, scale: 0.62, border: 'none' as const, defaultFill: colors.surfaceStrong, defaultStroke: 'none' };
 
   return <View pointerEvents="none" style={styles.coveragePair} accessibilityLabel="Workout muscle coverage. Full accent color indicates primary muscles trained; faded accent indicates secondary muscles trained; gray indicates a target muscle not yet trained.">
     <Body key={`front-${coverageKey}`} {...sharedProps} data={coverage(primary.front, secondary.front, targets.front)} side="front" />

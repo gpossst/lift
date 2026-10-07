@@ -6,13 +6,14 @@ import { Clock, Search } from 'react-native-feather';
 import { router } from 'expo-router';
 
 import { useAppearance } from '@/components/appearance-provider';
+import { EmptyArt } from '@/components/empty-art';
 import { bodyMuscleIds, TrainingExposureBodyGraphic } from '@/components/muscle-body-graphic';
 import { CoverageTrendSheet } from '@/components/coverage-trend-sheet';
 import { MuscleTrendRow } from '@/components/muscle-trend-row';
 import { ProgressRing, SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
 import { ExerciseSearchSheet } from '@/components/exercise-search-sheet';
-import { loadStatsExercises, StatsExerciseRow } from '@/components/stats-exercise-row';
+import { loadStatsExercises } from '@/components/stats-exercise-row';
 import { getCompletedWorkoutExerciseDetails, getCustomSplits, getExercises, getWorkoutVisits } from '@/db';
 import { defaultWorkoutSplits } from '@/lib/exercise-recommendations';
 import { averageCoverage, muscleCoverage, splitCoverage, trainingOverview, trainingTotalLabel, weeklyChartExtrema, weeklyTrainingHistory } from '@/lib/training-overview';
@@ -42,7 +43,7 @@ export default function StatsScreen() {
   const [metric, setMetric] = useState<Metric>('workouts');
   const [timeWindow, setTimeWindow] = useState<4 | 13 | 26 | 52 | null>(4);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
-  const [exerciseSheet, setExerciseSheet] = useState<'closed' | 'browse' | 'search'>('closed');
+  const [exerciseSheet, setExerciseSheet] = useState<'closed' | 'search'>('closed');
   const load = useCallback(() => {
     const visits = getWorkoutVisits();
     const details = getCompletedWorkoutExerciseDetails();
@@ -59,7 +60,6 @@ export default function StatsScreen() {
       definitions: planDefinitions,
       planMuscles: [...new Set(planDefinitions.flatMap((split) => split.muscles))],
       exercises,
-      topExercises: exercises.filter((exercise) => exercise.sessions > 0).slice(0, 3),
     };
   }, [useCustomSplits]);
   const data = useWorkoutData(load);
@@ -108,11 +108,11 @@ export default function StatsScreen() {
           </View>
         </View>
         <TrainingExposureBodyGraphic coverage={recentCoverage} hasData={hasData} />
-        {hasData ? <CoverageScale /> : <Text style={[styles.emptyCopy, styles.centered, { color: colors.mutedText }]}>No workouts in the last 4 weeks, including this week</Text>}
+        {hasData ? <CoverageScale /> : <View><EmptyArt name="chart" width={120} /><Text style={[styles.emptyCopy, styles.centered, { color: colors.mutedText }]}>No workouts in the last 4 weeks, including this week</Text></View>}
       </View>
 
       <SectionHeader title="Splits" />
-      <View style={styles.splitRow}>{splits.map((split) => <Pressable key={split.id} onPress={() => router.push({ pathname: '/stats/muscles', params: { split: split.id } })} style={({ pressed }) => [styles.splitItem, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${split.name}, ${split.percentage} percent covered. View muscles`}>
+      <View style={styles.splitRow}>{splits.map((split) => <Pressable key={split.id} onPress={() => router.push({ pathname: '/stats/muscles', params: { split: split.id } })} style={({ pressed }) => [styles.splitItem, { width: `${100 / (splits.length <= 4 ? splits.length : 3)}%` }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${split.name}, ${split.percentage} percent covered. View muscles`}>
         <ProgressRing value={split.percentage} color={colors.accent} track={colors.surfaceStrong}><Text style={[styles.ringValue, { color: colors.text }]}>{split.percentage}<Text style={styles.ringUnit}>%</Text></Text></ProgressRing>
         <Text style={[styles.splitName, { color: colors.text }]} numberOfLines={1}>{split.name}</Text>
       </Pressable>)}</View>
@@ -120,7 +120,7 @@ export default function StatsScreen() {
       <SectionHeader title="Muscles" action={orderedMuscles.length > 5 && hasData ? { label: 'See all', onPress: () => router.push('/stats/muscles') } : undefined} />
       <View>
         {hasData ? visibleMuscles.map((muscle, index) => <MuscleTrendRow key={muscle} muscle={muscle} values={weeks.map((week) => muscleCoverage([week], muscle))} recent={muscleCoverage(recentWeeks, muscle)} prior={muscleCoverage(priorWeeks, muscle)} onPress={() => setSelectedMuscle(muscle)} last={index === visibleMuscles.length - 1} />)
-          : <Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Train a few sessions to see how each muscle is trending.</Text>}
+          : <View><EmptyArt name="chart" width={120} /><Text style={[styles.emptyCopy, styles.centered, { color: colors.mutedText }]}>Train a few sessions to see how each muscle is trending.</Text></View>}
       </View>
       <Text style={[styles.methodNote, { color: colors.subtleText }]}>Estimated from exercise targets over the last 4 weeks, including this week, compared with the 4 before.</Text>
 
@@ -142,10 +142,6 @@ export default function StatsScreen() {
         }} />
         <View style={styles.rangePicker}><SegmentedPicker options={rangeOptions} selected={String(timeWindow ?? 'all')} onSelect={(value) => setTimeWindow(timeRanges.find((range) => String(range.weeks ?? 'all') === value)!.weeks)} compact /></View>
       </View>
-
-      <SectionHeader title="Exercises" action={{ label: 'See all', onPress: () => setExerciseSheet('browse') }} />
-      {data.topExercises.length ? data.topExercises.map((exercise, index) => <StatsExerciseRow key={exercise.id} item={exercise} last={index === data.topExercises.length - 1} />)
-        : <Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Exercises you log show up here, most-trained first.</Text>}
     </ScrollView>
     <ExerciseSearchSheet visible={exerciseSheet !== 'closed'} focus={exerciseSheet === 'search'} exercises={data.exercises} onClose={() => setExerciseSheet('closed')} />
     <CoverageTrendSheet muscle={selectedMuscle} weeks={data.overview.weeks} onClose={() => setSelectedMuscle(null)} />
@@ -174,8 +170,9 @@ const styles = StyleSheet.create({
   heroSide: { alignItems: 'flex-end', paddingBottom: 6 }, heroSideValue: { fontSize: 22, fontWeight: '900', letterSpacing: -.6, fontVariant: ['tabular-nums'] },
   heroValue: { marginTop: 4, fontSize: 48, lineHeight: 54, fontWeight: '900', letterSpacing: -2, fontVariant: ['tabular-nums'] }, heroUnit: { fontSize: 26, letterSpacing: -.5 },
   scale: { marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }, scaleBar: { flex: 1 }, scaleLabel: { fontSize: 10, fontWeight: '800' },
-  splitRow: { flexDirection: 'row', gap: 10 },
-  splitItem: { flex: 1, paddingVertical: 4, alignItems: 'center' },
+  // Up to four rings share one row; larger plans wrap into rows of three.
+  splitRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', rowGap: 14 },
+  splitItem: { paddingVertical: 4, paddingHorizontal: 5, alignItems: 'center' },
   splitName: { marginTop: 10, fontSize: 13, fontWeight: '800' },
   ringValue: { fontSize: 16, fontWeight: '900', letterSpacing: -.5, fontVariant: ['tabular-nums'] }, ringUnit: { fontSize: 10 },
   methodNote: { marginTop: 10, fontSize: 11, lineHeight: 16, fontWeight: '600' },

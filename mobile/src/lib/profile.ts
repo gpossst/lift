@@ -14,6 +14,7 @@ export type RecommendationPreferences = {
   availableEquipment?: string[] | null;
   sessionMinutes?: number | null;
   optInSimilarUsers?: boolean;
+  useCustomSplits?: boolean | null;
 };
 export type Profile = { displayName: string; hasChosenDisplayName: boolean; imageUrl: string | null; recommendationPreferences?: RecommendationPreferences };
 export type ProfileUpdate = { displayName?: string; recommendationPreferences?: RecommendationPreferences };

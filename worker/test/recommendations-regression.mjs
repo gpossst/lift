@@ -83,7 +83,7 @@ if (__testValidPayload({ ...syncPayload, recommendationFeedback: [{ ...syncPaylo
 if (__testValidPayload({ ...syncPayload, recommendationFeedback: [...syncPayload.recommendationFeedback, syncPayload.recommendationFeedback[0]] })) throw new Error('Duplicate recommendation feedback was accepted.');
 const onboarding = { goals: ['Build muscle'], weightLb: 180, heightInches: 70, experience: 'experienced', favoriteExerciseIds: ['bench'], trainingLocation: 'gym', trainingDays: 3 };
 if (!__testValidOnboarding(onboarding) || !__testValidOnboarding({ goals: ['Build muscle'], experience: 'new', trainingDays: 3 }) || __testValidOnboarding({ ...onboarding, favoriteExerciseIds: Array(6).fill('bench') })) throw new Error('Onboarding validation regressed.');
-const profileRow = { userId: 'own', displayName: 'Own', imageUrl: null, goals, weightLb: 180, heightInches: 70, experience: 'some', favoriteExerciseIds: null, trainingLocation: 'gym', trainingDays: 3, gymId: 'home-gym', availableEquipment: '["barbell"]', sessionMinutes: 45, optInSimilarUsers: 1 };
+const profileRow = { userId: 'own', displayName: 'Own', imageUrl: null, goals, weightLb: 180, heightInches: 70, experience: 'some', favoriteExerciseIds: null, trainingLocation: 'gym', trainingDays: 3, gymId: 'home-gym', availableEquipment: '["barbell"]', sessionMinutes: 45, optInSimilarUsers: 1, useCustomSplits: null };
 const database = {
   prepare(sql) {
     return { bind(...values) {
@@ -91,7 +91,7 @@ const database = {
       if (sql.startsWith('UPDATE user_info')) return { run: async () => {
         const names = [...sql.matchAll(/([a-z_]+) = \?/g)].map((match) => match[1]);
         for (const [index, name] of names.entries()) {
-          const key = { routine_exercise_ids_by_split: 'routineExerciseIdsBySplit', favorite_exercise_ids: 'favoriteExerciseIds', gym_id: 'gymId', similar_users_opt_in: 'optInSimilarUsers' }[name] ?? name;
+          const key = { routine_exercise_ids_by_split: 'routineExerciseIdsBySplit', favorite_exercise_ids: 'favoriteExerciseIds', gym_id: 'gymId', similar_users_opt_in: 'optInSimilarUsers', use_custom_splits: 'useCustomSplits' }[name] ?? name;
           profileRow[key] = values[index];
         }
       } };
@@ -107,6 +107,9 @@ const favorites = await patch({ recommendationPreferences: { favoriteExerciseIds
 if (favorites.status !== 200 || profileRow.favoriteExerciseIds !== '["bench","squat"]') throw new Error('Favorite exercises were not persisted.');
 if ((await patch({ recommendationPreferences: { favoriteExerciseIds: Array(21).fill('bench') } })).status !== 400) throw new Error('Too many favorite exercises were accepted.');
 
+const splitPlan = await patch({ recommendationPreferences: { useCustomSplits: true } });
+if (splitPlan.status !== 200 || profileRow.useCustomSplits !== 1 || (await splitPlan.json()).profile.recommendationPreferences.useCustomSplits !== true) throw new Error('Custom split plan preference did not round-trip.');
+if ((await patch({ recommendationPreferences: { useCustomSplits: 'yes' } })).status !== 400) throw new Error('Invalid custom split plan preference accepted.');
 
 const routines = { push: ['bench', 'fly'], pull: ['row'], 'custom:upper': ['press'] };
 const routineResponse = await patch({ recommendationPreferences: { routineExerciseIdsBySplit: routines } });

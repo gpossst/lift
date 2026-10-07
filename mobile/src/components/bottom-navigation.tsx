@@ -1,7 +1,7 @@
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
 import { usePathname } from 'expo-router';
 import { BarChart2, Home, Plus, Settings, Users } from 'react-native-feather';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,11 +28,23 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
   const pathname = usePathname();
   const activeRoute = state.routes[state.index]?.name;
 
-  if (activeRoute !== 'start' && (!tabs.some((tab) => tab.route === activeRoute) || pathname.startsWith('/history') || pathname.startsWith('/settings/') || pathname.startsWith('/stats/'))) return null;
+  const hidden = activeRoute !== 'start' && (!tabs.some((tab) => tab.route === activeRoute) || pathname.startsWith('/history') || pathname.startsWith('/settings/') || pathname.startsWith('/stats/'));
+  // Reappearing mid-pop shrinks the scene and squashes the closing page, so wait out the transition.
+  const [revealed, setRevealed] = useState(!hidden);
+  useEffect(() => {
+    if (hidden) { setRevealed(false); return; }
+    const timer = setTimeout(() => setRevealed(true), 350);
+    return () => clearTimeout(timer);
+  }, [hidden]);
+
+  if (hidden || !revealed) return null;
 
   const selectTab = (route: Tab['route']) => {
     const event = navigation.emit({ type: 'tabPress', target: route, canPreventDefault: true });
-    if (!event.defaultPrevented) navigation.navigate(route);
+    if (!event.defaultPrevented) {
+      if (route === 'settings') navigation.navigate('settings', { screen: 'index' });
+      else navigation.navigate(route);
+    }
   };
 
   return (
@@ -48,27 +60,30 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
       </Svg>}
       <View style={styles.tabRow} accessibilityRole="tablist">
         {tabs.slice(0, 2).map((tab) => <TabButton key={tab.route} tab={tab} active={activeRoute === tab.route} onPress={() => selectTab(tab.route)} />)}
-        <StartButton onPress={() => navigation.navigate('start')} />
+        <StartButton active={activeRoute === 'start'} onPress={() => navigation.navigate('start')} />
         {tabs.slice(2).map((tab) => <TabButton key={tab.route} tab={tab} active={activeRoute === tab.route} onPress={() => selectTab(tab.route)} />)}
       </View>
     </View>
   );
 }
 
-function StartButton({ onPress }: { onPress: () => void }) {
+function StartButton({ active, onPress }: { active: boolean; onPress: () => void }) {
   const { colors } = useAppearance();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
     <Pressable
       onPress={onPress}
+      disabled={active}
       onPressIn={() => { scale.set(withSpring(0.9, { duration: 140, dampingRatio: 0.7 })); }}
       onPressOut={() => { scale.set(withSpring(1, { duration: 320, dampingRatio: 0.45 })); }}
       style={styles.startPressable}
       accessibilityRole="button"
-      accessibilityLabel="Start workout">
-      <Animated.View style={[styles.startButton, { backgroundColor: colors.accent }, animatedStyle]}>
-        <Plus width={28} height={28} color={colors.accentText} strokeWidth={3} />
+      accessibilityLabel="Start workout"
+      accessibilityState={{ disabled: active }}>
+      {/* Greyed while on the start screen; it would only reopen this page. */}
+      <Animated.View style={[styles.startButton, { backgroundColor: active ? colors.surfaceStrong : colors.accent }, animatedStyle]}>
+        <Plus width={28} height={28} color={active ? colors.subtleText : colors.accentText} strokeWidth={3} />
       </Animated.View>
     </Pressable>
   );
