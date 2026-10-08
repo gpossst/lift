@@ -626,6 +626,37 @@ async function unblockFriend(env: Env, userId: string, friendId: string) {
   return json({ friends: await friends(env, userId) });
 }
 
+const feedbackKinds = ['bug', 'feature', 'other'];
+
+// ponytail: score is aggregated on every read; add a cached score column if the list grows large.
+async function listFeedback(env: Env, userId: string | null) {
+  const rows = await env.DB.prepare(`SELECT f.id, f.kind, f.body, f.created_at AS createdAt,
+    CASE WHEN i.has_chosen_display_name = 1 THEN i.display_name ELSE 'Lifter' END AS author,
+    COALESCE(SUM(v.value), 0) AS score, COALESCE(MAX(CASE WHEN v.user_id = ? THEN v.value END), 0) AS myVote
+    FROM site_feedback f JOIN user_info i ON i.user_id = f.user_id LEFT JOIN site_feedback_votes v ON v.feedback_id = f.id
+    GROUP BY f.id ORDER BY score DESC, f.created_at DESC LIMIT 200`).bind(userId).all();
+  return json({ feedback: rows.results });
+}
+
+async function createFeedback(request: Request, env: Env, userId: string) {
+  const body = await request.json().catch(() => null) as { kind?: unknown; body?: unknown } | null;
+  const text = typeof body?.body === 'string' ? body.body.trim() : '';
+  if (!feedbackKinds.includes(body?.kind as string)) return json({ error: 'Choose bug, feature, or other.' }, 400);
+  if (!isString(text, 2000)) return json({ error: 'Feedback must be between 1 and 2000 characters.' }, 400);
+  await env.DB.prepare('INSERT INTO site_feedback (id, user_id, kind, body, created_at) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), userId, body!.kind, text, now()).run();
+  return listFeedback(env, userId);
+}
+
+async function voteFeedback(request: Request, env: Env, userId: string, feedbackId: string) {
+  const body = await request.json().catch(() => null) as { value?: unknown } | null;
+  const value = body?.value;
+  if (value !== 1 && value !== -1 && value !== 0) return json({ error: 'Vote must be 1, -1, or 0.' }, 400);
+  if (!await env.DB.prepare('SELECT 1 FROM site_feedback WHERE id = ?').bind(feedbackId).first()) return json({ error: 'Feedback not found.' }, 404);
+  if (value === 0) await env.DB.prepare('DELETE FROM site_feedback_votes WHERE feedback_id = ? AND user_id = ?').bind(feedbackId, userId).run();
+  else await env.DB.prepare('INSERT INTO site_feedback_votes (feedback_id, user_id, value) VALUES (?, ?, ?) ON CONFLICT(feedback_id, user_id) DO UPDATE SET value = excluded.value').bind(feedbackId, userId, value).run();
+  return listFeedback(env, userId);
+}
+
 async function requestAccountDeletion(request: Request, env: Env) {
   const rateLimit = await env.DELETION_RATE_LIMITER.limit({ key: request.headers.get('CF-Connecting-IP') || 'unknown' });
   if (!rateLimit.success) return json({ error: 'Too many deletion requests. Try again later.' }, 429);
@@ -772,7 +803,7 @@ async function readiness(env: Env) {
 
 async function customRateLimit(request: Request, env: Env, userId: string, pathname: string) {
   const limiter = pathname === '/v1/sync' ? env.SYNC_RATE_LIMITER
-    : pathname === '/v1/recommendations' || pathname === '/v1/export' || pathname === '/v1/onboarding' || (!['GET', 'HEAD'].includes(request.method) && pathname.startsWith('/v1/friends'))
+    : pathname === '/v1/recommendations' || pathname === '/v1/export' || pathname === '/v1/onboarding' || (!['GET', 'HEAD'].includes(request.method) && pathname.startsWith('/v1/feedback')) || (!['GET', 'HEAD'].includes(request.method) && pathname.startsWith('/v1/friends'))
       ? env.EXPENSIVE_RATE_LIMITER : null;
   if (!limiter) return null;
   const result = await limiter.limit({ key: `${userId}:${pathname}` });
@@ -800,6 +831,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     // The old anonymous-session endpoint is intentionally removed. It could
     // create identities unrelated to Better Auth and break cross-device ownership.
     const session = await auth.api.getSession({ headers: request.headers });
+    // The feedback board is public; a session only adds the reader's own votes.
+    if (request.method === 'GET' && url.pathname === '/v1/feedback') return listFeedback(env, session?.user.id ?? null);
     if (!session) return json({ error: 'Unauthorized.' }, 401);
     const origin = request.headers.get('Origin');
     const trustedOrigins = (env.TRUSTED_ORIGINS || 'https://lift.garrett.one,lift://').split(',').map((value) => value.trim());
@@ -834,6 +867,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
     if (request.method === 'PATCH' && url.pathname === '/v1/profile') return updateProfile(request, env, user.id);
     if (request.method === 'GET' && url.pathname === '/v1/export') return exportAccount(env, user.id);
     if (request.method === 'POST' && url.pathname === '/v1/onboarding') return saveOnboarding(request, env, user.id);
+    if (request.method === 'POST' && url.pathname === '/v1/feedback') return createFeedback(request, env, user.id);
+    const voteRoute = url.pathname.match(/^\/v1\/feedback\/([0-9a-f-]{36})\/vote$/);
+    if (request.method === 'POST' && voteRoute) return voteFeedback(request, env, user.id, voteRoute[1]!);
     return json({ error: 'Not found.' }, 404);
 }
 

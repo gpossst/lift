@@ -1,14 +1,45 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ComponentProps, type FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { authClient, needsOnboarding, submitOnboarding, type Onboarding } from '#/lib/auth'
-import { Icon } from '#/components/icons'
 import { experienceLabel, OnboardingSteps } from '#/components/onboarding'
 import { Wordmark } from '#/components/wordmark'
 
 export const Route = createFileRoute('/')({ component: Home })
 
-// Weekly activity heatmap shown inside the hero phone preview.
-const activity = [0, 0, 1, 0, 2, 0, 0, 1, 0, 0, 3, 0, 0, 2, 0, 2, 4, 0, 0, 1, 0, 0, 0, 0, 2, 4, 0, 0, 1, 0, 3, 0, 0, 2, 0]
+const TESTFLIGHT = 'https://testflight.apple.com/join/wcj1WUHE'
+
+// Each feature row pairs one App Store screenshot (public/home) with what it shows; tone colours the heading.
+const features: [string, string, string, string][] = [
+  ['04c-set-logging', 'red', 'Log fast', 'Sets, reps, weight, and effort in a swipe, without breaking the flow of a workout.'],
+  ['02-muscle-coverage', 'blue', 'Recover intelligently', 'Recent muscle fatigue shapes what Lift suggests next, until your body catches up.'],
+  ['05-exercise-progress', 'ink', 'Own the history', 'Every set stays with your account, consistent across devices and always exportable.'],
+]
+
+// A screenshot in a phone frame that always tilts toward the mouse; --mx/--my also place the hover sheen.
+function Phone(props: ComponentProps<'img'>) {
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const clamp = (n: number) => Math.max(-1, Math.min(1, n))
+    function tilt(event: globalThis.PointerEvent) {
+      const el = ref.current
+      if (!el || event.pointerType !== 'mouse') return
+      const box = el.getBoundingClientRect()
+      // Lean toward the cursor: a faint hint from afar, full tilt once within ~200px of the frame.
+      const dx = Math.max(box.left - event.clientX, 0, event.clientX - box.right)
+      const dy = Math.max(box.top - event.clientY, 0, event.clientY - box.bottom)
+      const strength = .15 + .85 * Math.max(0, 1 - Math.hypot(dx, dy) / 200)
+      const x = clamp((event.clientX - box.left - box.width / 2) / (box.width / 2)) * strength
+      const y = clamp((event.clientY - box.top - box.height / 2) / (box.height / 2)) * strength
+      el.style.setProperty('--ry', `${x * 12}deg`)
+      el.style.setProperty('--rx', `${y * -9}deg`)
+      el.style.setProperty('--mx', `${(event.clientX - box.left) / box.width * 100}%`)
+      el.style.setProperty('--my', `${(event.clientY - box.top) / box.height * 100}%`)
+    }
+    window.addEventListener('pointermove', tilt)
+    return () => window.removeEventListener('pointermove', tilt)
+  }, [])
+  return <span ref={ref} className="phone"><img {...props} /></span>
+}
 
 type View = 'onboarding' | 'welcome' | 'signup' | 'signin' | 'forgot' | 'reset' | 'two-factor' | 'account'
 type Go = (view: View, notice?: string) => void
@@ -21,23 +52,14 @@ function Home() {
   const [view, setView] = useState<View | null>(null)
   const [notice, setNotice] = useState('')
   const [answers, setAnswers] = useState<Onboarding | null>(null)
-  const [needsSetup, setNeedsSetup] = useState(false)
   const [savingAnswers, setSavingAnswers] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (window.location.hash === '#two-factor') setView('two-factor')
+    else if (window.location.hash === '#signin') setView('signin')
     else if (params.has('token')) setView('reset')
   }, [])
-
-  // Accounts created before onboarding existed, or whose answers failed to
-  // save, get a hero prompt instead of an interruption.
-  useEffect(() => {
-    if (!user?.id) { setNeedsSetup(false); return }
-    let active = true
-    void needsOnboarding().then((value) => { if (active) setNeedsSetup(value) }, () => undefined)
-    return () => { active = false }
-  }, [user?.id])
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -59,7 +81,6 @@ function Home() {
     setSavingAnswers(true)
     try {
       await submitOnboarding(next)
-      setNeedsSetup(false)
       go('welcome')
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not save your training preferences.')
@@ -73,67 +94,40 @@ function Home() {
         <div className="account-actions">
           {!isPending && (user
             ? <button className="text-button" type="button" onClick={() => go('account')}>{user?.name || user?.email}</button>
-            : <><button className="text-button" type="button" onClick={() => go('signin')}>Sign in</button><button className="button" type="button" onClick={() => go('onboarding')}>Create account</button></>)}
+            : <><button className="text-button" type="button" onClick={() => go('signin')}>Sign in</button><a className="button nav-cta" href={TESTFLIGHT}>Get the app</a></>)}
         </div>
       </nav>
 
       <section className="hero">
-        <div className="hero-copy">
-          <p className="intro">Your training, remembered.</p>
-          <h1>A workout log that learns your rhythm.</h1>
-          <p className="lede">Lift keeps every set close, tracks recovery across sessions, and helps you choose what to train next without turning fitness into homework.</p>
-          {!user || needsSetup
-            ? <button className="button hero-button" type="button" onClick={() => go('onboarding')}>{user ? 'Personalize your plan' : 'Start with Lift'}</button>
-            : <p className="connected">Your Lift account is connected. Log workouts in the Lift app.</p>}
+        <h1>A workout log that learns your rhythm.</h1>
+        <p className="hero-sub">Lift keeps every set close, tracks recovery, and helps you choose what to train next.</p>
+        <div className="hero-actions">
+          <a className="chunky" href={TESTFLIGHT}><img src="/home/testflight.webp" alt="" width={26} height={26} />Get Lift on TestFlight</a>
+          {!isPending && !user && <button className="chunky secondary" type="button" onClick={() => go('signin')}>I already have an account</button>}
         </div>
-
-        <div className="hero-visual">
-          <div className="phone" role="img" aria-label="Lift app home screen">
-            <div className="phone-island" />
-            <div className="phone-screen">
-              <div className="app-title">Home</div>
-              <div className="app-trend">
-                <div className="app-trend-row"><span className="app-trend-value">12.8k<em>LB</em></span><span className="app-trend-change">+12% from last week</span></div>
-                <div className="app-trend-label">Weekly volume</div>
-                <svg className="app-chart" viewBox="0 0 260 70" preserveAspectRatio="none" aria-hidden="true">
-                  {[18, 38, 58].map((y) => <line key={y} x1="0" x2="260" y1={y} y2={y} className="app-chart-grid" />)}
-                  <polyline points="0,58 37,50 74,54 111,36 148,40 185,24 222,20 260,8" className="app-chart-line" />
-                </svg>
-                <div className="app-tabs"><span className="is-active">All</span><span>Push</span><span>Pull</span><span>Legs</span></div>
-              </div>
-              <div className="app-activity">
-                <div className="app-activity-head"><strong>September activity</strong><span>11 DAYS</span></div>
-                <div className="app-grid" aria-hidden="true">{activity.map((level, index) => <i key={index} data-level={level} />)}</div>
-              </div>
-              <div className="app-next"><span>YOUR NEXT WORKOUT</span><strong>Pull · Back and biceps</strong></div>
-            </div>
-          </div>
+        <div className="hero-phones">
+          <Phone src="/home/01-new-workout.webp" alt="Lift: pick what to train today" width={603} height={1311} />
+          <Phone src="/home/03-home.webp" alt="Lift home screen with a new PR, streak, and training calendar" width={603} height={1311} fetchPriority="high" />
+          <Phone src="/home/06-workout-complete.webp" alt="Lift workout recap" width={603} height={1311} />
         </div>
       </section>
 
-      <section className="features" aria-label="What Lift does">
-        <div className="features-head">
-          <p className="intro">What you get</p>
-          <h2>Everything you need to train with context.</h2>
-        </div>
-        <div className="principles">
-          <article><span className="feature-icon"><Icon name="zap" /></span><strong>Log fast</strong><p>Sets, reps, weight, and effort without breaking the flow of a workout.</p></article>
-          <article><span className="feature-icon"><Icon name="activity" /></span><strong>Recover intelligently</strong><p>Recent muscle fatigue changes recommendations until your body catches up.</p></article>
-          <article><span className="feature-icon"><Icon name="archive" /></span><strong>Own the history</strong><p>Your account keeps training consistent across devices and remains exportable.</p></article>
-        </div>
-      </section>
-
-      {!user && <section className="cta-band">
+      {features.map(([shot, tone, title, body], index) => <section key={shot} className={`feature${index % 2 ? ' is-flipped' : ''}`} data-tone={tone}>
         <div>
-          <h2>Your next session starts here.</h2>
-          <p>Free to start, and your training history stays yours.</p>
+          <h2>{title}</h2>
+          <p>{body}</p>
         </div>
-        <button className="button cta-button" type="button" onClick={() => go('onboarding')}>Start with Lift</button>
-      </section>}
+        <Phone src={`/home/${shot}.webp`} alt={`Lift: ${title.toLowerCase()}`} width={603} height={1311} loading="lazy" />
+      </section>)}
+
+      <section className="section closing">
+        <h2>Your next session starts here.</h2>
+        <a className="chunky" href={TESTFLIGHT}>Get started</a>
+      </section>
 
       <footer>
         <span className="brand"><Wordmark height={20} /></span>
-        <div><a href="https://api.lift.garrett.one/privacy">Privacy</a><a href="https://api.lift.garrett.one/terms">Terms</a><a href="https://api.lift.garrett.one/support">Support</a></div>
+        <div><a href="/feedback">Feedback</a><a href="https://api.lift.garrett.one/privacy">Privacy</a><a href="https://api.lift.garrett.one/terms">Terms</a><a href="https://api.lift.garrett.one/support">Support</a></div>
       </footer>
       <dialog ref={dialogRef} className="auth-dialog" aria-labelledby="auth-title" onClose={close} onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}>
         {view && <section className="auth-panel">
@@ -144,7 +138,7 @@ function Home() {
             : view === 'welcome' ? <Welcome answers={answers} email={user?.emailVerified ? '' : user?.email ?? ''} onDone={close} />
             : view === 'account' && user ? <AccountPanel user={user} close={close} />
             : view === 'two-factor' ? <TwoFactorForm close={close} />
-            : view !== 'account' && <AuthForm key={view} mode={view} answers={answers} go={go} close={close} onboarded={() => setNeedsSetup(false)} />}
+            : view !== 'account' && <AuthForm key={view} mode={view} answers={answers} go={go} close={close} />}
         </section>}
       </dialog>
     </main>
@@ -170,7 +164,7 @@ function useRequest() {
   return { busy, message, run }
 }
 
-function AuthForm({ mode, answers, go, close, onboarded }: { mode: 'signup' | 'signin' | 'forgot' | 'reset'; answers: Onboarding | null; go: Go; close: () => void; onboarded: () => void }) {
+function AuthForm({ mode, answers, go, close }: { mode: 'signup' | 'signin' | 'forgot' | 'reset'; answers: Onboarding | null; go: Go; close: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -181,7 +175,7 @@ function AuthForm({ mode, answers, go, close, onboarded }: { mode: 'signup' | 's
     if (mode === 'signin') {
       if (!await run(() => authClient.signIn.email({ email, password }))) return
       // Answered the questions, then signed in to an existing account: only fill in a profile that has none.
-      if (answers && await needsOnboarding().catch(() => false)) await submitOnboarding(answers).then(onboarded, () => undefined)
+      if (answers && await needsOnboarding().catch(() => false)) await submitOnboarding(answers).catch(() => undefined)
       close()
     } else if (mode === 'forgot') {
       if (await run(() => authClient.requestPasswordReset({ email, redirectTo: window.location.origin }))) go('signin', 'If an account uses that email, a reset link is on its way.')
@@ -194,8 +188,7 @@ function AuthForm({ mode, answers, go, close, onboarded }: { mode: 'signup' | 's
     } else if (await run(() => authClient.signUp.email({ name, email, password, callbackURL: window.location.origin }))) {
       // Sign-up returns a session, so the answers can be saved right away.
       const saved = !answers || await submitOnboarding(answers).then(() => true, () => false)
-      if (saved && answers) onboarded()
-      go('welcome', saved ? '' : 'Your account is ready, but your training preferences did not save. Use “Personalize your plan” on the home page to try again.')
+      go('welcome', saved ? '' : 'Your account is ready, but your training preferences did not save. You can set them up in the Lift app.')
     }
   }
 
