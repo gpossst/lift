@@ -1,0 +1,481 @@
+- main [ref=f26e4]:
+  - generic [ref=f26e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic [ref=f26e6]:
+            - link [ref=f26e7] [cursor=pointer]:
+              - /url: /
+            - link [ref=f26e11] [cursor=pointer]:
+              - /url: /
+          - generic:
+            - generic [ref=f26e22]:
+              - generic [ref=f26e23]:
+                - button "Product Product" [ref=f26e24] [cursor=pointer]:
+                  - generic [ref=f26e26]:
+                    - generic [ref=f26e27]: Product
+                    - generic [ref=f26e29]: Product
+                - generic:
+                  - generic:
+                    - link "Heron Chat Widget Heron Chat Widget":
+                      - /url: /heron-chat-widget
+                      - generic:
+                        - generic:
+                          - generic: Heron Chat Widget
+                          - generic: Heron Chat Widget
+                    - link "Heron Dashboard Heron Dashboard":
+                      - /url: /heron-dashboard
+                      - generic:
+                        - generic:
+                          - generic: Heron Dashboard
+                          - generic: Heron Dashboard
+              - link "Pricing Pricing" [ref=f26e40] [cursor=pointer]:
+                - /url: /pricing
+                - generic [ref=f26e42]:
+                  - generic [ref=f26e43]: Pricing
+                  - generic [ref=f26e45]: Pricing
+              - generic [ref=f26e47]:
+                - button "Resources Resources" [ref=f26e48] [cursor=pointer]:
+                  - generic [ref=f26e50]:
+                    - generic [ref=f26e51]: Resources
+                    - generic [ref=f26e53]: Resources
+                - generic:
+                  - generic:
+                    - link "Insights Insights":
+                      - /url: /resources
+                      - generic:
+                        - generic:
+                          - generic: Insights
+                          - generic: Insights
+                    - link "AI Practices AI Practices":
+                      - /url: /resources
+                      - generic:
+                        - generic:
+                          - generic: AI Practices
+                          - generic: AI Practices
+                    - link "Design Workflows Design Workflows":
+                      - /url: /resources
+                      - generic:
+                        - generic:
+                          - generic: Design Workflows
+                          - generic: Design Workflows
+              - link "About About" [ref=f26e64] [cursor=pointer]:
+                - /url: /about-us
+                - generic [ref=f26e66]:
+                  - generic [ref=f26e67]: About
+                  - generic [ref=f26e69]: About
+            - link "contact us contact us" [ref=f26e71] [cursor=pointer]:
+              - /url: /contact-us
+              - generic [ref=f26e73]:
+                - generic [ref=f26e74]: contact us
+                - generic [ref=f26e76]: contact us
+  - generic [ref=f26e90]:
+    - generic [ref=f26e91]: 0%
+    - generic:
+      - generic:
+        - generic: X:1131PX
+        - generic: Y:1131PX
+    - generic [ref=f26e97]:
+      - generic [ref=f26e98]: DESIGNED BY BEARPLUS, THE AWARD-WINNING DESIGN AGENCY
+      - generic [ref=f26e100]:
+        - generic [ref=f26e101]:
+          - generic [ref=f26e102]: WELCOME TO HERON AI
+          - generic [ref=f26e105]:
+            - generic [ref=f26e106]: TYPE
+            - generic [ref=f26e107]: ":"
+            - generic [ref=f26e108]: Technology/AI Software Company
+          - generic [ref=f26e109]:
+            - generic [ref=f26e110]: FOUNDED
+            - generic [ref=f26e111]: ":"
+            - generic [ref=f26e112]: "2026"
+          - generic [ref=f26e113]:
+            - generic [ref=f26e114]: FOCUS
+            - generic [ref=f26e115]: ":"
+            - generic [ref=f26e116]: AI-powered building code compliance for architects(BIM / Revit integration)
+          - generic [ref=f26e117]:
+            - generic [ref=f26e118]: LOCATION
+            - generic [ref=f26e119]: ":"
+            - generic [ref=f26e120]: 1801 California St. Suite 2400 Denver, CO 80202
+        - generic [ref=f26e121]:
+          - generic [ref=f26e122]: 001 INITIALIZE CORE SYSTEM
+          - generic [ref=f26e124]: 002 LOAD AI MODELS
+          - generic [ref=f26e126]: 003 CONFIGURE DATA PIPELINES
+          - generic [ref=f26e128]: 004 SYNC DISTRIBUTED NODES
+          - generic [ref=f26e130]: 005 VALIDATE INPUT STREAMS
+          - generic [ref=f26e132]: 006 OPTIMIZE INFERENCE ENGINE
+          - generic [ref=f26e134]: 007 DEPLOY TEST ENVIRONMENT
+          - generic [ref=f26e136]: 008 ENABLE REAL-TIME PROCESSING
+          - generic [ref=f26e138]: 009 RUN DIAGNOSTICS
+          - generic [ref=f26e140]: 010 START EXECUTION
+  - generic [ref=f26e162]:
+    - generic [ref=f26e167]:
+      - generic [ref=f26e168]:
+        - generic:
+          - generic:
+            - generic:
+              - generic: X:1131PX
+              - generic: Y:1131PX
+            - generic: Click and drag your mouse to see violations
+          - generic:
+            - img "Black and white architectural sketch of a modern concrete building with large windows and trees on each side."
+        - generic [ref=f26e169]:
+          - generic:
+            - generic:
+              - generic [ref=f26e176]:
+                - generic [ref=f26e177]: IBC 1015.3
+                - generic [ref=f26e178]: Guardrail required for fall protection
+              - generic [ref=f26e185]:
+                - generic [ref=f26e186]: IBC 1011.11
+                - generic [ref=f26e187]: Handrails required.
+      - generic [ref=f26e193]:
+        - heading "An AI agent that works inside your design tools" [level=1] [ref=f26e196]
+        - generic [ref=f26e197]:
+          - generic [ref=f26e198]:
+            - generic [ref=f26e200]:
+              - text: Heron reviews your model, identifies issues, and proposes solutions. Upon approval, it edits automatically. This concept crafted by
+              - link "Bearplus agency" [ref=f26e201] [cursor=pointer]:
+                - /url: https://www.bear.plus/
+              - text: ", the award-winning design agency."
+            - link "Discover more Discover more" [ref=f26e202] [cursor=pointer]:
+              - /url: /heron-dashboard
+              - generic [ref=f26e204]:
+                - generic [ref=f26e205]: Discover more
+                - generic [ref=f26e207]: Discover more
+          - generic [ref=f26e222]:
+            - generic [ref=f26e223]: Faster iterations
+            - generic [ref=f26e230]: Fewer mistakes
+            - generic [ref=f26e237]: Less busywork
+    - generic [ref=f26e248]:
+      - generic [ref=f26e258]:
+        - heading "THE REPETITIVE PARTS OF MODELLING SHOULDN'T EAT YOUR DAY. HERON HANDLES THE FIDDLY, MANUAL WORK SO YOU CAN STAY FOCUSED ON THE DESIGN, NOT THE SOFTWARE." [level=2] [ref=f26e260]
+        - link "Learn more Learn more" [ref=f26e261] [cursor=pointer]:
+          - /url: /heron-dashboard
+          - generic [ref=f26e263]:
+            - generic [ref=f26e264]: Learn more
+            - generic [ref=f26e266]: Learn more
+      - generic [ref=f26e279]:
+        - generic [ref=f26e280]:
+          - generic [ref=f26e281]:
+            - generic [ref=f26e282]: clients
+            - generic [ref=f26e284]:
+              - generic [ref=f26e285] [cursor=pointer]
+              - generic [ref=f26e299] [cursor=pointer]
+          - list [ref=f26e315]:
+            - listitem [ref=f26e316]
+            - listitem [ref=f26e318]
+            - listitem [ref=f26e320]
+            - listitem [ref=f26e322]
+            - listitem [ref=f26e324]
+            - listitem [ref=f26e326]
+            - listitem [ref=f26e328]
+            - listitem [ref=f26e330]
+        - generic [ref=f26e332]: Works natively inside the tools you already use, including Revit, Rhino, ArchiCAD and SketchUp.
+    - generic [ref=f26e338]:
+      - generic [ref=f26e339]:
+        - generic [ref=f26e340]:
+          - generic [ref=f26e341]: PROBLEMS
+          - heading "Your design tools do what you tell them, nothing more" [level=2] [ref=f26e344]
+        - generic [ref=f26e345]: Design software is powerful but passive. It waits for every instruction, gives no advice, and can't act on its own, so all the repetitive work stays on you.
+      - generic [ref=f26e349]:
+        - generic [ref=f26e350]:
+          - generic [ref=f26e351]:
+            - generic [ref=f26e352]: Manual
+            - generic [ref=f26e354]: "[01]"
+          - generic [ref=f26e373]:
+            - generic [ref=f26e374]: Every change is on you
+            - generic [ref=f26e376]: You make each edit by hand, one at a time, even the ones you've done a hundred times before.
+        - generic [ref=f26e379]:
+          - generic [ref=f26e380]:
+            - generic [ref=f26e381]: Disjointed
+            - generic [ref=f26e383]: "[02]"
+          - generic [ref=f26e400]:
+            - generic [ref=f26e401]: AI help sits outside your model
+            - generic [ref=f26e403]: Generic AI tools can't see your project, so you keep copying, pasting, and re-explaining the same context.
+        - generic [ref=f26e406]:
+          - generic [ref=f26e407]:
+            - generic [ref=f26e408]: BLIND
+            - generic [ref=f26e410]: "[03]"
+          - generic [ref=f26e422]:
+            - generic [ref=f26e423]: Nothing watches for problems
+            - generic [ref=f26e425]: Issues sit quietly in your model until you happen to spot them, if you spot them at all.
+        - generic [ref=f26e428]:
+          - generic [ref=f26e429]:
+            - generic [ref=f26e430]: SLOW
+            - generic [ref=f26e432]: "[04]"
+          - generic [ref=f26e457]:
+            - generic [ref=f26e458]: Small tasks pile up into lost days
+            - generic [ref=f26e460]: The fiddly work that fills your week is exactly the work software should be doing for you.
+    - generic [ref=f26e468]:
+      - generic [ref=f26e470]:
+        - generic [ref=f26e471]:
+          - generic: Right there with you
+          - generic: For the whole design
+          - generic:
+            - generic:
+              - img "Simple black and white floor plan with multiple rooms and thick walls shown."
+          - generic:
+            - generic:
+              - img "Clock face showing time as 2:37 on a black background with white hour and minute marks."
+          - generic:
+            - generic:
+              - img "Floor plan showing tables, chairs, counters, and furniture layout of a restaurant or cafe interior."
+          - generic:
+            - generic:
+              - img "Architectural floor plan with dimensions and door labels D8, D9, and D18 on black background."
+          - generic:
+            - generic:
+              - generic:
+                - generic: IBC 1017.2
+                - generic: Exit Access Travel Distance
+              - generic:
+                - generic: IBC 1010.1.2.1
+                - generic: Door Swing Direction
+              - generic:
+                - generic: ICC A117.1 §604.3.1
+                - generic: Accessible Toilet Clearance
+        - generic:
+          - generic: Introduction
+          - generic:
+            - generic [ref=f26e472]:
+              - generic [ref=f26e473]: Architects spend hours on manual modelling, coordination, and cleanup, work that pulls focus away from the actual design.
+              - generic [ref=f26e475]: "[Scroll to continue]"
+            - generic:
+              - generic: Most of it is repetitive and rule-based, the kind of task that shouldn't need a person doing it by hand every time.
+              - generic: "[Scroll to continue]"
+            - generic:
+              - generic: Heron works inside your design tool as an agent that sees your model, flags issues, and makes edits on your approval, so the busywork stops eating your day.
+              - generic: "[Scroll to continue]"
+            - generic:
+              - generic: Heron works inside your design tool as an agent that sees your model, flags issues, and makes edits on your approval, so the busywork stops eating your day.
+              - generic: "[Scroll to continue]"
+            - generic: "[Click on violation]"
+      - generic [ref=f26e477]:
+        - generic [ref=f26e478]: Your model. Your tools. Connected.
+        - generic [ref=f26e481]:
+          - heading "RUN AN AGENT NATIVELY IN YOUR MODEL" [level=2] [ref=f26e483]
+          - generic [ref=f26e484]: Heron runs inside the design software you already use. It reads your model, understands what you're working on, and can make changes directly, with every action shown to you first so nothing happens without your say-so.
+        - generic [ref=f26e487]:
+          - generic [ref=f26e488]: Works with Revit, Rhino, ArchiCAD, SketchUp.
+          - generic [ref=f26e497]: Understands your geometry and intent.
+          - generic [ref=f26e506]: Suggests fixes while you work.
+          - generic [ref=f26e515]: Edits automatically after your approval.
+    - generic [ref=f26e528]:
+      - generic:
+        - generic [ref=f26e529]:
+          - generic [ref=f26e531]:
+            - generic [ref=f26e532]: "[01]"
+            - generic [ref=f26e534]: Heron Chat widget
+          - generic [ref=f26e537]:
+            - generic [ref=f26e538]: A chat that floats over your design tool. Ask it about your model or tell it what to change, and it acts inside the software on your approval.
+            - link "Learn more Learn more" [ref=f26e540] [cursor=pointer]:
+              - /url: /heron-chat-widget
+              - generic [ref=f26e543]:
+                - generic [ref=f26e544]: Learn more
+                - generic [ref=f26e546]: Learn more
+        - generic:
+          - generic:
+            - generic:
+              - generic: "[02]"
+              - generic: Heron Dashboard
+          - generic:
+            - generic:
+              - generic: Ask code questions about your building and get answers that reflect how the code applies to your layout, occupancy, and conditions, not just what the requirements say in isolation.
+              - link "Learn more Learn more":
+                - /url: /heron-dashboard
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Learn more
+                      - generic: Learn more
+    - generic [ref=f26e585]:
+      - generic [ref=f26e586]:
+        - generic [ref=f26e587]:
+          - generic [ref=f26e588]: WHY US
+          - heading "BUILT TO WORK THE WAY YOU DO" [level=2] [ref=f26e591]
+        - generic [ref=f26e592]:
+          - generic [ref=f26e593]: Heron fits into your process instead of replacing it. It watches quietly, speaks up when something needs attention, and only acts when you say so, so you stay in control the whole way through.
+          - generic [ref=f26e595]: "[Scroll to continue]"
+      - generic [ref=f26e600]:
+        - generic [ref=f26e601]:
+          - generic [ref=f26e602]:
+            - generic:
+              - generic:
+                - img "Text showing IBC 1015.3 low window sill height in white on a black background."
+            - generic:
+              - generic:
+                - 'img "White text on black background reads: IBC 1011.5.2 RISER HEIGHT EXCEEDS CODE."'
+          - generic:
+            - generic:
+              - generic: Observe
+              - generic: Heron watches your model as you design
+        - generic [ref=f26e603]:
+          - generic [ref=f26e604]:
+            - generic:
+              - img "Office floor plan layout with multiple rooms and doors, labeled 12m by 24m commercial space."
+            - generic:
+              - generic:
+                - 'img "Text on red background: IBC 1020.2 Corridor Width Violation."'
+            - generic:
+              - generic:
+                - 'img "HERON AI alert: Corridor width violation under IBC 1020.2, suggests widening corridor to 36 inches for access and egress."'
+          - generic:
+            - generic:
+              - generic: Advise
+              - generic: It flags issues and suggests fixes in plain language
+        - generic [ref=f26e605]:
+          - generic [ref=f26e606]:
+            - generic [ref=f26e608]:
+              - generic [ref=f26e610]:
+                - img "Black and white tower floor plan with rooms and two doors opening to a tiled balcony."
+              - generic [ref=f26e617]:
+                - img "Simple residential floor plan layout with several rooms and doorways in a 12 by 8 meter space."
+              - generic [ref=f26e640]:
+                - img "Simple residential floor plan with multiple rooms and labeled size 22m by 16m, created Dec 2024."
+            - generic:
+              - generic:
+                - img "Interface screen with header titled CHECKING and three list items, one highlighted in white."
+          - generic:
+            - generic:
+              - generic: Act
+              - generic: With your approval, it makes the edit directly in the model
+        - generic [ref=f26e662]:
+          - generic [ref=f26e663]:
+            - generic:
+              - img "Office floor plan showing multiple rooms and doors with dimensions 12m by 24m dated November 3rd, 2025."
+          - generic:
+            - generic:
+              - generic: Learn
+              - generic: It picks up your firm's standards and gets more useful over time
+    - generic [ref=f26e731]:
+      - list [ref=f26e734]:
+        - listitem [ref=f26e735]
+        - listitem [ref=f26e736]
+        - listitem [ref=f26e737]
+        - listitem [ref=f26e738]
+        - listitem [ref=f26e739]
+        - listitem [ref=f26e740]
+        - listitem [ref=f26e741]
+        - listitem [ref=f26e742]
+      - generic [ref=f26e743]:
+        - generic [ref=f26e744]: USE CASES
+        - heading "MADE FOR THE PEOPLE IN THE MODEL" [level=2] [ref=f26e747]
+      - list [ref=f26e750]:
+        - listitem [ref=f26e751] [cursor=pointer]:
+          - generic [ref=f26e752]: Architects
+        - listitem [ref=f26e759] [cursor=pointer]:
+          - generic [ref=f26e760]: Interior Designers
+        - listitem [ref=f26e767] [cursor=pointer]:
+          - generic [ref=f26e768]: Landscape Architects
+        - listitem [ref=f26e775] [cursor=pointer]:
+          - generic [ref=f26e776]: Engineers
+        - listitem [ref=f26e783] [cursor=pointer]:
+          - generic [ref=f26e784]: BIM MANAGERS
+        - listitem [ref=f26e791] [cursor=pointer]:
+          - generic [ref=f26e792]: DRAFTERS
+        - listitem [ref=f26e799] [cursor=pointer]:
+          - generic [ref=f26e800]: DESIGN LEADS
+        - listitem [ref=f26e807] [cursor=pointer]:
+          - generic [ref=f26e808]: SMALL FIRMS
+    - generic [ref=f26e818]:
+      - generic [ref=f26e819]:
+        - generic [ref=f26e820]: "[0,246]"
+        - generic [ref=f26e823]: "[831,0]"
+        - generic [ref=f26e826]: "[2303,0]"
+      - generic [ref=f26e829]:
+        - generic [ref=f26e830]: "[0,544]"
+        - generic [ref=f26e833]:
+          - heading "SEE WHAT HERON CAN DO IN YOUR MODEL" [level=2] [ref=f26e835]
+          - generic [ref=f26e836]: Book a demo and we'll show Heron working inside one of your own projects.
+          - link "Contact us Contact us" [ref=f26e839] [cursor=pointer]:
+            - /url: /contact-us
+            - generic [ref=f26e841]:
+              - generic [ref=f26e842]: Contact us
+              - generic [ref=f26e844]: Contact us
+    - generic [ref=f26e873]:
+      - generic [ref=f26e874]:
+        - generic [ref=f26e875]:
+          - generic [ref=f26e876]: An AI agent that works inside your design tools
+          - generic [ref=f26e879]:
+            - generic [ref=f26e880]: Subscribe
+            - generic [ref=f26e883]:
+              - form "Footer Form" [ref=f26e884]:
+                - generic [ref=f26e885]: Want to see more cool websites like this?Sign up for occasional updates from Bearplus.
+                - generic [ref=f26e887]:
+                  - textbox "Enter your email" [ref=f26e888]
+                  - button
+              - region "Footer Form success":
+                - generic:
+                  - generic: Thanks for reaching out!
+                  - generic: We've received your information.Our team will reach out to you shortly!
+        - generic [ref=f26e889]:
+          - generic [ref=f26e891]:
+            - generic [ref=f26e892]:
+              - generic [ref=f26e893]: Company
+              - generic [ref=f26e895]:
+                - link "Home" [ref=f26e896] [cursor=pointer]:
+                  - /url: /
+                - link "About us" [ref=f26e898] [cursor=pointer]:
+                  - /url: /about-us
+                - link "Contact us" [ref=f26e900] [cursor=pointer]:
+                  - /url: /contact-us
+            - generic [ref=f26e902]:
+              - generic [ref=f26e903]: Product
+              - generic [ref=f26e905]:
+                - link "Heron Chat Widget" [ref=f26e906] [cursor=pointer]:
+                  - /url: /heron-chat-widget
+                - link "Heron Dashboard" [ref=f26e908] [cursor=pointer]:
+                  - /url: /heron-dashboard
+                - link "Pricing" [ref=f26e910] [cursor=pointer]:
+                  - /url: /pricing
+            - generic [ref=f26e912]:
+              - generic [ref=f26e913]: Resources
+              - generic [ref=f26e915]:
+                - link "Insights" [ref=f26e916] [cursor=pointer]:
+                  - /url: /resources
+                - link "AI Practices" [ref=f26e918] [cursor=pointer]:
+                  - /url: /resources
+                - link "Design Workflows" [ref=f26e920] [cursor=pointer]:
+                  - /url: /resources
+          - generic [ref=f26e923]:
+            - generic [ref=f26e924]:
+              - generic [ref=f26e925]: Address
+              - link "60 Martin Pl, Sydney, NSW 2000, Australia" [ref=f26e927] [cursor=pointer]:
+                - /url: https://maps.app.goo.gl/asX4qFDMyfEEQCis6
+              - link "Direction" [ref=f26e929] [cursor=pointer]:
+                - /url: https://share.google/bPO24hGLkHwMPquIY
+            - generic [ref=f26e931]:
+              - generic [ref=f26e932]:
+                - generic [ref=f26e933]: New business
+                - link "business@bear.plus" [ref=f26e935] [cursor=pointer]:
+                  - /url: mailto:business@bear.plus
+              - generic [ref=f26e937]:
+                - generic [ref=f26e938]: General inquiries
+                - link "hello@heronaiapp.com" [ref=f26e940] [cursor=pointer]:
+                  - /url: mailto:hello@heronaiapp.com
+            - generic [ref=f26e942]:
+              - generic [ref=f26e943]: Social
+              - generic [ref=f26e945]:
+                - link "Website" [ref=f26e946] [cursor=pointer]:
+                  - /url: https://www.bear.plus/
+                - link "Dribbble" [ref=f26e948] [cursor=pointer]:
+                  - /url: https://dribbble.com/bearplus
+                - link "FWA" [ref=f26e950] [cursor=pointer]:
+                  - /url: https://thefwa.com/profiles/bear-plus
+                - link "Awwwards" [ref=f26e952] [cursor=pointer]:
+                  - /url: https://www.awwwards.com/bearplus/
+                - link "Instagram" [ref=f26e954] [cursor=pointer]:
+                  - /url: https://www.instagram.com/bearplus.agency
+                - link "Linkedin" [ref=f26e956] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/bear-plus/
+      - generic [ref=f26e977]:
+        - paragraph [ref=f26e981]:
+          - text: ©2026 HERON AI. All rights reserved. Concept Crafted by
+          - link "Bearplus" [ref=f26e982] [cursor=pointer]:
+            - /url: https://www.bear.plus/
+        - generic [ref=f26e983]:
+          - link "Privacy Policy" [ref=f26e984] [cursor=pointer]:
+            - /url: /privacy-policy
+          - link "Terms & Conditions" [ref=f26e986] [cursor=pointer]:
+            - /url: /terms-and-conditions
+          - link "Cookie Policy" [ref=f26e988] [cursor=pointer]:
+            - /url: /cookie-policy

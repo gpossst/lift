@@ -1,0 +1,67 @@
+- main [ref=e2]:
+  - navigation "Primary navigation" [ref=e3]:
+    - link "Lift home" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - img "Lift" [ref=e5]
+  - generic [ref=e11]:
+    - heading "A workout log that learns your rhythm." [level=1] [ref=e12]
+    - paragraph [ref=e13]: Lift keeps every set close, tracks recovery across sessions, and helps you choose what to train next.
+    - generic [ref=e14]:
+      - button "Start with Lift" [ref=e15] [cursor=pointer]
+      - link "See the app" [ref=e16] [cursor=pointer]:
+        - /url: "#app"
+    - generic [ref=e17]:
+      - img "Lift home screen with a new PR, streak, and training calendar" [ref=e18]
+      - generic [ref=e19]:
+        - generic [ref=e20]: New PR · 140 lb
+        - strong [ref=e21]: Bent-over row
+      - generic [ref=e22]:
+        - generic [ref=e23]: Streak
+        - strong [ref=e24]: 3 weeks
+      - generic [ref=e25]:
+        - generic [ref=e26]: Set 3 of 4
+        - strong [ref=e27]: 135 lb × 8
+      - generic [ref=e28]:
+        - generic [ref=e29]: Next up
+        - strong [ref=e30]: Pull · Back and biceps
+  - region "Lift app screens" [ref=e31]:
+    - figure "Pick what to train today" [ref=e32]:
+      - 'img "Lift app: Pick what to train today" [ref=e33]'
+    - figure "Log a set in one swipe" [ref=e35]:
+      - 'img "Lift app: Log a set in one swipe" [ref=e36]'
+    - figure "PRs and streaks at a glance" [ref=e38]:
+      - 'img "Lift app: PRs and streaks at a glance" [ref=e39]'
+    - figure "Every lift’s history" [ref=e41]:
+      - 'img "Lift app: Every lift’s history" [ref=e42]'
+    - figure "See which muscles need work" [ref=e44]:
+      - 'img "Lift app: See which muscles need work" [ref=e45]'
+    - figure "A recap when you finish" [ref=e47]:
+      - 'img "Lift app: A recap when you finish" [ref=e48]'
+  - region "What Lift does" [ref=e50]:
+    - generic [ref=e51]:
+      - paragraph [ref=e52]: What you get
+      - heading "Everything you need to train with context." [level=2] [ref=e53]
+    - generic [ref=e54]:
+      - article [ref=e55]:
+        - strong [ref=e59]: Log fast
+        - paragraph [ref=e60]: Sets, reps, weight, and effort without breaking the flow of a workout.
+      - article [ref=e61]:
+        - strong [ref=e65]: Recover intelligently
+        - paragraph [ref=e66]: Recent muscle fatigue changes recommendations until your body catches up.
+      - article [ref=e67]:
+        - strong [ref=e72]: Own the history
+        - paragraph [ref=e73]: Your account keeps training consistent across devices and remains exportable.
+  - generic [ref=e74]:
+    - generic [ref=e75]:
+      - heading "Your next session starts here." [level=2] [ref=e76]
+      - paragraph [ref=e77]: Free to start, and your training history stays yours.
+    - button "Start with Lift" [ref=e78] [cursor=pointer]
+  - generic [ref=e79]:
+    - img "Lift" [ref=e81]
+    - generic [ref=e87]:
+      - link "Privacy" [ref=e88] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/privacy
+      - link "Terms" [ref=e89] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/terms
+      - link "Support" [ref=e90] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/support

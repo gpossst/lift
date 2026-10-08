@@ -1,0 +1,10 @@
+[     402ms] [LOG] [autocapture] Initializing pageview tracking @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     404ms] [LOG] [autocapture] Initializing click tracking @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     404ms] [LOG] [autocapture] Initializing dead click tracking @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     404ms] [LOG] [autocapture] Initializing input tracking @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     404ms] [LOG] [autocapture] Initializing scroll tracking @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     404ms] [LOG] [autocapture] Initializing submit tracking @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     404ms] [LOG] [autocapture] Initializing rage click tracking @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     405ms] [LOG] MIXPANEL PEOPLE REQUEST (QUEUED, PENDING IDENTIFY): @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     405ms] [LOG] {$set_once: Object, $token: 94a9dfdef31729ce5b370a97b0c1f856, $distinct_id: $device:9f2d87a4-0950-4978-8a6a-278463afe6b3, $device_id: 9f2d87a4-0950-4978-8a6a-278463afe6b3} @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34
+[     553ms] [LOG] [flags] Cleared persisted variants from IndexedDB @ https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js:34

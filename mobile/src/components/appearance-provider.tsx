@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, useState, type PropsWithChildren } 
 
 import { colorsFor, defaultAppearance, normalizeRestTimerSeconds, systemMode, type AccentId, type AppearanceMode, type AppearancePreferences, type BodyShape } from '@/lib/appearance';
 import { readAppearance, writeAppearance } from '@/lib/appearance-storage';
+import { AppearanceAppIcon } from '@/components/appearance-app-icon';
 
 type AppearanceContextValue = AppearancePreferences & {
   colors: ReturnType<typeof colorsFor>;
@@ -40,7 +41,10 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
     setRestTimerSeconds: (restTimerSeconds: number) => update({ ...preferences, restTimerSeconds }),
   }), [preferences]);
 
-  return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>;
+  return <AppearanceContext.Provider value={value}>
+    <AppearanceAppIcon mode={preferences.mode} accent={preferences.accent} />
+    {children}
+  </AppearanceContext.Provider>;
 }
 
 export function useAppearance() {

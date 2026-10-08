@@ -103,7 +103,7 @@ function Home() {
         <p className="hero-sub">Lift keeps every set close, tracks recovery, and helps you choose what to train next.</p>
         <div className="hero-actions">
           <a className="chunky" href={TESTFLIGHT}><img src="/home/testflight.webp" alt="" width={26} height={26} />Get Lift on TestFlight</a>
-          {!isPending && !user && <button className="chunky secondary" type="button" onClick={() => go('signin')}>I already have an account</button>}
+          <a className="chunky secondary" href="/feedback">Feedback</a>
         </div>
         <div className="hero-phones">
           <Phone src="/home/01-new-workout.webp" alt="Lift: pick what to train today" width={603} height={1311} />

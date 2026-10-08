@@ -1,0 +1,141 @@
+- generic [ref=f3e1]:
+  - main [ref=f3e2]:
+    - generic [ref=f3e3]:
+      - generic [ref=f3e5]:
+        - img "Mobbin" [ref=f3e6]
+        - generic [ref=f3e8]:
+          - heading "Create your free account" [level=2] [ref=f3e9]
+          - generic [ref=f3e10]: Create your free account to search or filter through 600,000+ screens. No credit card required.
+        - generic [ref=f3e11]:
+          - button "Continue with Google" [ref=f3e13] [cursor=pointer]
+          - generic [ref=f3e22]:
+            - separator [ref=f3e23]
+            - heading "or" [level=3] [ref=f3e24]
+            - separator [ref=f3e25]
+          - generic [ref=f3e26]:
+            - textbox "Email" [active] [ref=f3e30]:
+              - /placeholder: Enter email address
+            - button "Continue" [ref=f3e31] [cursor=pointer]
+            - paragraph [ref=f3e34]:
+              - text: By continuing, you agree to Mobbin’s
+              - link "Terms of Service" [ref=f3e35] [cursor=pointer]:
+                - /url: /terms
+              - text: and
+              - link "Privacy Policy" [ref=f3e36] [cursor=pointer]:
+                - /url: /privacy
+              - text: .
+        - generic [ref=f3e37]:
+          - text: Already have an account?
+          - link "Log in" [ref=f3e38] [cursor=pointer]:
+            - /url: /login?redirect_to=%2Fsites%2Fsections%2Fdc2d4f95-b523-4103-941b-3dbf7c9bc8c6
+        - paragraph [ref=f3e40]: Trusted by teams at
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+  - region "Notifications alt+T"
+  - generic:
+    - button "Scroll to top"
+  - alert [ref=f3e65]

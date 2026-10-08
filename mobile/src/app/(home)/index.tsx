@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Animated as NativeAnimated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Circle } from '@shopify/react-native-skia';
-import { Award, ChevronRight, Clock } from 'react-native-feather';
+import { ChevronRight, Clock } from 'react-native-feather';
 import LottieView from 'lottie-react-native';
 import { LineGraph, type SelectionDotProps } from 'react-native-graph';
 import Animated, { FadeIn, FadeInDown, FadeOut, ZoomIn, interpolate, SlideInDown, SlideOutDown, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
 import { useSheetPresence } from '@/hooks/use-sheet-presence';
-import Svg, { Defs, Line, LinearGradient, Polygon, Polyline, Stop } from 'react-native-svg';
+import Svg, { Circle as SvgCircle, Defs, Line, LinearGradient, Polygon, Polyline, Stop } from 'react-native-svg';
 import { closeExpiredWorkouts, getActiveWorkout, getCompletedWorkoutExerciseDetails, getCustomSplits, getExercises, getWorkoutHistories, getWorkoutSplitTrends, getWorkoutVisitExerciseDetails, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
 import { EmptyArt } from '@/components/empty-art';
@@ -164,7 +164,7 @@ export default function HomeScreen() {
 		</View>
 		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 			{activeWorkout ? <ResumeCard title={`${workoutSplitLabel(activeWorkout.split)} workout`} meta={activeMeta || ''} colors={colors} onPress={() => router.navigate({ pathname: '/exercises', params: { split: activeWorkout.split, workoutId: activeWorkout.id } })} /> : notifications.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={notificationWidth + notificationGap} decelerationRate="fast" style={styles.notificationScroll} contentContainerStyle={styles.notificationRow}>
-				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}>{'pr' in notification && <Award width={22} height={22} color={goalGold} strokeWidth={2.4} />}<View style={styles.notificationCopy}><Text style={[ui.eyebrow, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
+				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}>{'pr' in notification && <PrMedal />}<View style={styles.notificationCopy}><Text style={[ui.eyebrow, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
 			</ScrollView>}
 
 			<MonthActivity visits={visits} colors={colors} goal={goal} daysThisWeek={daysThisWeek} streak={streak} />
@@ -407,3 +407,11 @@ const styles = StyleSheet.create({
 	legend: { marginTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, legendScale: { flexDirection: 'row', alignItems: 'center', gap: 4 }, legendSwatch: { width: 10, height: 10, borderRadius: 3 }, legendText: { marginHorizontal: 2, fontSize: 10, fontWeight: '800' },
 	sheetOverlay: { flex: 1, justifyContent: 'flex-end' }, sheetBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,.38)' }, workoutSheet: { minHeight: 250, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 28, borderTopLeftRadius: 25, borderTopRightRadius: 25 }, sheetHandle: { width: 37, height: 4, borderRadius: 2, alignSelf: 'center' }, sheetTitle: { marginTop: 22, fontSize: 22, fontWeight: '900', letterSpacing: -.8 }, sheetDate: { marginTop: 3, marginBottom: 13, fontSize: 13, fontWeight: '700' }, workoutOption: { minHeight: 68, borderTopWidth: 1, justifyContent: 'center' }, workoutOptionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 }, workoutOptionMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', letterSpacing: -.1 },
 });
+
+function PrMedal() {
+	return <Svg width={30} height={30} viewBox="0 0 24 24">
+		<Polygon points="8.2 13.9 7 23 12 20 17 23 15.8 13.9" fill="#E5383B" />
+		<SvgCircle cx={12} cy={8} r={7} fill={goalGold} />
+		<SvgCircle cx={12} cy={8} r={4} fill="none" stroke="#E0A800" strokeWidth={1.5} />
+	</Svg>;
+}

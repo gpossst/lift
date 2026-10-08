@@ -1,0 +1,1285 @@
+- main [ref=f23e3]:
+  - generic [ref=f23e5]:
+    - link "The most creative minds in GTM. October 8, San Francisco Get tickets →" [ref=f23e6] [cursor=pointer]:
+      - /url: https://www.sculpt.clay.com
+      - generic [ref=f23e8]:
+        - generic [ref=f23e9]: The most creative minds in GTM. October 8, San Francisco
+        - generic [ref=f23e11]:
+          - generic [ref=f23e12]: Get tickets
+          - generic [ref=f23e13]: →
+    - navigation [ref=f23e14]:
+      - generic [ref=f23e15]:
+        - generic [ref=f23e16]:
+          - generic [ref=f23e17]:
+            - generic [ref=f23e18]:
+              - link [ref=f23e20] [cursor=pointer]:
+                - /url: /
+                - img "Clay logo, go to homepage" [ref=f23e21]
+              - generic:
+                - link "Back":
+                  - /url: "#"
+            - list [ref=f23e23]:
+              - listitem [ref=f23e24]:
+                - link [ref=f23e25] [cursor=pointer]:
+                  - /url: "#"
+                  - generic [ref=f23e26]:
+                    - paragraph [ref=f23e28]: Product
+                    - paragraph [ref=f23e30]: Product
+              - listitem [ref=f23e32]:
+                - link [ref=f23e33] [cursor=pointer]:
+                  - /url: "#"
+                  - generic [ref=f23e34]:
+                    - paragraph [ref=f23e36]: Solutions
+                    - paragraph [ref=f23e38]: Solutions
+              - listitem [ref=f23e39]:
+                - link [ref=f23e40] [cursor=pointer]:
+                  - /url: "#"
+                  - generic [ref=f23e41]:
+                    - paragraph [ref=f23e43]: Resources
+                    - paragraph [ref=f23e45]: Resources
+              - listitem [ref=f23e46]:
+                - link [ref=f23e47] [cursor=pointer]:
+                  - /url: "#"
+                  - generic [ref=f23e48]:
+                    - paragraph [ref=f23e50]: Company
+                    - paragraph [ref=f23e52]: Company
+              - listitem [ref=f23e53]:
+                - link [ref=f23e54] [cursor=pointer]:
+                  - /url: /pricing
+                  - generic [ref=f23e55]:
+                    - paragraph [ref=f23e57]: Pricing
+                    - paragraph [ref=f23e59]: Pricing
+          - generic [ref=f23e61] [cursor=pointer]:
+            - button "⌘ K " [ref=f23e62]:
+              - generic [ref=f23e63]: ⌘
+              - generic [ref=f23e64]: K
+              - generic [ref=f23e65]: 
+            - link "Log in" [ref=f23e68]:
+              - /url: https://app.clay.com/
+            - link "Get a demo" [ref=f23e69]:
+              - /url: /demo
+            - link "Start free trial" [ref=f23e72]:
+              - /url: https://app.clay.com/signup?source=nav&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+        - generic [ref=f23e74]:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Data infrastructure
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Audiences Audiences":
+                                - /url: /audiences
+                                - generic:
+                                  - generic:
+                                    - img "Audiences"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Audiences
+                            - listitem:
+                              - link "Data marketplace Data marketplace":
+                                - /url: /integrations
+                                - generic:
+                                  - generic:
+                                    - img "Data marketplace"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Data marketplace
+                            - listitem:
+                              - link "Signals and Intent Signals and Intent":
+                                - /url: /signals
+                                - generic:
+                                  - generic:
+                                    - img "Signals and Intent"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Signals and Intent
+                            - listitem:
+                              - link "Waterfall Waterfall":
+                                - /url: /waterfall-enrichment
+                                - generic:
+                                  - generic:
+                                    - img "Waterfall"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Waterfall
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Agents
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Claygents Claygents":
+                                - /url: /claygent
+                                - generic:
+                                  - generic:
+                                    - img "Claygents"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Claygents
+                            - listitem:
+                              - link "Account Agents Account Agents":
+                                - /url: /account-agents
+                                - generic:
+                                  - generic:
+                                    - img "Account Agents"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Account Agents
+                            - listitem:
+                              - link "Agent plugin CLI/API Agent plugin CLI/API":
+                                - /url: /agent-plugin
+                                - generic:
+                                  - generic:
+                                    - img "Agent plugin CLI/API"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Agent plugin CLI/API
+                            - listitem:
+                              - link "MCP for reps MCP for reps":
+                                - /url: /mcp
+                                - generic:
+                                  - generic:
+                                    - img "MCP for reps"
+                                - generic:
+                                  - generic:
+                                    - paragraph: MCP for reps
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Orchestration
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Workflows Workflows":
+                                - /url: /workflows
+                                - generic:
+                                  - generic:
+                                    - img "Workflows"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Workflows
+                            - listitem:
+                              - link "Functions Functions":
+                                - /url: /functions
+                                - generic:
+                                  - generic:
+                                    - img "Functions"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Functions
+                            - listitem:
+                              - link "AI formatting AI formatting":
+                                - /url: /ai-formula
+                                - generic:
+                                  - generic:
+                                    - img "AI formatting"
+                                - generic:
+                                  - generic:
+                                    - paragraph: AI formatting
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Execution
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Ads Ads":
+                                - /url: /ads
+                                - generic:
+                                  - generic:
+                                    - img "Ads"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Ads
+                            - listitem:
+                              - link "Sequencer Sequencer":
+                                - /url: /sequencer
+                                - generic:
+                                  - generic:
+                                    - img "Sequencer"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Sequencer
+                  - generic:
+                    - generic:
+                      - list:
+                        - listitem:
+                          - link "Clay MCP Give reps the best prospecting data in their AI tools":
+                            - /url: /mcp
+                            - generic:
+                              - generic:
+                                - paragraph: Clay MCP
+                              - generic:
+                                - paragraph: Give reps the best prospecting data in their AI tools
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Data foundations
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "CRM enrichment":
+                                - /url: /use-cases/crm-enrichment
+                                - generic:
+                                  - generic:
+                                    - paragraph: CRM enrichment
+                            - listitem:
+                              - link "TAM sourcing":
+                                - /url: /use-cases/tam-sourcing
+                                - generic:
+                                  - generic:
+                                    - paragraph: TAM sourcing
+                            - listitem:
+                              - link "Territory planning":
+                                - /url: /use-cases/territory-planning
+                                - generic:
+                                  - generic:
+                                    - paragraph: Territory planning
+                            - listitem:
+                              - link "Reverse ETL":
+                                - /url: /use-cases/reverse-etl
+                                - generic:
+                                  - generic:
+                                    - paragraph: Reverse ETL
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Pipeline generation
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Outbound":
+                                - /url: /use-cases/outbound
+                                - generic:
+                                  - generic:
+                                    - paragraph: Outbound
+                            - listitem:
+                              - link "Automated inbound":
+                                - /url: /use-cases/inbound-enrichment
+                                - generic:
+                                  - generic:
+                                    - paragraph: Automated inbound
+                            - listitem:
+                              - link "PLG assist":
+                                - /url: /use-cases/plg-assist
+                                - generic:
+                                  - generic:
+                                    - paragraph: PLG assist
+                            - listitem:
+                              - link "ABM":
+                                - /url: /use-cases/abm
+                                - generic:
+                                  - generic:
+                                    - paragraph: ABM
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Rep productivity
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Rep prospecting":
+                                - /url: /use-cases/rep-prospecting
+                                - generic:
+                                  - generic:
+                                    - paragraph: Rep prospecting
+                            - listitem:
+                              - link "Account research":
+                                - /url: /use-cases/account-research
+                                - generic:
+                                  - generic:
+                                    - paragraph: Account research
+                            - listitem:
+                              - link "Rep assist":
+                                - /url: /use-cases/rep-assist
+                                - generic:
+                                  - generic:
+                                    - paragraph: Rep assist
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Department
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "GTM Ops":
+                                - /url: /clay-for-gtm-ops
+                                - generic:
+                                  - generic:
+                                    - paragraph: GTM Ops
+                            - listitem:
+                              - link "Marketing":
+                                - /url: /clay-for-marketing
+                                - generic:
+                                  - generic:
+                                    - paragraph: Marketing
+                            - listitem:
+                              - link "Sales":
+                                - /url: /clay-for-sales
+                                - generic:
+                                  - generic:
+                                    - paragraph: Sales
+                            - listitem:
+                              - link "Enterprise":
+                                - /url: /enterprise
+                                - generic:
+                                  - generic:
+                                    - paragraph: Enterprise
+                            - listitem:
+                              - link "Startup":
+                                - /url: /clay-for-startups
+                                - generic:
+                                  - generic:
+                                    - paragraph: Startup
+                  - generic:
+                    - generic:
+                      - list:
+                        - listitem:
+                          - link "Intercom Grew their outbound-sourced pipeline by +140%":
+                            - /url: /customers/intercom
+                            - generic:
+                              - generic:
+                                - paragraph: Intercom
+                              - generic:
+                                - paragraph: Grew their outbound-sourced pipeline by +140%
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Learn to build on Clay
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "University":
+                                - /url: https://university.clay.com/
+                                - generic:
+                                  - generic:
+                                    - paragraph: University
+                            - listitem:
+                              - link "Guides":
+                                - /url: /guides
+                                - generic:
+                                  - generic:
+                                    - paragraph: Guides
+                            - listitem:
+                              - link "Livestreams":
+                                - /url: /livestreams
+                                - generic:
+                                  - generic:
+                                    - paragraph: Livestreams
+                            - listitem:
+                              - link "Cohort live classes":
+                                - /url: https://university.clay.com/cohorts
+                                - generic:
+                                  - generic:
+                                    - paragraph: Cohort live classes
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Connect with GTM engineers
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Clay community":
+                                - /url: https://community.clay.com/
+                                - generic:
+                                  - generic:
+                                    - paragraph: Clay community
+                            - listitem:
+                              - link "Slack":
+                                - /url: https://www.clay.com/slack-community
+                                - generic:
+                                  - generic:
+                                    - paragraph: Slack
+                            - listitem:
+                              - link "Live events":
+                                - /url: https://luma.com/claylive?k=c
+                                - generic:
+                                  - generic:
+                                    - paragraph: Live events
+                            - listitem:
+                              - link "Startup program":
+                                - /url: /clay-for-startups
+                                - generic:
+                                  - generic:
+                                    - paragraph: Startup program
+                            - listitem:
+                              - link "Campus ambassadors":
+                                - /url: /clay-campus-ambassadors
+                                - generic:
+                                  - generic:
+                                    - paragraph: Campus ambassadors
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Work with GTM engineers
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Find Clay experts":
+                                - /url: /experts
+                                - generic:
+                                  - generic:
+                                    - paragraph: Find Clay experts
+                            - listitem:
+                              - link "GTM Engineer job board":
+                                - /url: /job-board
+                                - generic:
+                                  - generic:
+                                    - paragraph: GTM Engineer job board
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: Partner with Clay
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Become a partner":
+                                - /url: /partners
+                                - generic:
+                                  - generic:
+                                    - paragraph: Become a partner
+                            - listitem:
+                              - link "Solution partners":
+                                - /url: /partners/solutions
+                                - generic:
+                                  - generic:
+                                    - paragraph: Solution partners
+                            - listitem:
+                              - link "Integration partners":
+                                - /url: /partners/integrations
+                                - generic:
+                                  - generic:
+                                    - paragraph: Integration partners
+                            - listitem:
+                              - link "Private Equity":
+                                - /url: /clay-for-private-equity
+                                - generic:
+                                  - generic:
+                                    - paragraph: Private Equity
+                  - generic:
+                    - generic:
+                      - list:
+                        - listitem:
+                          - link "Clay Community In Nigeria, she built a life where money wouldn’t decide":
+                            - /url: https://www.clay.com/blog/sandra-uche
+                            - generic:
+                              - generic:
+                                - paragraph: Clay Community
+                              - generic:
+                                - paragraph: In Nigeria, she built a life where money wouldn’t decide
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: OUR COMPANY
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "About About":
+                                - /url: /about
+                                - generic:
+                                  - generic:
+                                    - img "About"
+                                - generic:
+                                  - generic:
+                                    - paragraph: About
+                            - listitem:
+                              - link "Careers Careers":
+                                - /url: /careers
+                                - generic:
+                                  - generic:
+                                    - img "Careers"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Careers
+                            - listitem:
+                              - link "Open roles Open roles":
+                                - /url: /jobs
+                                - generic:
+                                  - generic:
+                                    - img "Open roles"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Open roles
+                            - listitem:
+                              - link "Blog Blog":
+                                - /url: /blog
+                                - generic:
+                                  - generic:
+                                    - img "Blog"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Blog
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: GET IN TOUCH
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "Contact Contact":
+                                - /url: /contact
+                                - generic:
+                                  - generic:
+                                    - img "Contact"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Contact
+                            - listitem:
+                              - link "Press Press":
+                                - /url: /press
+                                - generic:
+                                  - generic:
+                                    - img "Press"
+                                - generic:
+                                  - generic:
+                                    - paragraph: Press
+                    - generic:
+                      - generic:
+                        - generic:
+                          - paragraph: SOCIALS
+                        - generic:
+                          - list:
+                            - listitem:
+                              - link "LinkedIn LinkedIn":
+                                - /url: https://www.linkedin.com/company/grow-with-clay/
+                                - generic:
+                                  - generic:
+                                    - img "LinkedIn"
+                                - generic:
+                                  - generic:
+                                    - paragraph: LinkedIn
+                            - listitem:
+                              - link "YouTube YouTube":
+                                - /url: https://www.youtube.com/@GrowWithClay
+                                - generic:
+                                  - generic:
+                                    - img "YouTube"
+                                - generic:
+                                  - generic:
+                                    - paragraph: YouTube
+                  - generic:
+                    - generic:
+                      - list:
+                        - listitem:
+                          - link "Article – NY Times Clay allows employees to sell shares at a $5b valuation.":
+                            - /url: https://www.nytimes.com/2026/01/28/business/dealbook/clay-start-up-tender-offers.html?unlocked_article_code=1.H1A.LBNX.YbS98P3kIG8Q&smid=url-share
+                            - generic:
+                              - generic:
+                                - paragraph: Article – NY Times
+                              - generic:
+                                - paragraph: Clay allows employees to sell shares at a $5b valuation.
+    - text:  
+  - generic [ref=f23e75]:
+    - generic [ref=f23e77]:
+      - heading "Build systems to grow revenue" [level=1] [ref=f23e79]
+      - generic [ref=f23e80]:
+        - paragraph [ref=f23e82]: Infrastructure to get any data, run agentic workflows, and launch GTM plays.
+        - generic [ref=f23e83]:
+          - generic [ref=f23e84]:
+            - link "Start free trial  " [ref=f23e85] [cursor=pointer]:
+              - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+              - generic [ref=f23e86]: Start free trial
+              - generic [ref=f23e87]:
+                - generic [ref=f23e88]: 
+                - generic [ref=f23e90]: 
+            - link "Get a demo  " [ref=f23e93] [cursor=pointer]:
+              - /url: /demo
+              - generic [ref=f23e94]: Get a demo
+              - generic [ref=f23e95]:
+                - generic [ref=f23e96]: 
+                - generic [ref=f23e98]: 
+          - generic [ref=f23e100]: or install directly with
+    - generic [ref=f23e109]:
+      - generic:
+        - img "Colorful playful contraption with tubes, balls, magnets, and funnel on green hills under blue sky."
+  - generic [ref=f23e113]:
+    - generic [ref=f23e115]:
+      - text: Trusted by more than 500,000 leading GTM teams of all sizes. Inspired by our
+      - link "customers" [ref=f23e116] [cursor=pointer]:
+        - /url: /customers
+      - text: . Built with
+      - link "love" [ref=f23e117] [cursor=pointer]:
+        - /url: https://www.glassdoor.com/Overview/Working-at-Clay-EI_IE9850794.11,15.htm
+      - text: .
+    - generic [ref=f23e119]:
+      - generic [ref=f23e120]:
+        - generic [ref=f23e124]:
+          - paragraph [ref=f23e128]: “Clay has one of the most practical and exciting applications of AI, in a decades-old practice that has long been stale."
+          - link "view open ai" [ref=f23e130] [cursor=pointer]:
+            - /url: /customers/open-ai
+        - generic [ref=f23e140]:
+          - paragraph [ref=f23e144]: “Clay has become the orchestration layer for everything GTM. Salesforce for record-keeping, Snowflake for product data, and Clay for turning it all into automated action.”
+          - link "text" [ref=f23e146] [cursor=pointer]:
+            - /url: /customers/figma
+        - generic [ref=f23e156]:
+          - generic [ref=f23e159]:
+            - generic [ref=f23e160]: +140%
+            - generic [ref=f23e161]: outboundpipeline
+          - link "text" [ref=f23e164] [cursor=pointer]:
+            - /url: /customers/intercom
+        - generic [ref=f23e177]:
+          - generic [ref=f23e180]:
+            - generic [ref=f23e181]: 80%+
+            - generic [ref=f23e182]: enrichmentcoverage
+          - link "text" [ref=f23e185] [cursor=pointer]:
+            - /url: /customers/vanta
+        - link "text" [ref=f23e196] [cursor=pointer]:
+          - /url: https://www.linkedin.com/posts/vaanand_okay-2nd-ai-gtm-hackathon-this-week-in-activity-7323438972146257931-_CCF/?utm_source=share&utm_medium=member_desktop&rcm=ACoAABs7qeMBq34q0Apct6D7c67da3uruVDekQQ
+        - generic [ref=f23e206]:
+          - generic [ref=f23e209]:
+            - generic [ref=f23e210]:
+              - generic [ref=f23e211]: All inbound
+              - generic [ref=f23e212]: qualified and scored with Clay
+            - paragraph [ref=f23e213]: “Clay 3x'd our enrichment rate and unlocked AI-powered GTM workflows that were infeasible before”
+          - link "text" [ref=f23e215] [cursor=pointer]:
+            - /url: /blog/anthropic-case-study
+        - generic [ref=f23e225]:
+          - paragraph [ref=f23e229]: “In our first AI Hackathon week, we unlocked data across YouTube, Ads, Cloud, and CapitalG into powerful AI workflows.”
+          - link "text" [ref=f23e231] [cursor=pointer]:
+            - /url: https://www.linkedin.com/posts/vaanand_to-wrap-up-our-first-ai-hackathon-week-in-activity-7338226263058247680-R9Mj?utm_source=share&utm_medium=member_desktop&rcm=ACoAABs7qeMBq34q0Apct6D7c67da3uruVDekQQ
+        - generic [ref=f23e238]:
+          - generic [ref=f23e241]:
+            - generic [ref=f23e242]: 2x
+            - generic [ref=f23e243]: demos fromcold email
+          - link "text" [ref=f23e246] [cursor=pointer]:
+            - /url: /blog/rippling-case-study
+        - generic [ref=f23e256]:
+          - generic [ref=f23e259]:
+            - generic [ref=f23e260]: 3x
+            - generic [ref=f23e261]: replyrate
+          - link "text" [ref=f23e264] [cursor=pointer]:
+            - /url: /blog/verkada-case-study
+        - generic [ref=f23e277]:
+          - generic [ref=f23e280]:
+            - generic [ref=f23e281]: +50%
+            - generic [ref=f23e282]: SQLs
+          - link "text" [ref=f23e285] [cursor=pointer]:
+            - /url: /customers/elevenlabs
+        - paragraph [ref=f23e299]: “I love using and working with Clay because its extensive customization options allow it to seamlessly integrate into various systems, making it an essential part of our tech stack.”
+      - generic [aria-hidden] [ref=f23e303]:
+        - generic [ref=f23e307]:
+          - paragraph [ref=f23e311]: “Clay has one of the most practical and exciting applications of AI, in a decades-old practice that has long been stale."
+          - link [ref=f23e313] [cursor=pointer]:
+            - /url: /customers/open-ai
+            - generic [ref=f23e314]: view open ai
+        - generic [ref=f23e323]:
+          - paragraph [ref=f23e327]: “Clay has become the orchestration layer for everything GTM. Salesforce for record-keeping, Snowflake for product data, and Clay for turning it all into automated action.”
+          - link [ref=f23e329] [cursor=pointer]:
+            - /url: /customers/figma
+            - generic [ref=f23e330]: text
+        - generic [ref=f23e339]:
+          - generic [ref=f23e342]:
+            - generic [ref=f23e343]: +140%
+            - generic [ref=f23e344]: outbound pipeline
+          - link [ref=f23e347] [cursor=pointer]:
+            - /url: /customers/intercom
+            - generic [ref=f23e348]: text
+        - generic [ref=f23e360]:
+          - generic [ref=f23e363]:
+            - generic [ref=f23e364]: 80%+
+            - generic [ref=f23e365]: enrichment coverage
+          - link [ref=f23e368] [cursor=pointer]:
+            - /url: /customers/vanta
+            - generic [ref=f23e369]: text
+        - link [ref=f23e379] [cursor=pointer]:
+          - /url: https://www.linkedin.com/posts/vaanand_okay-2nd-ai-gtm-hackathon-this-week-in-activity-7323438972146257931-_CCF/?utm_source=share&utm_medium=member_desktop&rcm=ACoAABs7qeMBq34q0Apct6D7c67da3uruVDekQQ
+          - generic [ref=f23e380]: text
+        - generic [ref=f23e389]:
+          - generic [ref=f23e392]:
+            - generic [ref=f23e393]:
+              - generic [ref=f23e394]: All inbound
+              - generic [ref=f23e395]: qualified and scored with Clay
+            - paragraph [ref=f23e396]: “Clay 3x'd our enrichment rate and unlocked AI-powered GTM workflows that were infeasible before”
+          - link [ref=f23e398] [cursor=pointer]:
+            - /url: /blog/anthropic-case-study
+            - generic [ref=f23e399]: text
+        - generic [ref=f23e408]:
+          - paragraph [ref=f23e412]: “In our first AI Hackathon week, we unlocked data across YouTube, Ads, Cloud, and CapitalG into powerful AI workflows.”
+          - link [ref=f23e414] [cursor=pointer]:
+            - /url: https://www.linkedin.com/posts/vaanand_to-wrap-up-our-first-ai-hackathon-week-in-activity-7338226263058247680-R9Mj?utm_source=share&utm_medium=member_desktop&rcm=ACoAABs7qeMBq34q0Apct6D7c67da3uruVDekQQ
+            - generic [ref=f23e415]: text
+        - generic [ref=f23e421]:
+          - generic [ref=f23e424]:
+            - generic [ref=f23e425]: 2x
+            - generic [ref=f23e426]: demos from cold email
+          - link [ref=f23e429] [cursor=pointer]:
+            - /url: /blog/rippling-case-study
+            - generic [ref=f23e430]: text
+        - generic [ref=f23e439]:
+          - generic [ref=f23e442]:
+            - generic [ref=f23e443]: 3x
+            - generic [ref=f23e444]: reply rate
+          - link [ref=f23e447] [cursor=pointer]:
+            - /url: /blog/verkada-case-study
+            - generic [ref=f23e448]: text
+        - generic [ref=f23e460]:
+          - generic [ref=f23e463]:
+            - generic [ref=f23e464]: +50%
+            - generic [ref=f23e465]: SQLs
+          - link [ref=f23e468] [cursor=pointer]:
+            - /url: /customers/elevenlabs
+            - generic [ref=f23e469]: text
+        - paragraph [ref=f23e482]: “I love using and working with Clay because its extensive customization options allow it to seamlessly integrate into various systems, making it an essential part of our tech stack.”
+      - generic [aria-hidden] [ref=f23e486]:
+        - generic [ref=f23e490]:
+          - paragraph [ref=f23e494]: “Clay has one of the most practical and exciting applications of AI, in a decades-old practice that has long been stale."
+          - link [ref=f23e496] [cursor=pointer]:
+            - /url: /customers/open-ai
+            - generic [ref=f23e497]: view open ai
+        - generic [ref=f23e506]:
+          - paragraph [ref=f23e510]: “Clay has become the orchestration layer for everything GTM. Salesforce for record-keeping, Snowflake for product data, and Clay for turning it all into automated action.”
+          - link [ref=f23e512] [cursor=pointer]:
+            - /url: /customers/figma
+            - generic [ref=f23e513]: text
+        - generic [ref=f23e522]:
+          - generic [ref=f23e525]:
+            - generic [ref=f23e526]: +140%
+            - generic [ref=f23e527]: outbound pipeline
+          - link [ref=f23e530] [cursor=pointer]:
+            - /url: /customers/intercom
+            - generic [ref=f23e531]: text
+        - generic [ref=f23e543]:
+          - generic [ref=f23e546]:
+            - generic [ref=f23e547]: 80%+
+            - generic [ref=f23e548]: enrichment coverage
+          - link [ref=f23e551] [cursor=pointer]:
+            - /url: /customers/vanta
+            - generic [ref=f23e552]: text
+        - link [ref=f23e562] [cursor=pointer]:
+          - /url: https://www.linkedin.com/posts/vaanand_okay-2nd-ai-gtm-hackathon-this-week-in-activity-7323438972146257931-_CCF/?utm_source=share&utm_medium=member_desktop&rcm=ACoAABs7qeMBq34q0Apct6D7c67da3uruVDekQQ
+          - generic [ref=f23e563]: text
+        - generic [ref=f23e572]:
+          - generic [ref=f23e575]:
+            - generic [ref=f23e576]:
+              - generic [ref=f23e577]: All inbound
+              - generic [ref=f23e578]: qualified and scored with Clay
+            - paragraph [ref=f23e579]: “Clay 3x'd our enrichment rate and unlocked AI-powered GTM workflows that were infeasible before”
+          - link [ref=f23e581] [cursor=pointer]:
+            - /url: /blog/anthropic-case-study
+            - generic [ref=f23e582]: text
+        - generic [ref=f23e591]:
+          - paragraph [ref=f23e595]: “In our first AI Hackathon week, we unlocked data across YouTube, Ads, Cloud, and CapitalG into powerful AI workflows.”
+          - link [ref=f23e597] [cursor=pointer]:
+            - /url: https://www.linkedin.com/posts/vaanand_to-wrap-up-our-first-ai-hackathon-week-in-activity-7338226263058247680-R9Mj?utm_source=share&utm_medium=member_desktop&rcm=ACoAABs7qeMBq34q0Apct6D7c67da3uruVDekQQ
+            - generic [ref=f23e598]: text
+        - generic [ref=f23e604]:
+          - generic [ref=f23e607]:
+            - generic [ref=f23e608]: 2x
+            - generic [ref=f23e609]: demos from cold email
+          - link [ref=f23e612] [cursor=pointer]:
+            - /url: /blog/rippling-case-study
+            - generic [ref=f23e613]: text
+        - generic [ref=f23e622]:
+          - generic [ref=f23e625]:
+            - generic [ref=f23e626]: 3x
+            - generic [ref=f23e627]: reply rate
+          - link [ref=f23e630] [cursor=pointer]:
+            - /url: /blog/verkada-case-study
+            - generic [ref=f23e631]: text
+        - generic [ref=f23e643]:
+          - generic [ref=f23e646]:
+            - generic [ref=f23e647]: +50%
+            - generic [ref=f23e648]: SQLs
+          - link [ref=f23e651] [cursor=pointer]:
+            - /url: /customers/elevenlabs
+            - generic [ref=f23e652]: text
+        - paragraph [ref=f23e665]: “I love using and working with Clay because its extensive customization options allow it to seamlessly integrate into various systems, making it an essential part of our tech stack.”
+  - generic [ref=f23e671]:
+    - generic [ref=f23e672]:
+      - heading "GTM engineers build on Clay" [level=2] [ref=f23e674]
+      - generic [ref=f23e675]:
+        - paragraph [ref=f23e678]: Find every account in your TAM in one place.
+        - generic [ref=f23e680]:
+          - generic [ref=f23e681]:
+            - button "TAM Sourcing" [ref=f23e682] [cursor=pointer]
+            - button "Automated Inbound" [ref=f23e684] [cursor=pointer]
+            - button "Lead Scoring" [ref=f23e686] [cursor=pointer]
+            - button "Automated Outbound" [ref=f23e688] [cursor=pointer]
+            - button "CRM Enrichment" [ref=f23e690] [cursor=pointer]
+            - button "Launch Ads" [ref=f23e692] [cursor=pointer]
+            - button "Rep Productivity" [ref=f23e694] [cursor=pointer]
+          - generic [aria-hidden] [ref=f23e696]:
+            - button [aria-hidden] [ref=f23e697] [cursor=pointer]:
+              - generic [ref=f23e698]: TAM Sourcing
+            - button [aria-hidden] [ref=f23e699] [cursor=pointer]:
+              - generic [ref=f23e700]: Automated Inbound
+            - button [aria-hidden] [ref=f23e701] [cursor=pointer]:
+              - generic [ref=f23e702]: Lead Scoring
+            - button [aria-hidden] [ref=f23e703] [cursor=pointer]:
+              - generic [ref=f23e704]: Automated Outbound
+            - button [aria-hidden] [ref=f23e705] [cursor=pointer]:
+              - generic [ref=f23e706]: CRM Enrichment
+            - button [aria-hidden] [ref=f23e707] [cursor=pointer]:
+              - generic [ref=f23e708]: Launch Ads
+            - button [aria-hidden] [ref=f23e709] [cursor=pointer]:
+              - generic [ref=f23e710]: Rep Productivity
+          - generic [aria-hidden] [ref=f23e711]:
+            - button [aria-hidden] [ref=f23e712] [cursor=pointer]:
+              - generic [ref=f23e713]: TAM Sourcing
+            - button [aria-hidden] [ref=f23e714] [cursor=pointer]:
+              - generic [ref=f23e715]: Automated Inbound
+            - button [aria-hidden] [ref=f23e716] [cursor=pointer]:
+              - generic [ref=f23e717]: Lead Scoring
+            - button [aria-hidden] [ref=f23e718] [cursor=pointer]:
+              - generic [ref=f23e719]: Automated Outbound
+            - button [aria-hidden] [ref=f23e720] [cursor=pointer]:
+              - generic [ref=f23e721]: CRM Enrichment
+            - button [aria-hidden] [ref=f23e722] [cursor=pointer]:
+              - generic [ref=f23e723]: Launch Ads
+            - button [aria-hidden] [ref=f23e724] [cursor=pointer]:
+              - generic [ref=f23e725]: Rep Productivity
+          - generic [aria-hidden] [ref=f23e726]:
+            - button [aria-hidden] [ref=f23e727] [cursor=pointer]:
+              - generic [ref=f23e728]: TAM Sourcing
+            - button [aria-hidden] [ref=f23e729] [cursor=pointer]:
+              - generic [ref=f23e730]: Automated Inbound
+            - button [aria-hidden] [ref=f23e731] [cursor=pointer]:
+              - generic [ref=f23e732]: Lead Scoring
+            - button [aria-hidden] [ref=f23e733] [cursor=pointer]:
+              - generic [ref=f23e734]: Automated Outbound
+            - button [aria-hidden] [ref=f23e735] [cursor=pointer]:
+              - generic [ref=f23e736]: CRM Enrichment
+            - button [aria-hidden] [ref=f23e737] [cursor=pointer]:
+              - generic [ref=f23e738]: Launch Ads
+            - button [aria-hidden] [ref=f23e739] [cursor=pointer]:
+              - generic [ref=f23e740]: Rep Productivity
+          - generic [aria-hidden] [ref=f23e741]:
+            - button [aria-hidden] [ref=f23e742] [cursor=pointer]:
+              - generic [ref=f23e743]: TAM Sourcing
+            - button [aria-hidden] [ref=f23e744] [cursor=pointer]:
+              - generic [ref=f23e745]: Automated Inbound
+            - button [aria-hidden] [ref=f23e746] [cursor=pointer]:
+              - generic [ref=f23e747]: Lead Scoring
+            - button [aria-hidden] [ref=f23e748] [cursor=pointer]:
+              - generic [ref=f23e749]: Automated Outbound
+            - button [aria-hidden] [ref=f23e750] [cursor=pointer]:
+              - generic [ref=f23e751]: CRM Enrichment
+            - button [aria-hidden] [ref=f23e752] [cursor=pointer]:
+              - generic [ref=f23e753]: Launch Ads
+            - button [aria-hidden] [ref=f23e754] [cursor=pointer]:
+              - generic [ref=f23e755]: Rep Productivity
+    - generic [ref=f23e766]:
+      - img "Job search filters targeting engineering managers or CTOs at US, UK, Australia firms hiring security engineers." [ref=f23e767]
+      - img "Table showing companies, leads, titles, cloud providers, and number of open security engineering roles." [ref=f23e769]
+  - generic [ref=f23e786]:
+    - heading "What do you want to build?" [level=3] [ref=f23e788]
+    - form [ref=f23e789]:
+      - textbox "Find phon" [ref=f23e791]
+      - group "Prompt presets" [ref=f23e793]:
+        - generic [ref=f23e794]:
+          - button "Find people data" [ref=f23e795] [cursor=pointer]
+          - button "Find company data" [ref=f23e797] [cursor=pointer]
+          - button "Find jobs data" [ref=f23e799] [cursor=pointer]
+        - button "Submit" [ref=f23e801] [cursor=pointer]
+  - generic [ref=f23e806]:
+    - generic [ref=f23e808]:
+      - generic [ref=f23e809]:
+        - generic [ref=f23e810]:
+          - generic [ref=f23e811]: Data
+          - generic [ref=f23e817]:
+            - heading "Get data from the most complete data marketplace" [level=3] [ref=f23e819]
+            - paragraph [ref=f23e821]: One contract to buy data from 200+ data and AI vendors in Clay’s marketplace. Create intent signals from anything on the internet. Bring 1st and 3rd party data together.
+        - generic [ref=f23e822]:
+          - generic [ref=f23e824]:
+            - generic [ref=f23e825]:
+              - img "Anthropic Logo" [ref=f23e827] [cursor=pointer]
+              - generic [ref=f23e828] [cursor=pointer]
+              - img "Mistral ai logo" [ref=f23e830] [cursor=pointer]
+            - paragraph [ref=f23e833]:
+              - strong [ref=f23e834]: Anthropic
+              - text: 3x’d their enrichment rate with Clay’s data marketplace.
+          - generic [ref=f23e835]:
+            - link "Start free trial  " [ref=f23e836] [cursor=pointer]:
+              - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+              - generic [ref=f23e837]: Start free trial
+              - generic [ref=f23e838]:
+                - generic [ref=f23e839]: 
+                - generic [ref=f23e841]: 
+            - link "Explore data marketplace" [ref=f23e843] [cursor=pointer]:
+              - /url: /integrations
+      - img "Blue magnifying glass showing enlarged orange ball near a tray with pink, red, and blue balls." [ref=f23e851]
+    - generic [ref=f23e855]:
+      - generic [ref=f23e856]:
+        - generic [ref=f23e857]:
+          - generic [ref=f23e858]: agents
+          - generic [ref=f23e864]:
+            - heading "Put agents that know your business to work" [level=3] [ref=f23e866]
+            - paragraph [ref=f23e868]: Run GTM plays with agents that understand your business and accounts. Turn context into research, scoring, and personalized outreach, with shared learning that makes each play smarter.
+        - generic [ref=f23e869]:
+          - generic [ref=f23e871]:
+            - generic [ref=f23e872]:
+              - img "OpenAI logo" [ref=f23e874] [cursor=pointer]
+              - img "Canva logo" [ref=f23e876] [cursor=pointer]
+              - img "Verkada logo" [ref=f23e878] [cursor=pointer]
+            - paragraph [ref=f23e881]:
+              - strong [ref=f23e882]: OpenAI
+              - text: used Clay to fully automate pre-call prep by researching prospect bios, earning reports, and company changes in the last 90 days.
+          - generic [ref=f23e883]:
+            - link "Start free trial  " [ref=f23e884] [cursor=pointer]:
+              - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+              - generic [ref=f23e885]: Start free trial
+              - generic [ref=f23e886]:
+                - generic [ref=f23e887]: 
+                - generic [ref=f23e889]: 
+            - link "Explore agents" [ref=f23e891] [cursor=pointer]:
+              - /url: /claygent
+      - img "Small retro robot with a square head, blue and red eyes, and an orange satellite dish on top." [ref=f23e899]
+    - generic [ref=f23e903]:
+      - generic [ref=f23e904]:
+        - generic [ref=f23e905]:
+          - generic [ref=f23e906]: orchestration
+          - generic [ref=f23e912]:
+            - heading "Orchestrate workflows across tools in real time" [level=3] [ref=f23e914]
+            - paragraph [ref=f23e916]: Connect every GTM or AI tool to a common data layer. Update data across millions of records in your CRM and data warehouse. Define GTM logic once to re-use in every play.
+        - generic [ref=f23e917]:
+          - generic [ref=f23e919]:
+            - generic [ref=f23e920]:
+              - img "Eleven Labs Logo" [ref=f23e922] [cursor=pointer]
+              - generic [ref=f23e923] [cursor=pointer]
+              - img "Lovable logo" [ref=f23e925] [cursor=pointer]
+            - paragraph [ref=f23e928]:
+              - strong [ref=f23e929]: ElevenLabs
+              - text: ’ increased SQLs by +50% by reducing speed-to-lead to <5 mins.
+          - generic [ref=f23e930]:
+            - link "Start free trial  " [ref=f23e931] [cursor=pointer]:
+              - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+              - generic [ref=f23e932]: Start free trial
+              - generic [ref=f23e933]:
+                - generic [ref=f23e934]: 
+                - generic [ref=f23e936]: 
+            - link "Explore the GTM data layer" [ref=f23e938] [cursor=pointer]:
+              - /url: /audiences
+      - img "Green puzzle cube with paths fitting colored balls near matching shape holes and ramps with balls." [ref=f23e946]
+    - generic [ref=f23e950]:
+      - generic [ref=f23e951]:
+        - generic [ref=f23e952]:
+          - generic [ref=f23e953]: ACTIVATION
+          - generic [ref=f23e959]:
+            - heading "Launch new plays as fast as you have ideas" [level=3] [ref=f23e961]
+            - paragraph [ref=f23e963]: Trigger emails, ads, and more with integrations to your existing GTM tools. Write 1:1 messaging for every prospect programmatically. Launch new tests in days.
+        - generic [ref=f23e964]:
+          - generic [ref=f23e966]:
+            - generic [ref=f23e967]:
+              - img "Rippling logo" [ref=f23e969] [cursor=pointer]
+              - generic [ref=f23e970] [cursor=pointer]
+              - img "Figma logo" [ref=f23e972] [cursor=pointer]
+            - paragraph [ref=f23e975]:
+              - strong [ref=f23e976]: Rippling
+              - text: 2x’d cold email performance by automatically tailoring email copy based on persona and enriched account data.
+          - generic [ref=f23e977]:
+            - link "Start free trial  " [ref=f23e978] [cursor=pointer]:
+              - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+              - generic [ref=f23e979]: Start free trial
+              - generic [ref=f23e980]:
+                - generic [ref=f23e981]: 
+                - generic [ref=f23e983]: 
+            - link "Learn more about building plays" [ref=f23e985] [cursor=pointer]:
+              - /url: https://university.clay.com/
+      - img "Pink mechanical lever with cubes showing bell, megaphone, and paper plane icons catching colored balls." [ref=f23e993]
+  - generic [ref=f23e999]:
+    - generic [ref=f23e1000]: GTM INFRASTRUCTURE
+    - heading "Build systems that make reps more productive" [level=3] [ref=f23e1002]
+    - link "Start free trial" [ref=f23e1004] [cursor=pointer]:
+      - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+    - paragraph [ref=f23e1018]: Reps can self-serve the best prospecting data. Chat to get full account context in natural language. Build centralized workflows for any rep to run.
+    - generic [ref=f23e1020]:
+      - generic [ref=f23e1021]:
+        - generic [ref=f23e1022] [cursor=pointer]
+        - img "Hex ai tech logo" [ref=f23e1024] [cursor=pointer]
+        - generic [ref=f23e1025] [cursor=pointer]
+      - paragraph [ref=f23e1028]:
+        - strong [ref=f23e1029]: Pendo
+        - text: reps hit 200% of quota using agents for account research, tailored messaging and pre-call prep.
+  - generic [ref=f23e1038]:
+    - heading "Hear from the teams that grow with Clay" [level=3] [ref=f23e1040]
+    - generic [ref=f23e1043]:
+      - link "Hex ai tech logo How Hex increased inbound win-rate 50% using Clay Read case study" [ref=f23e1044] [cursor=pointer]:
+        - /url: /customers/hex
+        - generic [ref=f23e1046]:
+          - img "Hex ai tech logo" [ref=f23e1047]
+          - generic [ref=f23e1049]:
+            - generic [ref=f23e1050]: How Hex increased inbound win-rate 50% using Clay
+            - generic [ref=f23e1051]: Read case study
+      - generic [ref=f23e1065]:
+        - generic [ref=f23e1069] [cursor=pointer]
+        - generic:
+          - generic:
+            - generic: 0:00
+            - generic: /
+            - generic: 3:30
+          - generic: 00:00
+          - generic [ref=f23e1081] [cursor=pointer]
+          - generic [ref=f23e1084] [cursor=pointer]
+          - generic [ref=f23e1093] [cursor=pointer]
+          - link "Start free trial" [ref=f23e1100] [cursor=pointer]:
+            - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+      - link "Two black rectangular blocks floating above a blue surface casting shadows. How Verkada GTM team expanded in 28 European countries using Clay Read case study" [ref=f23e1102] [cursor=pointer]:
+        - /url: /customers/verkada-emea
+        - generic [ref=f23e1104]:
+          - img "Two black rectangular blocks floating above a blue surface casting shadows." [ref=f23e1105]
+          - generic [ref=f23e1107]:
+            - generic [ref=f23e1108]: How Verkada GTM team expanded in 28 European countries using Clay
+            - generic [ref=f23e1109]: Read case study
+  - generic [ref=f23e1127]:
+    - heading "Learn more about GTM engineering" [level=3] [ref=f23e1129]
+    - generic [ref=f23e1130]:
+      - 'link "Conference Sculpt: The go-to-market conference returns in 2026 Get tickets" [ref=f23e1131] [cursor=pointer]':
+        - /url: https://sculpt.clay.com/
+        - generic [ref=f23e1134]:
+          - generic [ref=f23e1135]: Conference
+          - 'heading "Sculpt: The go-to-market conference returns in 2026" [level=3] [ref=f23e1138]'
+          - generic [ref=f23e1139]: Get tickets
+      - link "Get started with Clay Find the content that helps you level up your GTM skills and build confidently with Clay. Go to University Colorful geometric shapes on green hills with a pastel temple on the top hill and a winding white staircase." [ref=f23e1152] [cursor=pointer]:
+        - /url: https://university.clay.com/
+        - generic [ref=f23e1154]:
+          - generic [ref=f23e1155]:
+            - heading "Get started with Clay" [level=3] [ref=f23e1156]
+            - generic [ref=f23e1157]: Find the content that helps you level up your GTM skills and build confidently with Clay.
+            - generic [ref=f23e1159]: Go to University
+          - img "Colorful geometric shapes on green hills with a pastel temple on the top hill and a winding white staircase." [ref=f23e1173]
+      - 'link "Livestream How Clay Uses Clay: ABM campaigns to break into Tier 1 accounts Watch" [ref=f23e1175] [cursor=pointer]':
+        - /url: /livestreams/how-clay-uses-clay-abm-direct-mail-campaigns
+        - generic [ref=f23e1178]:
+          - generic [ref=f23e1179]: Livestream
+          - 'heading "How Clay Uses Clay: ABM campaigns to break into Tier 1 accounts" [level=3] [ref=f23e1182]'
+          - generic [ref=f23e1183]: Watch
+      - link "Woman with braided hair holding a coconut and drinking with a straw, smiling at the camera. Community story Sandra has built the Clay community in Lagos Read story" [ref=f23e1196] [cursor=pointer]:
+        - /url: /blog/sandra-uche
+        - generic [ref=f23e1198]:
+          - img "Woman with braided hair holding a coconut and drinking with a straw, smiling at the camera." [ref=f23e1200]
+          - generic [ref=f23e1202]:
+            - generic [ref=f23e1203]: Community story
+            - heading "Sandra has built the Clay community in Lagos" [level=3] [ref=f23e1206]
+            - generic [ref=f23e1207]: Read story
+      - link "Come and join us See open roles Large diverse group of people posing indoors in multiple rows, smiling and facing the camera." [ref=f23e1220] [cursor=pointer]:
+        - /url: /careers-old
+        - generic [ref=f23e1221]:
+          - generic [ref=f23e1223]:
+            - generic [ref=f23e1224]: Come and join us
+            - generic [ref=f23e1225]: See open roles
+          - img "Large diverse group of people posing indoors in multiple rows, smiling and facing the camera." [ref=f23e1238]
+      - link "Graduate woman in cap and gown holding a diploma with a Pakistani flag on a rocky hill behind her. Community story Where girls often choose between career or marriage, she carved her own path Read story" [ref=f23e1239] [cursor=pointer]:
+        - /url: /blog/javeria-shah
+        - img "Graduate woman in cap and gown holding a diploma with a Pakistani flag on a rocky hill behind her." [ref=f23e1242]
+        - generic [ref=f23e1243]:
+          - generic [ref=f23e1244]: Community story
+          - heading "Where girls often choose between career or marriage, she carved her own path" [level=3] [ref=f23e1247]
+          - generic [ref=f23e1248]: Read story
+  - generic [ref=f23e1264]:
+    - generic [ref=f23e1265]:
+      - heading "Turn your growth ideas into reality today" [level=2] [ref=f23e1267]
+      - paragraph [ref=f23e1269]: Start for free today. No credit card required.
+      - generic [ref=f23e1270]:
+        - link "Start free trial  " [ref=f23e1271] [cursor=pointer]:
+          - /url: https://app.clay.com/signup?source=website&su=016c07ef-3ebf-4d1c-b6df-1d69269a837c
+          - generic [ref=f23e1272]: Start free trial
+          - generic [ref=f23e1273]:
+            - generic [ref=f23e1274]: 
+            - generic [ref=f23e1276]: 
+        - link "Get a demo  " [ref=f23e1278] [cursor=pointer]:
+          - /url: /demo
+          - generic [ref=f23e1279]: Get a demo
+          - generic [ref=f23e1280]:
+            - generic [ref=f23e1281]: 
+            - generic [ref=f23e1283]: 
+    - generic [ref=f23e1293]:
+      - generic [ref=f23e1294]:
+        - generic [ref=f23e1296]:
+          - heading "Use cases" [level=3] [ref=f23e1297]
+          - list [ref=f23e1298]:
+            - listitem [ref=f23e1299]:
+              - link "Automated inbound" [ref=f23e1300] [cursor=pointer]:
+                - /url: /use-cases/inbound-enrichment
+            - listitem [ref=f23e1301]:
+              - link "Account research" [ref=f23e1302] [cursor=pointer]:
+                - /url: /use-cases/account-research
+            - listitem [ref=f23e1303]:
+              - link "ABM" [ref=f23e1304] [cursor=pointer]:
+                - /url: /use-cases/abm
+            - listitem [ref=f23e1305]:
+              - link "PLG assist" [ref=f23e1306] [cursor=pointer]:
+                - /url: /use-cases/plg-assist
+            - listitem [ref=f23e1307]:
+              - link "Rep assist" [ref=f23e1308] [cursor=pointer]:
+                - /url: /use-cases/rep-assist
+            - listitem [ref=f23e1309]:
+              - link "Reverse ETL" [ref=f23e1310] [cursor=pointer]:
+                - /url: /use-cases/reverse-etl
+            - listitem [ref=f23e1311]:
+              - link "Outbound" [ref=f23e1312] [cursor=pointer]:
+                - /url: /use-cases/outbound
+            - listitem [ref=f23e1313]:
+              - link "CRM Enrichment" [ref=f23e1314] [cursor=pointer]:
+                - /url: /use-cases/crm-enrichment
+            - listitem [ref=f23e1315]:
+              - link "TAM Sourcing" [ref=f23e1316] [cursor=pointer]:
+                - /url: /use-cases/tam-sourcing
+        - generic [ref=f23e1318]:
+          - heading "Product" [level=3] [ref=f23e1319]
+          - list [ref=f23e1320]:
+            - listitem [ref=f23e1321]:
+              - link "Claygent AI" [ref=f23e1322] [cursor=pointer]:
+                - /url: /claygent
+            - listitem [ref=f23e1323]:
+              - link "Account Agents" [ref=f23e1324] [cursor=pointer]:
+                - /url: /account-agents
+            - listitem [ref=f23e1325]:
+              - link "Ads" [ref=f23e1326] [cursor=pointer]:
+                - /url: /ads
+            - listitem [ref=f23e1327]:
+              - link "Sequencer" [ref=f23e1328] [cursor=pointer]:
+                - /url: /sequencer
+            - listitem [ref=f23e1329]:
+              - link "Multi-provider data enrichment" [ref=f23e1330] [cursor=pointer]:
+                - /url: /waterfall-enrichment
+            - listitem [ref=f23e1331]:
+              - link "Audiences" [ref=f23e1332] [cursor=pointer]:
+                - /url: /audiences
+            - listitem [ref=f23e1333]:
+              - link "Signals" [ref=f23e1334] [cursor=pointer]:
+                - /url: /signals
+            - listitem [ref=f23e1335]:
+              - link "Workflows" [ref=f23e1336] [cursor=pointer]:
+                - /url: /workflows
+            - listitem [ref=f23e1337]:
+              - link "Functions" [ref=f23e1338] [cursor=pointer]:
+                - /url: /functions
+            - listitem [ref=f23e1339]:
+              - link "Integrations" [ref=f23e1340] [cursor=pointer]:
+                - /url: /integrations
+            - listitem [ref=f23e1341]:
+              - link "Pricing" [ref=f23e1342] [cursor=pointer]:
+                - /url: /pricing
+            - listitem [ref=f23e1343]:
+              - link "Changelog" [ref=f23e1344] [cursor=pointer]:
+                - /url: /changelog
+        - generic [ref=f23e1346]:
+          - heading "Blog" [level=3] [ref=f23e1347]
+          - list [ref=f23e1348]:
+            - listitem [ref=f23e1349]:
+              - link "The rise of the GTM engineer" [ref=f23e1350] [cursor=pointer]:
+                - /url: https://www.clay.com/blog/gtm-engineering
+            - listitem [ref=f23e1351]:
+              - link "Finding GTM alpha" [ref=f23e1352] [cursor=pointer]:
+                - /url: https://www.clay.com/blog/gtm-alpha
+            - listitem [ref=f23e1353]:
+              - link "Clay reaches 100M ARR" [ref=f23e1354] [cursor=pointer]:
+                - /url: https://www.clay.com/blog/100m-arr
+            - listitem [ref=f23e1355]:
+              - 'link "Series C: The GTM engineering era begins now" [ref=f23e1356] [cursor=pointer]':
+                - /url: https://www.clay.com/series-c
+        - generic [ref=f23e1358]:
+          - heading "Resources" [level=3] [ref=f23e1359]
+          - list [ref=f23e1360]:
+            - listitem [ref=f23e1361]:
+              - link "Get started lesson" [ref=f23e1362] [cursor=pointer]:
+                - /url: https://www.clay.com/university/lesson/intro-to-clay-101-clay-101
+            - listitem [ref=f23e1363]:
+              - link "University" [ref=f23e1364] [cursor=pointer]:
+                - /url: https://university.clay.com/
+            - listitem [ref=f23e1365]:
+              - link "Use case templates" [ref=f23e1366] [cursor=pointer]:
+                - /url: https://university.clay.com/claybooks
+            - listitem [ref=f23e1367]:
+              - link "Partner programs" [ref=f23e1368] [cursor=pointer]:
+                - /url: /partners
+            - listitem [ref=f23e1369]:
+              - link "Community" [ref=f23e1370] [cursor=pointer]:
+                - /url: https://community.clay.com/
+            - listitem [ref=f23e1371]:
+              - link "FAQ" [ref=f23e1372] [cursor=pointer]:
+                - /url: /faq
+        - generic [ref=f23e1374]:
+          - heading "Company" [level=3] [ref=f23e1375]
+          - list [ref=f23e1376]:
+            - listitem [ref=f23e1377]:
+              - link "Contact us" [ref=f23e1378] [cursor=pointer]:
+                - /url: /contact
+            - listitem [ref=f23e1379]:
+              - link "About" [ref=f23e1380] [cursor=pointer]:
+                - /url: /about
+            - listitem [ref=f23e1381]:
+              - link "Careers" [ref=f23e1382] [cursor=pointer]:
+                - /url: /careers
+            - listitem [ref=f23e1383]:
+              - link "Jobs We are hiring!" [ref=f23e1384] [cursor=pointer]:
+                - /url: /jobs
+            - listitem [ref=f23e1385]:
+              - link "Integrate with Clay" [ref=f23e1386] [cursor=pointer]:
+                - /url: https://www.clay.com/partners/integrations
+            - listitem [ref=f23e1387]:
+              - link "Status" [ref=f23e1388] [cursor=pointer]:
+                - /url: https://status.clay.com/
+        - generic [ref=f23e1389]:
+          - heading "Customers" [level=3] [ref=f23e1390]
+          - list [ref=f23e1391]:
+            - listitem [ref=f23e1392]:
+              - link "OpenAI" [ref=f23e1393] [cursor=pointer]:
+                - /url: https://www.clay.com/customers/open-ai
+            - listitem [ref=f23e1394]:
+              - link "Vanta" [ref=f23e1395] [cursor=pointer]:
+                - /url: https://www.clay.com/customers/vanta
+            - listitem [ref=f23e1396]:
+              - link "Verkada" [ref=f23e1397] [cursor=pointer]:
+                - /url: https://www.clay.com/customers/verkada
+            - listitem [ref=f23e1398]:
+              - link "Sendoso" [ref=f23e1399] [cursor=pointer]:
+                - /url: https://www.clay.com/customers/sendoso
+            - listitem [ref=f23e1400]:
+              - link "Anthropic" [ref=f23e1401] [cursor=pointer]:
+                - /url: https://www.clay.com/customers/anthropic
+            - listitem [ref=f23e1402]:
+              - link "Coverflex" [ref=f23e1403] [cursor=pointer]:
+                - /url: https://www.clay.com/customers/coverflex
+            - listitem [ref=f23e1404]:
+              - link "Rippling" [ref=f23e1405] [cursor=pointer]:
+                - /url: https://www.clay.com/customers/rippling
+            - listitem [ref=f23e1406]:
+              - link "Case studies" [ref=f23e1407] [cursor=pointer]:
+                - /url: https://www.clay.com/customers
+        - generic [ref=f23e1409]:
+          - heading "Legal" [level=3] [ref=f23e1410]
+          - list [ref=f23e1411]:
+            - listitem [ref=f23e1412]:
+              - link "Privacy policy" [ref=f23e1413] [cursor=pointer]:
+                - /url: https://privacy.clay.com/
+            - listitem [ref=f23e1414]:
+              - link "Terms of service" [ref=f23e1415] [cursor=pointer]:
+                - /url: /terms-of-service
+            - listitem [ref=f23e1416]:
+              - link "Make a privacy request" [ref=f23e1417] [cursor=pointer]:
+                - /url: https://app.clay.com/privacy/request
+      - generic [ref=f23e1418]:
+        - img "Clay logo, go to homepage" [ref=f23e1420]
+        - generic [ref=f23e1421]:
+          - generic [ref=f23e1422]: ©2026 Clay Labs Inc.
+          - generic [ref=f23e1423]:
+            - text: Born in Brooklyn • Art by
+            - link "Hudson" [ref=f23e1424] [cursor=pointer]:
+              - /url: https://www.hudsonchristie.com/
+        - generic [ref=f23e1425]:
+          - link "Visit Clay on LinkedIn" [ref=f23e1426] [cursor=pointer]:
+            - /url: https://www.linkedin.com/company/grow-with-clay/posts/?feedView=all
+          - link "Visit Clay on YouTube" [ref=f23e1431] [cursor=pointer]:
+            - /url: https://www.youtube.com/@GrowWithClay
+          - link "Visit Clay on Slack" [ref=f23e1434] [cursor=pointer]:
+            - /url: https://www.clay.com/slack-community

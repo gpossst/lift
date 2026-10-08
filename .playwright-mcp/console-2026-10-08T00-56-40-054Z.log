@@ -1,0 +1,29 @@
+[     528ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:3000/home/hero-plates.webp:0
+[     984ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=4beea6ec:15804
+[    1608ms] [ERROR] Access to fetch at 'https://api.lift.garrett.one/api/auth/get-session' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://localhost:3000/:0
+[    1609ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.lift.garrett.one/api/auth/get-session:0
+[   95476ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/favicon.ico:0
+[   95554ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3001/node_modules/.vite/deps/react-dom_client.js?v=24d390d6:15804
+[   97329ms] [ERROR] %cLOG%c %cGo to Source: http://localhost:3001/__tsd/open-source?source=%2Fsrc%2Froutes%2Findex.tsx%3A97%3A18%c 
+ →  color:#A0A color:#FFF color:#55F color:#FFF Geolocation error: GeolocationPositionError @ http://localhost:3001/src/routes/__root.tsx:193
+[  423728ms] [WARNING] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; Warning: A notFoundError was encountered on the route with ID "__root__", but a notFoundComponent option was not configured, nor was a router level defaultNotFoundComponent configured. Consider configuring at least one of these to avoid TanStack Router's overly generic defaultNotFoundComponent (<p>Not Found</p>) @ http://localhost:3001/src/routes/__root.tsx:259
+[  423728ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423728ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/locations.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [WARNING] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; Warning: A notFoundError was encountered on the route with ID "__root__", but a notFoundComponent option was not configured, nor was a router level defaultNotFoundComponent configured. Consider configuring at least one of these to avoid TanStack Router's overly generic defaultNotFoundComponent (<p>Not Found</p>) @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/auth.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423729ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/auth.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/auth.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/auth.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/auth.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/auth.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: virtual:cloudflare/worker-entry @ http://localhost:3001/src/routes/__root.tsx:259
+[  423730ms] [LOG] %c[Server]%c color: #9333ea; font-weight: bold; color: inherit; [vite] hot updated: /src/lib/auth.functions.ts?tss-serverfn-split @ http://localhost:3001/src/routes/__root.tsx:259

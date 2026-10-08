@@ -1,0 +1,619 @@
+- generic [active] [ref=f27e1]:
+  - region "Notifications alt+T"
+  - generic [ref=f27e2]:
+    - generic [ref=f27e3]:
+      - region "Announcement" [ref=f27e4]:
+        - generic [ref=f27e6]:
+          - paragraph [ref=f27e7]: Introducing Plus and Apex, for more powerful reviews.
+          - link "Learn more" [ref=f27e8] [cursor=pointer]:
+            - /url: /blog/introducing-plus-and-apex
+      - navigation [ref=f27e13]:
+        - generic [ref=f27e15]:
+          - link [ref=f27e17] [cursor=pointer]:
+            - /url: /
+            - img "Greptile AI Code Review Tool - Automated GitHub PR Review Bot with Full Codebase Understanding" [ref=f27e18]
+          - generic [ref=f27e19]:
+            - link "Examples" [ref=f27e20] [cursor=pointer]:
+              - /url: /examples
+            - link "Pricing" [ref=f27e21] [cursor=pointer]:
+              - /url: /pricing
+            - button "Features" [ref=f27e22] [cursor=pointer]
+            - link "Enterprise" [ref=f27e25] [cursor=pointer]:
+              - /url: /enterprise
+            - link "Blog" [ref=f27e26] [cursor=pointer]:
+              - /url: /blog
+            - button "Resources" [ref=f27e27] [cursor=pointer]
+          - generic [ref=f27e31]:
+            - link "Contact sales" [ref=f27e32] [cursor=pointer]:
+              - /url: /contact
+            - link "Sign up" [ref=f27e33] [cursor=pointer]:
+              - /url: https://app.greptile.com/signup
+      - main [ref=f27e34]:
+        - main [ref=f27e35]:
+          - generic [ref=f27e38]:
+            - heading "The AI Code Reviewer" [level=1] [ref=f27e40]: The AI CodeReviewer
+            - generic [ref=f27e42]:
+              - paragraph [ref=f27e43]: AI agents that review and test pull requests with full context of the codebase.
+              - generic [ref=f27e44]:
+                - link "Contact sales" [ref=f27e45] [cursor=pointer]:
+                  - /url: /contact
+                - link "Start now" [ref=f27e46] [cursor=pointer]:
+                  - /url: https://app.greptile.com/signup
+              - link "onboard with your agent" [ref=f27e47] [cursor=pointer]:
+                - /url: https://www.greptile.com/docs/code-review/cli-onboarding
+          - separator [ref=f27e51]
+          - generic [ref=f27e52]:
+            - generic [ref=f27e53]:
+              - separator [ref=f27e54]
+              - generic [ref=f27e55]: Over 22,000+ teams use Greptile
+              - separator [ref=f27e57]
+            - generic [ref=f27e58]:
+              - img "NVIDIA" [ref=f27e60]
+              - img "Vanta" [ref=f27e62]
+              - img "Decagon" [ref=f27e64]
+              - img "Scale" [ref=f27e66]
+              - img "PostHog" [ref=f27e68]
+              - img "Substack" [ref=f27e70]
+              - img "WorkOS" [ref=f27e72]
+              - img "Brex" [ref=f27e74]
+              - img "Klaviyo" [ref=f27e76]
+              - img "Retool" [ref=f27e78]
+              - img "Mintlify" [ref=f27e80]
+              - img "Zapier" [ref=f27e82]
+              - img "Joby" [ref=f27e84]
+              - img "Compass" [ref=f27e86]
+              - img "Bilt" [ref=f27e88]
+              - img "Crossmint" [ref=f27e90]
+          - separator [ref=f27e91]
+          - generic [ref=f27e93]:
+            - img "Brex logo" [ref=f27e94]
+            - blockquote [ref=f27e95]:
+              - heading [level=3] [ref=f27e96]:
+                - text: “We've tried more code review tools than I can count.
+                - emphasis [ref=f27e97]: Greptile outperforms them all
+                - text: by a mile. Honestly the only AI reviewer that doesn't annoy the s**t out of me.”
+            - generic [ref=f27e98]:
+              - img "James Reggio" [ref=f27e100]
+              - generic [ref=f27e103]:
+                - paragraph [ref=f27e104]: CTO, Brex
+                - paragraph [ref=f27e105]: James Reggio
+            - link "View Brex case study" [ref=f27e106] [cursor=pointer]:
+              - /url: /customers/brex
+          - generic [ref=f27e108]:
+            - generic [ref=f27e109]:
+              - generic [ref=f27e113]:
+                - generic [ref=f27e114]:
+                  - generic [ref=f27e115]: "[ A@,~/ $"
+                  - heading "How Greptile reviews every PR" [level=2] [ref=f27e116]
+                  - paragraph [ref=f27e117]: Greptile constructs a graph index of your codebase, then uses a swarm of agents to catch potential issues that humans might miss
+                - link "Learn more" [ref=f27e119] [cursor=pointer]:
+                  - /url: /agent
+              - separator [ref=f27e120]
+              - generic [ref=f27e121]:
+                - generic [ref=f27e122]:
+                  - separator [ref=f27e123]
+                  - generic [ref=f27e124]: How it works
+                  - separator [ref=f27e126]
+                - generic [ref=f27e128]:
+                  - generic [ref=f27e140]:
+                    - generic [ref=f27e141]:
+                      - generic [ref=f27e142]: STEP 01
+                      - paragraph [ref=f27e143]: Indexes your codebase
+                    - paragraph [ref=f27e144]: Builds a graph of your repo - files, functions, and dependencies.
+                  - generic [ref=f27e156]:
+                    - generic [ref=f27e157]:
+                      - generic [ref=f27e158]: STEP 02
+                      - paragraph [ref=f27e159]: Swarm of agents review the PR
+                    - paragraph [ref=f27e160]: Parallel agents review changes, assess their impact beyond the diff, and flag issues.
+                  - generic [ref=f27e172]:
+                    - generic [ref=f27e173]:
+                      - generic [ref=f27e174]: STEP 03
+                      - paragraph [ref=f27e175]: Greptile learns your codebase over time
+                    - paragraph [ref=f27e176]: Reads other engineers' comments to understand your coding standards.
+            - generic [ref=f27e177]:
+              - separator [ref=f27e178]
+              - generic [ref=f27e182]:
+                - heading "Catch them all" [level=2] [ref=f27e183]
+                - paragraph [ref=f27e184]: From style violations to security risks and multi-file logical bugs
+              - separator [ref=f27e185]
+              - generic [ref=f27e186]:
+                - generic [ref=f27e187]:
+                  - separator [ref=f27e188]
+                  - generic [ref=f27e189]: Three bugs that should not hit prod.
+                  - separator [ref=f27e191]
+                - generic [ref=f27e192]:
+                  - generic [ref=f27e193]:
+                    - link "NVIDIA 8.6k Stars 1.3k Forks 3 Repositories dali/core/device_guard.cc 01 - 01 + 02 + Greptile greptile Unbalanced CUDA release wipes context See PR" [ref=f27e194] [cursor=pointer]:
+                      - /url: https://github.com/NVIDIA/DALI/pull/6327/files#r3168764351
+                      - generic [ref=f27e195]:
+                        - heading "NVIDIA" [level=3] [ref=f27e196]
+                        - generic [ref=f27e197]:
+                          - generic [ref=f27e202]:
+                            - generic [ref=f27e203]: 8.6k
+                            - generic [ref=f27e204]: Stars
+                          - generic [ref=f27e209]:
+                            - generic [ref=f27e210]: 1.3k
+                            - generic [ref=f27e211]: Forks
+                          - generic [ref=f27e216]:
+                            - generic [ref=f27e217]: "3"
+                            - generic [ref=f27e218]: Repositories
+                      - generic [ref=f27e219]:
+                        - generic [ref=f27e220]: dali/core/device_guard.cc
+                        - generic [ref=f27e224]:
+                          - generic [ref=f27e225]:
+                            - generic [ref=f27e226]: "01"
+                            - generic [ref=f27e227]: "-"
+                          - generic [ref=f27e229]:
+                            - generic [ref=f27e230]: "01"
+                            - generic [ref=f27e231]: +
+                          - generic [ref=f27e233]:
+                            - generic [ref=f27e234]: "02"
+                            - generic [ref=f27e235]: +
+                        - generic [ref=f27e237]:
+                          - generic [ref=f27e238]:
+                            - img "Greptile" [ref=f27e239]
+                            - generic [ref=f27e240]: greptile
+                          - paragraph [ref=f27e241]: Unbalanced CUDA release wipes context
+                        - generic [ref=f27e242]: See PR
+                    - link "Meta PyTorch 1.8k Stars 350 Forks meta-pytorch/OpenEnv Repository envs/repl_env/server/repl_environment.py 01 - 01 + 02 + Greptile greptile Undefined method breaks every step() See PR" [ref=f27e245] [cursor=pointer]:
+                      - /url: https://github.com/meta-pytorch/OpenEnv/pull/437#discussion_r2945910512
+                      - generic [ref=f27e246]:
+                        - heading "Meta PyTorch" [level=3] [ref=f27e247]
+                        - generic [ref=f27e248]:
+                          - generic [ref=f27e253]:
+                            - generic [ref=f27e254]: 1.8k
+                            - generic [ref=f27e255]: Stars
+                          - generic [ref=f27e260]:
+                            - generic [ref=f27e261]: "350"
+                            - generic [ref=f27e262]: Forks
+                          - generic [ref=f27e267]:
+                            - generic [ref=f27e268]: meta-pytorch/OpenEnv
+                            - generic [ref=f27e269]: Repository
+                      - generic [ref=f27e270]:
+                        - generic [ref=f27e271]: envs/repl_env/server/repl_environment.py
+                        - generic [ref=f27e275]:
+                          - generic [ref=f27e276]:
+                            - generic [ref=f27e277]: "01"
+                            - generic [ref=f27e278]: "-"
+                          - generic [ref=f27e280]:
+                            - generic [ref=f27e281]: "01"
+                            - generic [ref=f27e282]: +
+                          - generic [ref=f27e284]:
+                            - generic [ref=f27e285]: "02"
+                            - generic [ref=f27e286]: +
+                        - generic [ref=f27e288]:
+                          - generic [ref=f27e289]:
+                            - img "Greptile" [ref=f27e290]
+                            - generic [ref=f27e291]: greptile
+                          - paragraph [ref=f27e292]: Undefined method breaks every step()
+                        - generic [ref=f27e293]: See PR
+                    - link "Solana 174 Stars 249 Forks solana-foundation/kora Repository crates/lib/src/transaction/instruction_util.rs 01 - 01 + 02 + Greptile greptile Mid-loop overflow leaves orphaned keys See PR" [ref=f27e296] [cursor=pointer]:
+                      - /url: https://github.com/solana-foundation/kora/pull/394/files/a519bfcba63f4220512ccebfcfd988270391599e#r2961120516
+                      - generic [ref=f27e297]:
+                        - heading "Solana" [level=3] [ref=f27e298]
+                        - generic [ref=f27e299]:
+                          - generic [ref=f27e304]:
+                            - generic [ref=f27e305]: "174"
+                            - generic [ref=f27e306]: Stars
+                          - generic [ref=f27e311]:
+                            - generic [ref=f27e312]: "249"
+                            - generic [ref=f27e313]: Forks
+                          - generic [ref=f27e318]:
+                            - generic [ref=f27e319]: solana-foundation/kora
+                            - generic [ref=f27e320]: Repository
+                      - generic [ref=f27e321]:
+                        - generic [ref=f27e322]: crates/lib/src/transaction/instruction_util.rs
+                        - generic [ref=f27e326]:
+                          - generic [ref=f27e327]:
+                            - generic [ref=f27e328]: "01"
+                            - generic [ref=f27e329]: "-"
+                          - generic [ref=f27e331]:
+                            - generic [ref=f27e332]: "01"
+                            - generic [ref=f27e333]: +
+                          - generic [ref=f27e335]:
+                            - generic [ref=f27e336]: "02"
+                            - generic [ref=f27e337]: +
+                        - generic [ref=f27e339]:
+                          - generic [ref=f27e340]:
+                            - img "Greptile" [ref=f27e341]
+                            - generic [ref=f27e342]: greptile
+                          - paragraph [ref=f27e343]: Mid-loop overflow leaves orphaned keys
+                        - generic [ref=f27e344]: See PR
+                  - link "See more examples" [ref=f27e348] [cursor=pointer]:
+                    - /url: /examples
+          - generic [ref=f27e353]:
+            - generic [ref=f27e354]: "[ P[.;/%(<>%|}$}: &"
+            - heading "Reviews that adapt to your team" [level=2] [ref=f27e355]
+            - paragraph [ref=f27e356]: From custom rules to continuous learning, Greptile gets smarter about your codebase with every review.
+          - generic [ref=f27e361]:
+            - generic [ref=f27e363]:
+              - img "Custom rules" [ref=f27e371]
+              - generic [ref=f27e374]:
+                - generic [ref=f27e375]:
+                  - text: "[ CUSTOM RULES ]"
+                  - paragraph [ref=f27e376]: Your house, your rules
+                - paragraph [ref=f27e377]: Write standards in plain English, point Greptile at repo-specific context, and enforce the patterns your team actually cares about on every PR.
+                - link "Set your rules" [ref=f27e379] [cursor=pointer]:
+                  - /url: /learning
+            - generic [ref=f27e392]:
+              - generic [ref=f27e393]:
+                - text: "[ LEARNING ]"
+                - paragraph [ref=f27e394]: We're getting to know each other
+              - paragraph [ref=f27e395]: Greptile learns your codebase and coding standards by reading your team' PR comments.
+              - link "See learning" [ref=f27e397] [cursor=pointer]:
+                - /url: /learning
+          - generic [ref=f27e399]:
+            - separator [ref=f27e400]
+            - generic [ref=f27e402]:
+              - generic [ref=f27e403]:
+                - generic [ref=f27e404]: "[ Y;?% ~(+>] !"
+                - heading "The Central Validation Layer." [level=2] [ref=f27e405]
+                - paragraph [ref=f27e406]: Designed to work seamlessly with every coding agent, Greptile serves as the unified validation agent for all code changes.
+              - link "Learn more" [ref=f27e408] [cursor=pointer]:
+                - /url: /independence
+            - generic [ref=f27e410]:
+              - separator [ref=f27e411]
+              - generic [ref=f27e412]: Ways Greptile plugs into your workflow
+              - separator [ref=f27e414]
+            - generic [ref=f27e419]:
+              - generic [ref=f27e421]:
+                - img "Fix in your IDE" [ref=f27e429]
+                - generic [ref=f27e432]:
+                  - generic [ref=f27e433]:
+                    - text: "01"
+                    - paragraph [ref=f27e434]: Fix in your IDE
+                  - paragraph [ref=f27e435]: One-click send issue context to Claude Code, Cursor, Codex, or Devin
+              - generic [ref=f27e437]:
+                - img "Greptile MCP" [ref=f27e445]
+                - generic [ref=f27e448]:
+                  - generic [ref=f27e449]:
+                    - text: "02"
+                    - paragraph [ref=f27e450]: Greptile MCP
+                  - paragraph [ref=f27e451]: Connect Greptile to any AI agent to share comment context.
+              - generic [ref=f27e453]:
+                - img "Claude Code Plugin" [ref=f27e461]
+                - generic [ref=f27e464]:
+                  - generic [ref=f27e465]:
+                    - text: "03"
+                    - paragraph [ref=f27e466]: Claude Code Plugin
+                  - paragraph [ref=f27e467]: Let Claude Code automatically read and resolve Greptile comments.
+              - generic [ref=f27e469]:
+                - img "/greploop" [ref=f27e477]
+                - generic [ref=f27e480]:
+                  - generic [ref=f27e481]:
+                    - text: "04"
+                    - paragraph [ref=f27e482]: /greploop
+                  - paragraph [ref=f27e483]: Let any coding agent iterate with Greptile until all issues are resolved.
+          - separator [ref=f27e486]
+          - generic [ref=f27e487]:
+            - generic [ref=f27e490]:
+              - generic [ref=f27e491]: TEST · RUN · EXECUTE
+              - generic [ref=f27e492]: TEST · RUN · EXECUTE
+              - generic [ref=f27e493]: TEST · RUN · EXECUTE
+              - generic [ref=f27e494]: TEST · RUN · EXECUTE
+              - generic [ref=f27e495]: TEST · RUN · EXECUTE
+              - generic [ref=f27e496]: TEST · RUN · EXECUTE
+              - generic [ref=f27e497]: TEST · RUN · EXECUTE
+              - generic [ref=f27e498]: TEST · RUN · EXECUTE
+              - generic [ref=f27e499]: TEST · RUN · EXECUTE
+              - generic [ref=f27e500]: TEST · RUN · EXECUTE
+              - generic [ref=f27e501]: TEST · RUN · EXECUTE
+              - generic [ref=f27e502]: TEST · RUN · EXECUTE
+              - generic [ref=f27e503]: TEST · RUN · EXECUTE
+              - generic [ref=f27e504]: TEST · RUN · EXECUTE
+              - generic [ref=f27e505]: TEST · RUN · EXECUTE
+              - generic [ref=f27e506]: TEST · RUN · EXECUTE
+              - generic [ref=f27e507]: TEST · RUN · EXECUTE
+              - generic [ref=f27e508]: TEST · RUN · EXECUTE
+              - generic [ref=f27e509]: TEST · RUN · EXECUTE
+              - generic [ref=f27e510]: TEST · RUN · EXECUTE
+            - generic [ref=f27e515]:
+              - generic [ref=f27e516]: "[ I)#?,;%!#;; /!}% ,"
+              - heading "Autonomously Test Every PR" [level=2] [ref=f27e517]
+              - paragraph [ref=f27e518]: TREX runs your PR branch in a sandbox to catch the bugs that only show up at runtime.
+              - link "Explore TREX" [ref=f27e520] [cursor=pointer]:
+                - /url: /trex
+            - generic [ref=f27e522]:
+              - generic [ref=f27e523]: TEST · RUN · EXECUTE
+              - generic [ref=f27e524]: TEST · RUN · EXECUTE
+              - generic [ref=f27e525]: TEST · RUN · EXECUTE
+              - generic [ref=f27e526]: TEST · RUN · EXECUTE
+              - generic [ref=f27e527]: TEST · RUN · EXECUTE
+              - generic [ref=f27e528]: TEST · RUN · EXECUTE
+              - generic [ref=f27e529]: TEST · RUN · EXECUTE
+              - generic [ref=f27e530]: TEST · RUN · EXECUTE
+              - generic [ref=f27e531]: TEST · RUN · EXECUTE
+              - generic [ref=f27e532]: TEST · RUN · EXECUTE
+              - generic [ref=f27e533]: TEST · RUN · EXECUTE
+              - generic [ref=f27e534]: TEST · RUN · EXECUTE
+              - generic [ref=f27e535]: TEST · RUN · EXECUTE
+              - generic [ref=f27e536]: TEST · RUN · EXECUTE
+              - generic [ref=f27e537]: TEST · RUN · EXECUTE
+              - generic [ref=f27e538]: TEST · RUN · EXECUTE
+              - generic [ref=f27e539]: TEST · RUN · EXECUTE
+              - generic [ref=f27e540]: TEST · RUN · EXECUTE
+              - generic [ref=f27e541]: TEST · RUN · EXECUTE
+              - generic [ref=f27e542]: TEST · RUN · EXECUTE
+          - separator [ref=f27e544]
+          - separator [ref=f27e547]
+          - generic [ref=f27e549]:
+            - generic [ref=f27e551]:
+              - generic [ref=f27e552]:
+                - heading "Security-First Design" [level=2] [ref=f27e553]
+                - paragraph [ref=f27e554]: Built for enterprises across defense, healthcare, and financial services.
+              - link "Learn more" [ref=f27e556] [cursor=pointer]:
+                - /url: /enterprise
+            - generic [ref=f27e562]:
+              - generic [ref=f27e564]:
+                - generic [ref=f27e565]: "01"
+                - heading "Self-Hosted Deployment" [level=3] [ref=f27e566]
+                - paragraph [ref=f27e567]: Host Greptile in your own air-gapped environment.
+              - generic [ref=f27e569]:
+                - generic [ref=f27e570]: "02"
+                - heading "SOC 2 Compliance" [level=3] [ref=f27e571]
+                - paragraph [ref=f27e572]: Independent audits, reports available on request.
+              - generic [ref=f27e574]:
+                - generic [ref=f27e575]: "03"
+                - heading "Enterprise Ready" [level=3] [ref=f27e576]
+                - paragraph [ref=f27e577]: SSO, audit logs, dedicated support.
+          - separator [ref=f27e579]
+          - separator [ref=f27e582]
+          - generic [ref=f27e586]:
+            - generic [ref=f27e588]:
+              - figure [ref=f27e590]:
+                - generic [ref=f27e591]:
+                  - generic [ref=f27e592]:
+                    - img "James" [ref=f27e593]
+                    - generic [ref=f27e594]:
+                      - generic [ref=f27e595]: James Reggio
+                      - generic [ref=f27e596]: CTO · Brex
+                    - img "Brex logo" [ref=f27e597]
+                  - blockquote [ref=f27e598]: We've tried more code review tools than I can count. Greptile outperforms them all by a mile. Honestly the only AI reviewer that doesn't annoy the s**t out of me.
+              - figure [ref=f27e600]:
+                - generic [ref=f27e601]:
+                  - generic [ref=f27e602]:
+                    - img "Mark" [ref=f27e603]
+                    - generic [ref=f27e604]:
+                      - generic [ref=f27e605]: Mark Tran
+                      - generic [ref=f27e606]: Eng. Manager · WorkOS
+                    - img "WorkOS logo" [ref=f27e607]
+                  - blockquote [ref=f27e608]: We've been impressed by Greptile's code review quality. It's tightened our feedback loops, improved consistency, and freed up engineers to focus on higher-level design and architecture.
+            - generic [ref=f27e611]:
+              - generic [ref=f27e615]:
+                - heading "See what our customers are saying" [level=2] [ref=f27e616]
+                - link "View testimonials" [ref=f27e618] [cursor=pointer]:
+                  - /url: /customers
+              - figure [ref=f27e620]:
+                - generic [ref=f27e621]:
+                  - generic [ref=f27e622]:
+                    - img "Anirudh" [ref=f27e623]
+                    - generic [ref=f27e624]:
+                      - generic [ref=f27e625]: Anirudh Kamath
+                      - generic [ref=f27e626]: Tech Lead · Browserbase
+                    - img "Browserbase logo" [ref=f27e627]
+                  - blockquote [ref=f27e628]: Greptile helps the team do their best work. It levels everybody up and helps ensure that we're all proud of our code
+              - figure [ref=f27e630]:
+                - generic [ref=f27e631]:
+                  - generic [ref=f27e632]:
+                    - img "Hahnbee" [ref=f27e633]
+                    - generic [ref=f27e634]:
+                      - generic [ref=f27e635]: Hahnbee Lee
+                      - generic [ref=f27e636]: CTO · Mintlify
+                    - img "Mintlify logo" [ref=f27e637]
+                  - blockquote [ref=f27e638]: I'm thankful for the things Greptile catches in my pull requests.
+            - generic [ref=f27e640]:
+              - figure [ref=f27e643]:
+                - generic [ref=f27e644]:
+                  - generic [ref=f27e645]:
+                    - img "Isaiah" [ref=f27e646]
+                    - generic [ref=f27e647]:
+                      - generic [ref=f27e648]: Isaiah Granet
+                      - generic [ref=f27e649]: CEO · Bland.com
+                    - img "Bland.com logo" [ref=f27e650]
+                  - blockquote [ref=f27e651]: Has been a game changer. Couldn't ever go back.... If you are on the fence — just try it.
+              - figure [ref=f27e653]:
+                - generic [ref=f27e654]:
+                  - generic [ref=f27e655]:
+                    - img "Chase" [ref=f27e656]
+                    - generic [ref=f27e657]:
+                      - generic [ref=f27e658]: Chase Gladish
+                      - generic [ref=f27e659]: CTO · RollCredits
+                    - img "RollCredits logo" [ref=f27e660]
+                  - blockquote [ref=f27e661]: Greptile has been the first AI code review tool I've used that actually provides useful feedback on PRs. It's catching issues that human reviewers easily miss and giving senior-level suggestions to boot
+          - generic [ref=f27e666]:
+            - heading "FAQ" [level=2] [ref=f27e668]
+            - generic [ref=f27e670]:
+              - generic [ref=f27e671]:
+                - heading [level=3] [ref=f27e672]:
+                  - button "How does Greptile pricing work?" [ref=f27e673] [cursor=pointer]
+                - generic [ref=f27e679]:
+                  - generic [ref=f27e680]:
+                    - paragraph [ref=f27e681]: Starter is free for one active developer and includes unlimited repositories and 50 credits per month. Pro is $30 per seat per month and includes 50 credits per seat. Additional credits are $1 each.
+                    - list [ref=f27e682]:
+                      - listitem [ref=f27e683]: "Base review: 1 credit"
+                      - listitem [ref=f27e684]: "Plus review: 3 credits"
+                      - listitem [ref=f27e685]: "Apex review: 10 credits"
+                  - paragraph [ref=f27e686]:
+                    - link "See full pricing" [ref=f27e687] [cursor=pointer]:
+                      - /url: /pricing
+              - separator [ref=f27e690]
+              - generic [ref=f27e691]:
+                - heading [level=3] [ref=f27e692]:
+                  - button "Can Greptile be self-hosted?" [ref=f27e693] [cursor=pointer]
+                - paragraph [ref=f27e698]: Yes, you can self-host Greptile in your AWS environment and even use your own LLM providers for added flexibility.
+              - separator [ref=f27e699]
+              - generic [ref=f27e700]:
+                - heading [level=3] [ref=f27e701]:
+                  - button "Are there free trials or discounts available for Greptile?" [ref=f27e702] [cursor=pointer]
+                - paragraph [ref=f27e707]: Greptile offers free usage for qualified open source projects and significant discounts for pre-Series A startups. Contact us to check your eligibility.
+              - separator [ref=f27e708]
+              - generic [ref=f27e709]:
+                - heading [level=3] [ref=f27e710]:
+                  - button "What programming languages does Greptile support?" [ref=f27e711] [cursor=pointer]
+                - paragraph [ref=f27e716]: Greptile fully supports Python, JavaScript, TypeScript, Go, Elixir, Java, C, C++, C#, Swift, PHP, and Rust. Most other languages are supported with slightly lower response quality.
+              - separator [ref=f27e717]
+              - generic [ref=f27e718]:
+                - heading [level=3] [ref=f27e719]:
+                  - button "Which code providers does Greptile support?" [ref=f27e720] [cursor=pointer]
+                - paragraph [ref=f27e725]: We support GitHub, GitLab, Bitbucket, and Cursor Origin. Our Enterprise plan also supports GitHub Enterprise Server, GitHub Enterprise Cloud with data residency, GitLab Self-Managed, Bitbucket Data Center, and Gitea. For on-premises deployments, we support Perforce through P4 Code Review.
+              - separator [ref=f27e726]
+              - generic [ref=f27e727]:
+                - heading [level=3] [ref=f27e728]:
+                  - button "What is AI code review?" [ref=f27e729] [cursor=pointer]
+                - generic [ref=f27e734]:
+                  - text: AI code review learns your codebase and applies repository context to analyze pull requests, catching syntax, logic, and style issues and suggesting fixes.
+                  - link "Learn more in our AI code review guide" [ref=f27e735] [cursor=pointer]:
+                    - /url: /what-is-ai-code-review
+                  - text: .
+            - paragraph [ref=f27e739]:
+              - text: Can't find your answer here?
+              - link "Get in touch" [ref=f27e740] [cursor=pointer]:
+                - /url: /contact
+              - text: .
+          - generic [ref=f27e743]:
+            - heading "Greptile is building the code validation layer so you can get back to shipping." [level=2] [ref=f27e744]
+            - generic [ref=f27e745]:
+              - link "View Pricing" [ref=f27e746] [cursor=pointer]:
+                - /url: /pricing
+              - link "Start now" [ref=f27e747] [cursor=pointer]:
+                - /url: https://app.greptile.com/signup
+    - contentinfo [ref=f27e750]:
+      - generic [ref=f27e752]:
+        - img "Greptile" [ref=f27e755]
+        - generic [ref=f27e757]:
+          - generic [ref=f27e758]: Product
+          - link "Enterprise" [ref=f27e759] [cursor=pointer]:
+            - /url: /enterprise
+          - link "Pricing" [ref=f27e760] [cursor=pointer]:
+            - /url: /pricing
+          - link "Docs" [ref=f27e761] [cursor=pointer]:
+            - /url: https://www.greptile.com/docs/introduction
+          - link "Zapier" [ref=f27e762] [cursor=pointer]:
+            - /url: https://zapier.com/apps/greptile/integrations
+          - generic [ref=f27e764]:
+            - generic [ref=f27e765]: Status
+            - link "View status" [ref=f27e766] [cursor=pointer]:
+              - /url: https://status.greptile.com/
+        - generic [ref=f27e771]:
+          - generic [ref=f27e772]: Company
+          - link "Examples" [ref=f27e773] [cursor=pointer]:
+            - /url: /examples
+          - link "Careers" [ref=f27e774] [cursor=pointer]:
+            - /url: /careers
+          - link "Blog" [ref=f27e775] [cursor=pointer]:
+            - /url: /blog
+          - link "Changelog" [ref=f27e776] [cursor=pointer]:
+            - /url: /changelog
+          - link "Case Studies" [ref=f27e777] [cursor=pointer]:
+            - /url: /customers
+          - link "Podcast" [ref=f27e778] [cursor=pointer]:
+            - /url: /podcast
+          - link "Brand" [ref=f27e779] [cursor=pointer]:
+            - /url: /design
+        - generic [ref=f27e781]:
+          - generic [ref=f27e782]: Resources
+          - link "Grepository" [ref=f27e783] [cursor=pointer]:
+            - /url: /grepository
+          - link "Content Library" [ref=f27e784] [cursor=pointer]:
+            - /url: /content-library
+          - link "What is AI code review?" [ref=f27e785] [cursor=pointer]:
+            - /url: /what-is-ai-code-review
+          - link "Code review checklist" [ref=f27e786] [cursor=pointer]:
+            - /url: /content-library/code-review-checklist
+          - link "Benchmarks" [ref=f27e787] [cursor=pointer]:
+            - /url: /benchmarks
+          - link "Paste a PR" [ref=f27e788] [cursor=pointer]:
+            - /url: /review
+          - link "Greptile vs Coderabbit" [ref=f27e789] [cursor=pointer]:
+            - /url: /greptile-vs-coderabbit
+          - link "Greptile vs Bugbot" [ref=f27e790] [cursor=pointer]:
+            - /url: /greptile-vs-bugbot
+          - link "State of AI Coding 2026" [ref=f27e791] [cursor=pointer]:
+            - /url: /reports/state-of-ai-coding
+          - link "For YC Companies" [ref=f27e792] [cursor=pointer]:
+            - /url: /yc
+        - generic [ref=f27e794]:
+          - generic [ref=f27e795]: Support
+          - link "Contact us" [ref=f27e796] [cursor=pointer]:
+            - /url: /contact
+          - link "Security" [ref=f27e797] [cursor=pointer]:
+            - /url: /security
+          - link "Privacy Policy" [ref=f27e798] [cursor=pointer]:
+            - /url: /security/privacy
+          - link "Terms of Service" [ref=f27e799] [cursor=pointer]:
+            - /url: /terms-of-service
+          - link "Report Bugs" [ref=f27e800] [cursor=pointer]:
+            - /url: https://forms.gle/2BHYzC23TwjnQz3r7
+          - generic [ref=f27e801]:
+            - generic [ref=f27e802]: Socials
+            - generic [ref=f27e803]:
+              - link "GitHub" [ref=f27e804] [cursor=pointer]:
+                - /url: https://github.com/greptileai
+              - link "X" [ref=f27e807] [cursor=pointer]:
+                - /url: https://twitter.com/greptile
+              - link "LinkedIn" [ref=f27e810] [cursor=pointer]:
+                - /url: https://www.linkedin.com/company/greptile/
+              - link "Discord" [ref=f27e813] [cursor=pointer]:
+                - /url: https://discord.gg/dWaGnuFyJA
+      - img [ref=f27e820]:
+        - generic [ref=f27e821] [cursor=pointer]
+        - generic [ref=f27e826] [cursor=pointer]
+        - generic [ref=f27e831] [cursor=pointer]
+        - generic [ref=f27e836] [cursor=pointer]
+        - generic [ref=f27e841] [cursor=pointer]
+        - generic [ref=f27e846] [cursor=pointer]
+        - generic [ref=f27e851] [cursor=pointer]
+        - generic [ref=f27e856] [cursor=pointer]
+        - generic [ref=f27e861] [cursor=pointer]
+        - generic [ref=f27e866] [cursor=pointer]
+        - generic [ref=f27e871] [cursor=pointer]
+        - generic [ref=f27e876] [cursor=pointer]
+        - generic [ref=f27e881] [cursor=pointer]
+        - generic [ref=f27e886] [cursor=pointer]
+        - generic [ref=f27e891] [cursor=pointer]
+        - generic [ref=f27e896] [cursor=pointer]
+        - generic [ref=f27e901] [cursor=pointer]
+        - generic [ref=f27e906] [cursor=pointer]
+        - generic [ref=f27e911] [cursor=pointer]
+        - generic [ref=f27e916] [cursor=pointer]
+        - generic [ref=f27e921] [cursor=pointer]
+        - generic [ref=f27e926] [cursor=pointer]
+        - generic [ref=f27e931] [cursor=pointer]
+        - generic [ref=f27e936] [cursor=pointer]
+        - generic [ref=f27e941] [cursor=pointer]
+        - generic [ref=f27e946] [cursor=pointer]
+        - generic [ref=f27e951] [cursor=pointer]
+        - generic [ref=f27e956] [cursor=pointer]
+        - generic [ref=f27e961] [cursor=pointer]
+        - generic [ref=f27e966] [cursor=pointer]
+        - generic [ref=f27e971] [cursor=pointer]
+        - generic [ref=f27e976] [cursor=pointer]
+        - generic [ref=f27e981] [cursor=pointer]
+        - generic [ref=f27e986] [cursor=pointer]
+        - generic [ref=f27e991] [cursor=pointer]
+        - generic [ref=f27e996] [cursor=pointer]
+        - generic [ref=f27e1001] [cursor=pointer]
+        - generic [ref=f27e1006] [cursor=pointer]
+        - generic [ref=f27e1011] [cursor=pointer]
+        - generic [ref=f27e1016] [cursor=pointer]
+        - generic [ref=f27e1021] [cursor=pointer]
+        - generic [ref=f27e1026] [cursor=pointer]
+        - generic [ref=f27e1031] [cursor=pointer]
+        - generic [ref=f27e1036] [cursor=pointer]
+        - generic [ref=f27e1041] [cursor=pointer]
+        - generic [ref=f27e1046] [cursor=pointer]
+        - generic [ref=f27e1051] [cursor=pointer]
+        - generic [ref=f27e1056] [cursor=pointer]
+        - generic [ref=f27e1061] [cursor=pointer]
+        - generic [ref=f27e1066] [cursor=pointer]
+        - generic [ref=f27e1071] [cursor=pointer]
+        - generic [ref=f27e1076] [cursor=pointer]
+        - generic [ref=f27e1081] [cursor=pointer]
+        - generic [ref=f27e1086] [cursor=pointer]
+        - generic [ref=f27e1091] [cursor=pointer]
+        - generic [ref=f27e1096] [cursor=pointer]
+        - generic [ref=f27e1101] [cursor=pointer]
+        - generic [ref=f27e1106] [cursor=pointer]
+        - generic [ref=f27e1111] [cursor=pointer]
+      - generic [ref=f27e1116]: © 2026 Tabnam, Inc.
+  - alert [ref=f27e1118]

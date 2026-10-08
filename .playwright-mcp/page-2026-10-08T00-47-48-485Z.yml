@@ -1,0 +1,306 @@
+- generic [ref=f2e2]:
+  - complementary [ref=f2e3]:
+    - generic [ref=f2e6]:
+      - link "Recent" [ref=f2e8] [cursor=pointer]:
+        - /url: /
+      - navigation "Primary navigation" [ref=f2e12]:
+        - region [ref=f2e13]:
+          - heading "Browse" [level=2] [ref=f2e15]
+          - link "Design" [ref=f2e16] [cursor=pointer]:
+            - /url: /
+          - link "Websites" [ref=f2e18] [cursor=pointer]:
+            - /url: /websites
+          - link "OG Images" [ref=f2e19] [cursor=pointer]:
+            - /url: /og-images
+          - link "App Screenshots" [ref=f2e20] [cursor=pointer]:
+            - /url: /app-store-screenshots
+          - link "App Icons" [ref=f2e21] [cursor=pointer]:
+            - /url: /app-icons
+        - region [ref=f2e22]:
+          - heading "Resources" [level=2] [ref=f2e24]
+          - link "Tools" [ref=f2e25] [cursor=pointer]:
+            - /url: /tools
+          - link "Skills" [ref=f2e26] [cursor=pointer]:
+            - /url: /skills
+          - link "Jobs" [ref=f2e27] [cursor=pointer]:
+            - /url: /jobs
+      - generic [ref=f2e29]:
+        - generic [ref=f2e30]: © 2026
+        - navigation "Company" [ref=f2e31]:
+          - link "Sponsor" [ref=f2e32] [cursor=pointer]:
+            - /url: /sponsor
+          - link "Info" [ref=f2e33] [cursor=pointer]:
+            - /url: /info
+  - main [ref=f2e36]:
+    - generic [ref=f2e37]:
+      - generic [ref=f2e38]:
+        - heading "Design" [level=1] [ref=f2e39]
+        - paragraph [ref=f2e40]: The best design inspiration on the Internet.
+      - navigation "Our sponsors" [ref=f2e42]:
+        - link "Become a sponsor" [ref=f2e44] [cursor=pointer]:
+          - /url: /sponsor
+    - generic [ref=f2e47]:
+      - generic [ref=f2e48]:
+        - button "All" [disabled] [pressed] [ref=f2e49]
+        - button "Web" [ref=f2e50]
+        - button "Interface" [ref=f2e51]
+        - button "Branding" [ref=f2e52]
+        - button "Product" [ref=f2e53]
+        - button "Typography" [ref=f2e54]
+        - button "Motion" [ref=f2e55]
+        - button "Illustration" [ref=f2e56]
+        - button "3D" [ref=f2e57]
+        - button "Editorial" [ref=f2e58]
+        - button "Print" [ref=f2e59]
+        - button "Packaging" [ref=f2e60]
+      - button "Sort posts" [ref=f2e61]:
+        - generic [ref=f2e62]: Recent
+    - generic [ref=f2e70]:
+      - generic [ref=f2e71]:
+        - article [ref=f2e72]:
+          - generic [ref=f2e73]:
+            - img "Blissful Studio Brand Poster" [ref=f2e75]
+            - 'link "View post: Blissful Studio Brand Poster" [ref=f2e76]':
+              - /url: /i/9vh1nss-blissful-studio-brand-posters
+            - generic:
+              - link "View Steve Lauda's profile" [ref=f2e77] [cursor=pointer]:
+                - /url: https://x.com/stevelauda_
+              - link "View post" [ref=f2e78] [cursor=pointer]:
+                - /url: https://x.com/stevelauda_/status/2107751125340578072
+        - article [ref=f2e81]:
+          - generic [ref=f2e82]:
+            - 'link "View post: PlayStation 1 Boot Scene" [ref=f2e86]':
+              - /url: /i/oc18jof-playstation-1-boot-scene
+            - generic:
+              - link "View Rune Brink / Spogel's profile" [ref=f2e87] [cursor=pointer]:
+                - /url: https://x.com/spogelsemaskine
+              - link "View post" [ref=f2e88] [cursor=pointer]:
+                - /url: https://x.com/spogelsemaskine/status/2107175855713619988
+        - article [ref=f2e91]:
+          - generic [ref=f2e92]:
+            - 'link "View post: Katamari Internet Game" [ref=f2e96]':
+              - /url: /i/quzz0mb-katamari-internet-game
+            - generic:
+              - link "View AA's profile" [ref=f2e97] [cursor=pointer]:
+                - /url: https://x.com/measure_plan
+              - link "View post" [ref=f2e98] [cursor=pointer]:
+                - /url: https://x.com/measure_plan/status/2106500440380600626
+        - article [ref=f2e101]:
+          - generic [ref=f2e102]:
+            - 'link "View post: Alim Joldaspayev" [ref=f2e106]':
+              - /url: /i/ltdfyfe-alim-joldaspayev-portfolio
+            - generic:
+              - button "Staff pick" [ref=f2e107]
+              - link "View Alim Joldaspayev's profile" [ref=f2e111] [cursor=pointer]:
+                - /url: https://x.com/alimdesigner_
+              - link "View post" [ref=f2e112] [cursor=pointer]:
+                - /url: https://x.com/alimdesigner_/status/2106381720421609816
+        - article [ref=f2e115]:
+          - generic [ref=f2e116]:
+            - 'link "View post: Grok Bot Character" [ref=f2e120]':
+              - /url: /i/jf3p9z7-grok-bot-character-animation
+            - generic:
+              - link "View Benji Taylor's profile" [ref=f2e121] [cursor=pointer]:
+                - /url: https://x.com/benjitaylor
+              - link "View post" [ref=f2e122] [cursor=pointer]:
+                - /url: https://x.com/benjitaylor/status/2105329138802303190
+      - generic [ref=f2e125]:
+        - article [ref=f2e126]:
+          - generic [ref=f2e127]:
+            - 'link "View post: Vibe Selector" [ref=f2e131]':
+              - /url: /i/maajesu-vibe-selector-microinteraction
+            - generic:
+              - link "View George's profile" [ref=f2e132] [cursor=pointer]:
+                - /url: https://x.com/vanjek
+              - link "View post" [ref=f2e133] [cursor=pointer]:
+                - /url: https://x.com/vanjek/status/2107120208964116634
+        - article [ref=f2e136]:
+          - generic [ref=f2e137]:
+            - 'link "View post: Thinking Effort Dial" [ref=f2e141]':
+              - /url: /i/xny36la-brain-effort-dial
+            - generic:
+              - link "View jhey's profile" [ref=f2e142] [cursor=pointer]:
+                - /url: https://x.com/jh3yy
+              - link "View post" [ref=f2e143] [cursor=pointer]:
+                - /url: https://x.com/jh3yy/status/2107540680784626150
+        - article [ref=f2e146]:
+          - generic [ref=f2e147]:
+            - 'link "View post: Cathedrals of Compute" [ref=f2e151]':
+              - /url: /i/3afxr6x-cathedrals-of-compute-posters
+            - generic:
+              - link "View Oliver Hamrin's profile" [ref=f2e152] [cursor=pointer]:
+                - /url: https://x.com/oliverhamrin
+              - link "View post" [ref=f2e153] [cursor=pointer]:
+                - /url: https://x.com/oliverhamrin/status/2107162732424265765
+        - article [ref=f2e156]:
+          - generic [ref=f2e157]:
+            - 'link "View post: IT WILL FIND YOU" [ref=f2e161]':
+              - /url: /i/mo1hnx2-infinite-media-player-loop
+            - generic:
+              - link "View perfectloop's profile" [ref=f2e162] [cursor=pointer]:
+                - /url: https://x.com/perfectl00p
+              - link "View post" [ref=f2e163] [cursor=pointer]:
+                - /url: https://x.com/PERFECTL00P/status/2106398860063216084
+      - generic [ref=f2e166]:
+        - link "Visit Framer" [ref=f2e167] [cursor=pointer]:
+          - /url: /go/5jf250m?s=feed.sponsor&p=3
+          - article [ref=f2e168]:
+            - generic [ref=f2e169]: Sponsor
+        - article [ref=f2e172]:
+          - generic [ref=f2e173]:
+            - 'link "View post: Wireframe Ink" [ref=f2e177]':
+              - /url: /i/03vukqv-wireframe-ink-motion-study
+            - generic:
+              - link "View Zach Lieberman's profile" [ref=f2e178] [cursor=pointer]:
+                - /url: https://x.com/zachlieberman
+              - link "View post" [ref=f2e179] [cursor=pointer]:
+                - /url: https://x.com/zachlieberman/status/2107714291894042938
+        - article [ref=f2e182]:
+          - generic [ref=f2e183]:
+            - 'link "View post: Sixfold Logo Animation" [ref=f2e187]':
+              - /url: /i/xul4aeh-sixfold-logo-animation
+            - generic:
+              - link "View Sam Hox's profile" [ref=f2e188] [cursor=pointer]:
+                - /url: https://x.com/secondeight_
+              - link "View post" [ref=f2e189] [cursor=pointer]:
+                - /url: https://x.com/secondeight_/status/2107103092768444879
+        - article [ref=f2e192]:
+          - generic [ref=f2e193]:
+            - 'link "View post: WebGL Portfolio" [ref=f2e197]':
+              - /url: /i/68a8v4h-webgl-portfolio-explorer
+            - generic:
+              - link "View Luis Bizarro's profile" [ref=f2e198] [cursor=pointer]:
+                - /url: https://x.com/luisbizarro
+              - link "View post" [ref=f2e199] [cursor=pointer]:
+                - /url: https://x.com/LuisBizarro/status/2106604530766889414
+        - article [ref=f2e202]:
+          - generic [ref=f2e203]:
+            - 'link "View post: Hairline Isometric Icons" [ref=f2e207]':
+              - /url: /i/6k2s8wq-hairline-isometric-icon-library
+            - generic:
+              - link "View Lucas's profile" [ref=f2e208] [cursor=pointer]:
+                - /url: https://x.com/lucasmarkes__
+              - link "View post" [ref=f2e209] [cursor=pointer]:
+                - /url: https://x.com/lucasmarkes__/status/2106502812498632707
+        - article [ref=f2e212]:
+          - generic [ref=f2e213]:
+            - 'link "View post: Skale Website Footer" [ref=f2e217]':
+              - /url: /i/unmc43o-skale-website-footer
+            - generic:
+              - link "View Mark Vassilevskiy's profile" [ref=f2e218] [cursor=pointer]:
+                - /url: https://x.com/markknd
+              - link "View post" [ref=f2e219] [cursor=pointer]:
+                - /url: https://x.com/MarkKnd/status/2106401042913247273
+        - article [ref=f2e222]:
+          - generic [ref=f2e223]:
+            - 'link "View post: Mobile Wallet" [ref=f2e227]':
+              - /url: /i/p7jwe4i-mobile-wallet-credentials-landing
+            - generic:
+              - link "View James McDonald's profile" [ref=f2e228] [cursor=pointer]:
+                - /url: https://x.com/jamesm
+              - link "View post" [ref=f2e229] [cursor=pointer]:
+                - /url: https://x.com/jamesm/status/2105339849054322723
+      - generic [ref=f2e232]:
+        - complementary "Design jobs" [ref=f2e233]:
+          - generic [ref=f2e234]:
+            - generic [ref=f2e235]:
+              - heading "Design jobs" [level=2] [ref=f2e236]
+              - link "Post a job" [ref=f2e237]:
+                - /url: /jobs/new
+            - list [ref=f2e239]:
+              - listitem [ref=f2e240]:
+                - link "Open Product Designer at Lucky Robots" [ref=f2e241] [cursor=pointer]:
+                  - /url: /go/pq7cnpc-product-designer?s=feed.jobs_widget&p=1
+                - generic:
+                  - generic:
+                    - paragraph: Lucky Robots
+                    - paragraph: Product Designer
+              - listitem [ref=f2e242]:
+                - link "Open Product Designer at Paper" [ref=f2e243] [cursor=pointer]:
+                  - /url: /go/qbwbhoc-product-designer?s=feed.jobs_widget&p=2
+                - generic:
+                  - generic:
+                    - paragraph: Paper
+                    - paragraph: Product Designer
+              - listitem [ref=f2e244]:
+                - link "Open Founding Product Designer at Nell" [ref=f2e245] [cursor=pointer]:
+                  - /url: /go/z6uewua-founding-product-designer?s=feed.jobs_widget&p=3
+                - generic:
+                  - generic:
+                    - paragraph: Nell
+                    - paragraph: Founding Product Designer
+              - listitem [ref=f2e246]:
+                - link "Open Design Engineer at Paper" [ref=f2e247] [cursor=pointer]:
+                  - /url: /go/q1m71c5-design-engineer?s=feed.jobs_widget&p=4
+                - generic:
+                  - generic:
+                    - paragraph: Paper
+                    - paragraph: Design Engineer
+              - listitem [ref=f2e248]:
+                - link "Open Visual Designer at MOMENT" [ref=f2e249] [cursor=pointer]:
+                  - /url: /go/19qaecu-visual-designer?s=feed.jobs_widget&p=5
+                - generic:
+                  - generic:
+                    - paragraph: MOMENT
+                    - paragraph: Visual Designer
+              - listitem [ref=f2e250]:
+                - link "Open UI/UX Designer at Blackstar" [ref=f2e251] [cursor=pointer]:
+                  - /url: /go/c6t5h6d-ui-ux-designer?s=feed.jobs_widget&p=6
+                - generic:
+                  - generic:
+                    - paragraph: Blackstar
+                    - paragraph: UI/UX Designer
+              - listitem [ref=f2e252]:
+                - link "Open product designer at 222" [ref=f2e253] [cursor=pointer]:
+                  - /url: /go/4nrf5za-product-designer?s=feed.jobs_widget&p=7
+                - generic:
+                  - generic:
+                    - paragraph: "222"
+                    - paragraph: product designer
+          - link "See all jobs" [ref=f2e254] [cursor=pointer]:
+            - /url: /jobs
+        - article [ref=f2e257]:
+          - generic [ref=f2e258]:
+            - 'link "View post: Effort Slider" [ref=f2e262]':
+              - /url: /i/x6k4i8j-effort-slider-microinteraction
+            - generic:
+              - link "View ozzy's profile" [ref=f2e263] [cursor=pointer]:
+                - /url: https://x.com/ozzyxs1a
+              - link "View post" [ref=f2e264] [cursor=pointer]:
+                - /url: https://x.com/ozzyxs1a/status/2107523169649389677
+        - article [ref=f2e267]:
+          - generic [ref=f2e268]:
+            - 'link "View post: Fashion Collage Study" [ref=f2e272]':
+              - /url: /i/1qtev23-fashion-collage-motion-study
+            - generic:
+              - link "View Ingi Erlingsson's profile" [ref=f2e273] [cursor=pointer]:
+                - /url: https://x.com/ingi_erlingsson
+              - link "View post" [ref=f2e274] [cursor=pointer]:
+                - /url: https://x.com/ingi_erlingsson/status/2107265173605994575
+        - article [ref=f2e277]:
+          - generic [ref=f2e278]:
+            - 'link "View post: Corporate ID Features" [ref=f2e282]':
+              - /url: /i/361zrzn-corporate-id-landing-page
+            - generic:
+              - link "View James McDonald's profile" [ref=f2e283] [cursor=pointer]:
+                - /url: https://x.com/jamesm
+              - link "View post" [ref=f2e284] [cursor=pointer]:
+                - /url: https://x.com/jamesm/status/2107458356684435650
+        - article [ref=f2e287]:
+          - generic [ref=f2e288]:
+            - 'link "View post: Breaking Bad" [ref=f2e292]':
+              - /url: /i/on3wdnn-ai-vision-glitch-motion
+            - generic:
+              - link "View Ingi Erlingsson's profile" [ref=f2e293] [cursor=pointer]:
+                - /url: https://x.com/ingi_erlingsson
+              - link "View post" [ref=f2e294] [cursor=pointer]:
+                - /url: https://x.com/ingi_erlingsson/status/2106567435826446624
+        - article [ref=f2e297]:
+          - generic [ref=f2e298]:
+            - 'link "View post: Sam Cheng Personal Site" [ref=f2e302]':
+              - /url: /i/uugl3yv-sam-cheng-personal-site
+            - generic:
+              - link "View Sam Cheng's profile" [ref=f2e303] [cursor=pointer]:
+                - /url: https://x.com/samfcheng
+              - link "View post" [ref=f2e304] [cursor=pointer]:
+                - /url: https://x.com/samfcheng/status/2104993779510047203

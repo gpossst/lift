@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { getProfile } from '@/lib/profile';
+import { getProfile, type RecommendationPreferences } from '@/lib/profile';
 import { takePendingOnboarding, type Onboarding } from '@/lib/onboarding';
 import type { RecommendationContext } from '@/lib/exercise-recommendations';
 
@@ -17,6 +17,9 @@ function contextFromOnboarding(value: unknown): RecommendationContext {
 }
 
 
+// ponytail: in-memory only, so a cold start offline still falls back to onboarding; persist it if that matters.
+let lastPreferences: RecommendationPreferences | undefined;
+
 /** Both the exercise planner and logger resolve the same saved preferences, including offline fallback. */
 export function useRecommendationContext() {
   const [state, setState] = useState<{ context: RecommendationContext; ready: boolean }>({ context: {}, ready: false });
@@ -26,7 +29,8 @@ export function useRecommendationContext() {
       const onboarding = contextFromOnboarding(await takePendingOnboarding().catch(() => null));
       const profile = await getProfile().catch(() => null);
       if (!active) return;
-      const preferences = profile?.recommendationPreferences ?? {};
+      if (profile) lastPreferences = profile.recommendationPreferences;
+      const preferences = (profile ? profile.recommendationPreferences : lastPreferences) ?? {};
       setState({ ready: true, context: {
         goals: preferences.goals ?? onboarding.goals,
         experience: preferences.experience ?? onboarding.experience,

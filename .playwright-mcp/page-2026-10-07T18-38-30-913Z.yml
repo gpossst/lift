@@ -1,0 +1,108 @@
+- generic [ref=f34e4]:
+  - navigation [ref=f34e5]:
+    - generic [ref=f34e6]:
+      - generic [ref=f34e7]:
+        - link "Unsplash Home" [ref=f34e8] [cursor=pointer]:
+          - /url: /
+          - img "Unsplash Home" [ref=f34e9]
+        - link "Photos" [ref=f34e11] [cursor=pointer]:
+          - /url: /
+        - link "Illustrations" [ref=f34e14] [cursor=pointer]:
+          - /url: /illustrations
+      - generic [ref=f34e17]:
+        - button "Explore" [ref=f34e18] [cursor=pointer]
+        - button "Collections" [ref=f34e21] [cursor=pointer]
+        - button "Download History" [ref=f34e24] [cursor=pointer]
+      - button "Bookmarks" [ref=f34e28] [cursor=pointer]
+    - generic [ref=f34e31]:
+      - link "Log in / Sign up" [ref=f34e32] [cursor=pointer]:
+        - /url: /login?referrer=%2Fs%2Fphotos%2Fbarbell-lift%3Forientation%3Dlandscape%26license%3Dfree
+      - button "Language" [ref=f34e35] [cursor=pointer]
+      - button "Menu" [ref=f34e38] [cursor=pointer]
+  - generic [ref=f34e41]:
+    - generic [ref=f34e42]:
+      - navigation [ref=f34e43]:
+        - search "Find visuals sitewide" [ref=f34e45]:
+          - button "Search Unsplash" [ref=f34e46] [cursor=pointer]
+          - combobox [ref=f34e49]:
+            - searchbox "Search Unsplash" [ref=f34e50]: barbell lift
+            - listbox
+          - button "Clear" [ref=f34e51] [cursor=pointer]
+          - button "Visual search" [ref=f34e56] [cursor=pointer]
+        - generic [ref=f34e59]:
+          - link "Get Unsplash+" [ref=f34e60] [cursor=pointer]:
+            - /url: /plus
+          - link "Log in" [ref=f34e61] [cursor=pointer]:
+            - /url: /login?referrer=%2Fs%2Fphotos%2Fbarbell-lift%3Forientation%3Dlandscape%26license%3Dfree
+        - button "Submit an image" [ref=f34e63] [cursor=pointer]
+      - generic [ref=f34e64]:
+        - generic [ref=f34e70]:
+          - list [ref=f34e71]:
+            - listitem [ref=f34e72]:
+              - link "Photos 4":
+                - /url: /s/photos/barbell-lift?orientation=landscape&license=free
+                - text: Photos
+                - generic: "4"
+            - listitem [ref=f34e73]:
+              - link "Illustrations 0" [ref=f34e74] [cursor=pointer]:
+                - /url: /s/illustrations/barbell-lift?orientation=landscape&license=free
+                - text: Illustrations
+                - generic [ref=f34e77]: "0"
+            - listitem [ref=f34e78]:
+              - button "More" [ref=f34e79] [cursor=pointer]
+          - button [ref=f34e81] [cursor=pointer]
+        - generic [ref=f34e85]:
+          - heading "Barbell lift" [level=1] [ref=f34e87]
+          - generic [ref=f34e91]:
+            - link "fitness" [ref=f34e93] [cursor=pointer]:
+              - /url: /s/photos/fitness?orientation=landscape&license=free
+            - link "gym" [ref=f34e95] [cursor=pointer]:
+              - /url: /s/photos/gym?orientation=landscape&license=free
+            - link "strength training" [ref=f34e97] [cursor=pointer]:
+              - /url: /s/photos/strength-training?orientation=landscape&license=free
+            - link "barbell" [ref=f34e99] [cursor=pointer]:
+              - /url: /s/photos/barbell?orientation=landscape&license=free
+            - link "sport" [ref=f34e101] [cursor=pointer]:
+              - /url: /s/photos/sport?orientation=landscape&license=free
+            - link "dedication" [ref=f34e103] [cursor=pointer]:
+              - /url: /s/photos/dedication?orientation=landscape&license=free
+            - link "exercise" [ref=f34e105] [cursor=pointer]:
+              - /url: /s/photos/exercise?orientation=landscape&license=free
+            - link "training" [ref=f34e107] [cursor=pointer]:
+              - /url: /s/photos/training?orientation=landscape&license=free
+            - link "strength" [ref=f34e109] [cursor=pointer]:
+              - /url: /s/photos/strength?orientation=landscape&license=free
+            - link "active lifestyle" [ref=f34e111] [cursor=pointer]:
+              - /url: /s/photos/active-lifestyle?orientation=landscape&license=free
+            - link "weightlifting" [ref=f34e113] [cursor=pointer]:
+              - /url: /s/photos/weightlifting?orientation=landscape&license=free
+            - link "physical fitness" [ref=f34e115] [cursor=pointer]:
+              - /url: /s/photos/physical-fitness?orientation=landscape&license=free
+        - generic [ref=f34e117]:
+          - generic [ref=f34e121]:
+            - figure [ref=f34e123]:
+              - link [ref=f34e126]:
+                - /url: /photos/black-dumbbell-w45roKo6QYw
+                - img "black dumbbell" [ref=f34e127]
+            - generic [ref=f34e128]:
+              - figure [ref=f34e129]:
+                - link [ref=f34e132]:
+                  - /url: /photos/a-man-and-woman-with-a-barbell-in-a-gym-ihxOnF1T2CY
+                  - img "A man and woman with a barbell in a gym" [ref=f34e133]
+              - figure [ref=f34e134]:
+                - link [ref=f34e137]:
+                  - /url: /photos/golden-muscle-figure-with-barbell-YcL55eptThY
+                  - img "A golden anatomical muscle figure bending over a barbell on a dark platform" [ref=f34e138]
+            - figure [ref=f34e140]:
+              - link [ref=f34e143]:
+                - /url: /photos/man-lifting-heavy-barbell-overhead-in-gym-FKEFERVRwWk
+                - img "Man lifting heavy barbell overhead in gym" [ref=f34e144]
+          - heading "Browse premium images on iStock | Claim your discount now" [level=2] [ref=f34e148]:
+            - text: Browse premium images on iStock
+            - generic [ref=f34e149]: "| Claim your discount now"
+          - generic [ref=f34e161]:
+            - link [ref=f34e162] [cursor=pointer]:
+              - /url: /
+            - paragraph [ref=f34e165]: Make something awesome
+    - generic:
+      - region "Notifications"

@@ -1,0 +1,52 @@
+- main [ref=f1e2]:
+  - navigation "Primary navigation" [ref=f1e3]:
+    - link "Lift home" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+      - img "Lift" [ref=f1e5]
+  - generic [ref=f1e11]:
+    - heading "A workout log that learns your rhythm." [level=1] [ref=f1e12]
+    - paragraph [ref=f1e13]: Lift keeps every set close, tracks recovery across sessions, and helps you choose what to train next.
+    - generic [ref=f1e14]:
+      - button "Start with Lift" [ref=f1e15] [cursor=pointer]
+      - link "See the app" [ref=f1e16] [cursor=pointer]:
+        - /url: "#app"
+    - img "Lift home screen with a new PR, streak, and training calendar" [ref=f1e18]
+  - region "Lift app screens" [ref=f1e19]:
+    - figure "Pick what to train today" [ref=f1e20]:
+      - 'img "Lift app: Pick what to train today" [ref=f1e21]'
+    - figure "Log a set in one swipe" [ref=f1e23]:
+      - 'img "Lift app: Log a set in one swipe" [ref=f1e24]'
+    - figure "Every lift’s history" [ref=f1e26]:
+      - 'img "Lift app: Every lift’s history" [ref=f1e27]'
+    - figure "See which muscles need work" [ref=f1e29]:
+      - 'img "Lift app: See which muscles need work" [ref=f1e30]'
+    - figure "A recap when you finish" [ref=f1e32]:
+      - 'img "Lift app: A recap when you finish" [ref=f1e33]'
+  - region "What Lift does" [ref=f1e35]:
+    - generic [ref=f1e36]:
+      - paragraph [ref=f1e37]: What you get
+      - heading "Everything you need to train with context." [level=2] [ref=f1e38]
+    - generic [ref=f1e39]:
+      - article [ref=f1e40]:
+        - strong [ref=f1e44]: Log fast
+        - paragraph [ref=f1e45]: Sets, reps, weight, and effort without breaking the flow of a workout.
+      - article [ref=f1e46]:
+        - strong [ref=f1e50]: Recover intelligently
+        - paragraph [ref=f1e51]: Recent muscle fatigue changes recommendations until your body catches up.
+      - article [ref=f1e52]:
+        - strong [ref=f1e57]: Own the history
+        - paragraph [ref=f1e58]: Your account keeps training consistent across devices and remains exportable.
+  - generic [ref=f1e59]:
+    - generic [ref=f1e60]:
+      - heading "Your next session starts here." [level=2] [ref=f1e61]
+      - paragraph [ref=f1e62]: Free to start, and your training history stays yours.
+    - button "Start with Lift" [ref=f1e63] [cursor=pointer]
+  - generic [ref=f1e64]:
+    - img "Lift" [ref=f1e66]
+    - generic [ref=f1e72]:
+      - link "Privacy" [ref=f1e73] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/privacy
+      - link "Terms" [ref=f1e74] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/terms
+      - link "Support" [ref=f1e75] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/support

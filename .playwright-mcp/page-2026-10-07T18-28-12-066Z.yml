@@ -1,0 +1,134 @@
+- generic [ref=f10e1]:
+  - main [ref=f10e2]:
+    - generic [ref=f10e3]:
+      - generic [ref=f10e5]:
+        - img "Mobbin" [ref=f10e6]
+        - heading "Welcome back" [level=2] [ref=f10e9]
+        - generic [ref=f10e10]:
+          - button "Continue with Google" [ref=f10e12] [cursor=pointer]
+          - generic [ref=f10e21]:
+            - separator [ref=f10e22]
+            - heading "or" [level=3] [ref=f10e23]
+            - separator [ref=f10e24]
+          - generic [ref=f10e25]:
+            - textbox "Email" [active] [ref=f10e29]:
+              - /placeholder: Enter email address
+            - button "Continue" [ref=f10e30] [cursor=pointer]
+            - paragraph [ref=f10e33]:
+              - text: By continuing, you agree to Mobbin’s
+              - link "Terms of Service" [ref=f10e34] [cursor=pointer]:
+                - /url: /terms
+              - text: and
+              - link "Privacy Policy" [ref=f10e35] [cursor=pointer]:
+                - /url: /privacy
+              - text: .
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+          - generic:
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+            - generic:
+              - img "screen"
+  - region "Notifications alt+T"
+  - generic:
+    - button "Scroll to top"
+  - alert [ref=f10e36]

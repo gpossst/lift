@@ -1,0 +1,54 @@
+- main [ref=e2]:
+  - navigation "Primary navigation" [ref=e3]:
+    - link "Lift home" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - img "Lift" [ref=e5]
+  - generic [ref=e12]:
+    - paragraph [ref=e13]: Your training, remembered.
+    - heading "A workout log that learns your rhythm." [level=1] [ref=e14]
+    - paragraph [ref=e15]: Lift keeps every set close, tracks recovery across sessions, and helps you choose what to train next without turning fitness into homework.
+    - generic [ref=e16]:
+      - button "Start with Lift" [ref=e17] [cursor=pointer]
+      - link "See the app" [ref=e18] [cursor=pointer]:
+        - /url: "#app"
+  - region "Lift app screens" [ref=e19]:
+    - figure "Pick what to train today" [ref=e20]:
+      - 'img "Lift app: Pick what to train today" [ref=e21]'
+    - figure "Log a set in one swipe" [ref=e23]:
+      - 'img "Lift app: Log a set in one swipe" [ref=e24]'
+    - figure "PRs and streaks at a glance" [ref=e26]:
+      - 'img "Lift app: PRs and streaks at a glance" [ref=e27]'
+    - figure "Every lift’s history" [ref=e29]:
+      - 'img "Lift app: Every lift’s history" [ref=e30]'
+    - figure "See which muscles need work" [ref=e32]:
+      - 'img "Lift app: See which muscles need work" [ref=e33]'
+    - figure "A recap when you finish" [ref=e35]:
+      - 'img "Lift app: A recap when you finish" [ref=e36]'
+  - region "What Lift does" [ref=e38]:
+    - generic [ref=e39]:
+      - paragraph [ref=e40]: What you get
+      - heading "Everything you need to train with context." [level=2] [ref=e41]
+    - generic [ref=e42]:
+      - article [ref=e43]:
+        - strong [ref=e47]: Log fast
+        - paragraph [ref=e48]: Sets, reps, weight, and effort without breaking the flow of a workout.
+      - article [ref=e49]:
+        - strong [ref=e53]: Recover intelligently
+        - paragraph [ref=e54]: Recent muscle fatigue changes recommendations until your body catches up.
+      - article [ref=e55]:
+        - strong [ref=e60]: Own the history
+        - paragraph [ref=e61]: Your account keeps training consistent across devices and remains exportable.
+  - generic [ref=e62]:
+    - generic [ref=e63]:
+      - heading "Your next session starts here." [level=2] [ref=e64]
+      - paragraph [ref=e65]: Free to start, and your training history stays yours.
+    - button "Start with Lift" [ref=e66] [cursor=pointer]
+  - generic [ref=e67]:
+    - img "Lift" [ref=e69]
+    - generic [ref=e75]:
+      - link "Privacy" [ref=e76] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/privacy
+      - link "Terms" [ref=e77] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/terms
+      - link "Support" [ref=e78] [cursor=pointer]:
+        - /url: https://api.lift.garrett.one/support

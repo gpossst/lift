@@ -14,9 +14,9 @@ import { getProfile } from '@/lib/profile';
 import { getExercises, getRejectedCloudSyncChanges, hasPendingCloudSync, resubmitCloudSyncChange, type CloudSyncRejectedChange } from '@/db';
 
 const groups = [
-  { title: 'Appearance', description: 'Set your background and primary color.', path: '/settings/appearance', Icon: Sliders },
-  { title: 'Workouts', description: 'Build splits and adjust workout suggestions.', path: '/settings/workouts', Icon: Activity },
-  { title: 'Legal & Support', description: 'Privacy, terms, support, and data deletion.', path: '/settings/legal', Icon: Info },
+  { title: 'Appearance', path: '/settings/appearance', Icon: Sliders },
+  { title: 'Workouts', path: '/settings/workouts', Icon: Activity },
+  { title: 'Legal & Support', path: '/settings/legal', Icon: Info },
 ] as const;
 
 export default function SettingsScreen() {
@@ -78,9 +78,9 @@ export default function SettingsScreen() {
         <ChevronRight width={19} height={19} color={colors.mutedText} strokeWidth={2.4} />
       </Pressable>
       <View style={styles.list}>
-        {groups.map(({ title, description, path, Icon }) => <Pressable key={title} onPress={() => router.push(path)} style={({ pressed }) => [styles.row, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Open ${title} settings`}>
+        {groups.map(({ title, path, Icon }) => <Pressable key={title} onPress={() => router.push(path)} style={({ pressed }) => [styles.row, { borderBottomColor: colors.surfaceStrong }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Open ${title} settings`}>
           <View style={styles.icon}><Icon width={22} height={22} color={colors.text} strokeWidth={2.4} /></View>
-          <View style={styles.rowCopy}><Text style={[styles.rowTitle, { color: colors.text }]}>{title}</Text><Text style={[styles.rowDescription, { color: colors.mutedText }]}>{description}</Text></View>
+          <View style={styles.rowCopy}><Text style={[styles.rowTitle, { color: colors.text }]}>{title}</Text></View>
           <ChevronRight width={19} height={19} color={colors.subtleText} strokeWidth={2.4} />
         </Pressable>)}
       </View>
@@ -116,7 +116,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   header: { width: '100%', maxWidth: 688, alignSelf: 'center', height: 72, paddingHorizontal: 24, justifyContent: 'center' },
   content: { width: '100%', maxWidth: 688, alignSelf: 'center', flexGrow: 1, paddingHorizontal: 24, paddingBottom: 24 },
-  profile: { minHeight: 92, marginTop: 8, paddingHorizontal: 16, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  profile: { minHeight: 92, marginTop: 8, paddingVertical: 16, paddingHorizontal: 16, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 20 },
   avatar: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   initial: { fontSize: 23, fontWeight: '900' },
   profileCopy: { flex: 1, minWidth: 0 },
@@ -124,15 +124,15 @@ const styles = StyleSheet.create({
   profileEmail: { marginTop: 4, fontSize: 12, fontWeight: '700' },
   list: { marginTop: 20 },
   syncIssues: { marginTop: 28 },
-  syncIssue: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, gap: 12 },
-  syncReview: { flexDirection: 'row', alignItems: 'center', gap: 13 },
+  syncIssue: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, gap: 16 },
+  syncReview: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   resubmitButton: { alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', borderRadius: 12 },
   resubmitText: { fontSize: 13, fontWeight: '800' },
-  row: { minHeight: 76, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 13 },
+  row: { minHeight: 68, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 20 },
   icon: { width: 28, alignItems: 'center' },
-  rowCopy: { flex: 1 },
+  rowCopy: { flex: 1, minWidth: 0 },
   rowTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.35 },
-  rowDescription: { marginTop: 3, fontSize: 12, lineHeight: 16, fontWeight: '700' },
+  rowDescription: { marginTop: 6, fontSize: 12, lineHeight: 16, fontWeight: '700' },
   version: { marginTop: 'auto', paddingTop: 36, textAlign: 'center', fontSize: 12, fontWeight: '700' },
   pressed: { opacity: .58 },
 });

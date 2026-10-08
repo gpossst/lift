@@ -1,0 +1,369 @@
+- generic [active] [ref=f25e1]:
+  - main [ref=f25e6]:
+    - navigation "Hermes Agent" [ref=f25e8]:
+      - generic [ref=f25e9]:
+        - link "Nous" [ref=f25e10] [cursor=pointer]:
+          - /url: https://nousresearch.com
+        - link "Hermes" [ref=f25e11] [cursor=pointer]:
+          - /url: /
+        - link "Docs" [ref=f25e12] [cursor=pointer]:
+          - /url: /docs
+      - generic [ref=f25e13]:
+        - link "Hermes Agent" [ref=f25e14] [cursor=pointer]:
+          - /url: /
+          - generic [ref=f25e15]: Hermes
+          - generic [ref=f25e16]: Agent
+        - generic [ref=f25e17]:
+          - link "Discord" [ref=f25e18] [cursor=pointer]:
+            - /url: https://discord.gg/nousresearch
+          - link "GitHub" [ref=f25e21] [cursor=pointer]:
+            - /url: https://github.com/NousResearch/hermes-agent
+          - link "X" [ref=f25e24] [cursor=pointer]:
+            - /url: https://x.com/NousResearch
+      - generic [ref=f25e27]:
+        - link "Community" [ref=f25e28] [cursor=pointer]:
+          - /url: https://discord.gg/nousresearch
+        - link "Portal" [ref=f25e29] [cursor=pointer]:
+          - /url: https://portal.nousresearch.com
+        - button "Install" [ref=f25e32] [cursor=pointer]
+    - generic [ref=f25e35]:
+      - region "Hermes Agent" [ref=f25e36]:
+        - generic [ref=f25e37]:
+          - generic [ref=f25e38]:
+            - heading "The Agent That Grows With You" [level=1] [ref=f25e39]:
+              - generic [ref=f25e40]: The Agent
+              - generic [ref=f25e41]: That Grows
+              - generic [ref=f25e42]: With You
+            - generic [ref=f25e43]:
+              - link "Download for macOS" [ref=f25e44] [cursor=pointer]:
+                - /url: https://hermes-assets.nousresearch.com/Hermes-Setup.dmg?build=74943bb889b7
+              - link "Deploy to the cloud" [ref=f25e47] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/cloud
+            - generic [ref=f25e50]:
+              - paragraph [ref=f25e51]: Install via terminal
+              - generic [ref=f25e52]:
+                - tablist "Install via terminal" [ref=f25e53]:
+                  - tab "macOS" [selected] [ref=f25e54] [cursor=pointer]:
+                    - generic [aria-hidden] [ref=f25e55]: ":"
+                    - text: macOS
+                    - generic [aria-hidden] [ref=f25e56]: ":"
+                  - tab "Linux" [ref=f25e57] [cursor=pointer]:
+                    - generic [aria-hidden] [ref=f25e58]: ":"
+                    - text: Linux
+                    - generic [aria-hidden] [ref=f25e59]: ":"
+                  - tab "Windows" [ref=f25e60] [cursor=pointer]:
+                    - generic [aria-hidden] [ref=f25e61]: ":"
+                    - text: Windows
+                    - generic [aria-hidden] [ref=f25e62]: ":"
+                - tabpanel "macOS" [ref=f25e63]:
+                  - code [ref=f25e64]: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+                  - button "Copy install command" [ref=f25e65] [cursor=pointer]
+          - figure [aria-hidden] [ref=f25e67]
+      - region "Download Hermes Desktop" [ref=f25e68]:
+        - generic [ref=f25e69]:
+          - figure "Hermes Desktop app preview" [ref=f25e70]
+          - generic [ref=f25e72]:
+            - heading "Hermes Desktop App" [level=2] [ref=f25e74]
+            - paragraph [ref=f25e75]: Available across all computers.
+          - generic [ref=f25e76]:
+            - article [ref=f25e77]:
+              - generic [ref=f25e78]:
+                - paragraph [ref=f25e79]: macOS 12+
+                - heading "Mac OS" [level=3] [ref=f25e80]
+                - link "Download desktop app" [ref=f25e81] [cursor=pointer]:
+                  - /url: https://hermes-assets.nousresearch.com/Hermes-Setup.dmg?build=74943bb889b7
+            - article [ref=f25e84]:
+              - generic [ref=f25e85]:
+                - paragraph [ref=f25e86]: Windows 10/11
+                - heading "Windows" [level=3] [ref=f25e87]
+                - link "Download desktop app" [ref=f25e88] [cursor=pointer]:
+                  - /url: https://hermes-assets.nousresearch.com/Hermes-Setup.exe?build=74943bb889b7
+            - article [ref=f25e91]:
+              - generic [ref=f25e92]:
+                - paragraph [ref=f25e93]: Any distro
+                - heading "Linux" [level=3] [ref=f25e94]
+                - link "Install via terminal" [ref=f25e95] [cursor=pointer]:
+                  - /url: "#install"
+      - generic [ref=f25e98]:
+        - region "Features" [ref=f25e99]:
+          - generic [ref=f25e100]:
+            - heading "Features" [level=2] [ref=f25e102]
+            - generic [ref=f25e104]:
+              - article [ref=f25e105]:
+                - generic [ref=f25e106]:
+                  - paragraph [ref=f25e107]: "#1 Connect"
+                  - heading "Lives Everywhere" [level=3] [ref=f25e108]
+                - paragraph [ref=f25e109]: Telegram, Discord, Slack, WhatsApp, Signal, Email, CLI — and a growing list of platforms. One agent, one memory, every surface.
+                - figure [ref=f25e111]
+              - article [ref=f25e113]:
+                - generic [ref=f25e114]:
+                  - paragraph [ref=f25e115]: "#2 Remember"
+                  - heading "Persistent Memory" [level=3] [ref=f25e116]
+                - paragraph [ref=f25e117]: It learns your projects, auto-generates skills, and never forgets how it solved a problem.
+                - figure [ref=f25e119]
+              - article [ref=f25e121]:
+                - generic [ref=f25e122]:
+                  - paragraph [ref=f25e123]: "#3 Schedule"
+                  - heading "Focused Automation" [level=3] [ref=f25e124]
+                - paragraph [ref=f25e125]: Natural-language scheduling for reports, backups, and briefings — running unattended through the gateway, focused every time.
+                - figure [ref=f25e127]
+              - article [ref=f25e129]:
+                - generic [ref=f25e130]:
+                  - paragraph [ref=f25e131]: "#4 Delegate"
+                  - heading "Tasks Multiplied" [level=3] [ref=f25e132]
+                - paragraph [ref=f25e133]: Isolated subagents with their own conversations, terminals, and Python RPC scripts for zero-context-cost pipelines.
+                - figure [ref=f25e135]
+              - article [ref=f25e137]:
+                - generic [ref=f25e138]:
+                  - paragraph [ref=f25e139]: "#5 Search"
+                  - heading "Browse the Web" [level=3] [ref=f25e140]
+                - paragraph [ref=f25e141]: Web search, browser automation, vision, image generation, text-to-speech, and multi-model reasoning.
+                - figure [ref=f25e143]
+              - article [ref=f25e145]:
+                - generic [ref=f25e146]:
+                  - paragraph [ref=f25e147]: "#6 Experiment"
+                  - heading "Isolated Sandboxing" [level=3] [ref=f25e148]
+                - paragraph [ref=f25e149]: Five backends — local, Docker, SSH, Singularity, Modal — with container hardening and namespace isolation.
+                - figure [ref=f25e151]
+        - generic [ref=f25e154]:
+          - generic [ref=f25e155]:
+            - heading "FAQs" [level=2] [ref=f25e156]
+            - link "View Docs" [ref=f25e158] [cursor=pointer]:
+              - /url: /docs
+            - link "View Docs" [ref=f25e163] [cursor=pointer]:
+              - /url: /docs
+          - generic [ref=f25e166]:
+            - heading [level=3] [ref=f25e168]:
+              - button "How does pricing work?" [ref=f25e169] [cursor=pointer]
+            - heading [level=3] [ref=f25e174]:
+              - button "How do I get started?" [ref=f25e175] [cursor=pointer]
+            - heading [level=3] [ref=f25e180]:
+              - button "How do I chat with my agent?" [ref=f25e181] [cursor=pointer]
+            - heading [level=3] [ref=f25e186]:
+              - button "Does my agent keep its data between sessions?" [ref=f25e187] [cursor=pointer]
+            - heading [level=3] [ref=f25e192]:
+              - button "What happens when I stop my agent?" [ref=f25e193] [cursor=pointer]
+        - region "Nous Portal plans" [ref=f25e197]:
+          - generic [ref=f25e198]:
+            - generic "Available plans" [ref=f25e199]:
+              - generic [ref=f25e200]: Free
+              - generic [ref=f25e202]: Plus
+              - generic [ref=f25e204]: Super
+              - generic [ref=f25e206]: Ultra
+            - generic [ref=f25e208]:
+              - heading "Nous Portal" [level=2] [ref=f25e209]
+              - generic [ref=f25e212]:
+                - link "Create an account" [ref=f25e213] [cursor=pointer]:
+                  - /url: https://portal.nousresearch.com/
+                - link "Sign in" [ref=f25e215] [cursor=pointer]:
+                  - /url: https://portal.nousresearch.com/login
+            - paragraph [ref=f25e217]: All paid tiers include monthly credits for use in Hermes Agent, access to 200+ cutting-edge models and built-in tool use
+            - figure [ref=f25e219]
+            - list [ref=f25e221]:
+              - listitem [ref=f25e222]:
+                - generic [ref=f25e223]:
+                  - generic [ref=f25e224]: Free
+                  - paragraph [ref=f25e227]: $0
+                  - paragraph [ref=f25e228]: Get Started
+                - list [ref=f25e229]:
+                  - listitem [ref=f25e230]:
+                    - generic [ref=f25e233]: Free models only
+                  - listitem [ref=f25e234]:
+                    - generic [ref=f25e237]: Standard rate limits
+                  - listitem [ref=f25e238]:
+                    - generic [ref=f25e241]: $0 monthly credits
+                - link "Free Hermes" [ref=f25e242] [cursor=pointer]:
+                  - /url: https://portal.nousresearch.com/manage-subscription
+              - listitem [ref=f25e244]:
+                - generic [ref=f25e245]:
+                  - generic [ref=f25e246]:
+                    - generic [ref=f25e247]: Plus
+                    - generic [ref=f25e249]: 10% Bonus
+                  - paragraph [ref=f25e251]: $20
+                  - paragraph [ref=f25e252]: Per month
+                - list [ref=f25e253]:
+                  - listitem [ref=f25e254]:
+                    - generic [ref=f25e257]: 200+ Models
+                  - listitem [ref=f25e258]:
+                    - generic [ref=f25e261]: Hosted tool usage
+                  - listitem [ref=f25e262]:
+                    - generic [ref=f25e265]: High rate limits
+                  - listitem [ref=f25e266]:
+                    - generic [ref=f25e269]: $22.00 monthly credits — 10% bonus
+                  - listitem [ref=f25e270]:
+                    - generic [ref=f25e273]: $10.00 rollover cap
+                - link "Release Hermes" [ref=f25e274] [cursor=pointer]:
+                  - /url: https://portal.nousresearch.com/manage-subscription
+                - generic [ref=f25e276]:
+                  - generic [ref=f25e277]: //
+                  - text: most popular
+              - listitem [ref=f25e278]:
+                - generic [ref=f25e279]:
+                  - generic [ref=f25e280]:
+                    - generic [ref=f25e281]: Super
+                    - generic [ref=f25e283]: 10% Bonus
+                  - paragraph [ref=f25e285]: $100
+                  - paragraph [ref=f25e286]: Per month
+                - list [ref=f25e287]:
+                  - listitem [ref=f25e288]:
+                    - generic [ref=f25e291]: 200+ Models
+                  - listitem [ref=f25e292]:
+                    - generic [ref=f25e295]: Hosted tool usage
+                  - listitem [ref=f25e296]:
+                    - generic [ref=f25e299]: High rate limits
+                  - listitem [ref=f25e300]:
+                    - generic [ref=f25e303]: $110.00 monthly credits — 10% bonus
+                  - listitem [ref=f25e304]:
+                    - generic [ref=f25e307]: $50.00 rollover cap
+                - link "Liberate Hermes" [ref=f25e308] [cursor=pointer]:
+                  - /url: https://portal.nousresearch.com/manage-subscription
+              - listitem [ref=f25e310]:
+                - generic [ref=f25e311]:
+                  - generic [ref=f25e312]:
+                    - generic [ref=f25e313]: Ultra
+                    - generic [ref=f25e315]: 10% Bonus
+                  - paragraph [ref=f25e317]: $200
+                  - paragraph [ref=f25e318]: Per month
+                - list [ref=f25e319]:
+                  - listitem [ref=f25e320]:
+                    - generic [ref=f25e323]: 200+ Models
+                  - listitem [ref=f25e324]:
+                    - generic [ref=f25e327]: Hosted tool usage
+                  - listitem [ref=f25e328]:
+                    - generic [ref=f25e331]: High rate limits
+                  - listitem [ref=f25e332]:
+                    - generic [ref=f25e335]: $220.00 monthly credits — 10% bonus
+                  - listitem [ref=f25e336]:
+                    - generic [ref=f25e339]: $100.00 rollover cap
+                - link "Unleash Hermes" [ref=f25e340] [cursor=pointer]:
+                  - /url: https://portal.nousresearch.com/manage-subscription
+            - paragraph [ref=f25e342]:
+              - link "Current plans and billing details in Nous Portal" [ref=f25e343] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/manage-subscription
+        - generic [ref=f25e345]:
+          - paragraph [aria-hidden]:
+            - generic: Hermes
+          - generic [ref=f25e346]:
+            - generic [ref=f25e347]:
+              - paragraph [ref=f25e348]: The Internet's Own AI
+              - paragraph [ref=f25e349]: © 2026, Nous Research, Inc.
+            - generic [ref=f25e350]:
+              - img "Nous Portal" [ref=f25e351]
+              - img "Nous Research" [ref=f25e352]
+              - img "Hermes" [ref=f25e353]
+            - generic [ref=f25e354]:
+              - paragraph [ref=f25e355]:
+                - link "Terms" [ref=f25e357] [cursor=pointer]:
+                  - /url: https://portal.nousresearch.com/terms
+                - generic [ref=f25e358]:
+                  - text: "|"
+                  - link "Privacy" [ref=f25e359] [cursor=pointer]:
+                    - /url: https://portal.nousresearch.com/privacy
+              - paragraph [ref=f25e360]: MIT License · 2026
+    - generic [ref=f25e362]:
+      - generic [aria-hidden] [ref=f25e366]:
+        - paragraph:
+          - generic: Nous Research
+      - generic [ref=f25e367]:
+        - generic [ref=f25e368]:
+          - img "Nous Research" [ref=f25e369]
+          - paragraph [ref=f25e370]: The Internet's Own AI.
+          - link "info@nousresearch.com" [ref=f25e371] [cursor=pointer]:
+            - /url: mailto:info@nousresearch.com
+        - generic [ref=f25e372]:
+          - paragraph [ref=f25e373]: Research
+          - paragraph [ref=f25e374]: Nous
+          - list [ref=f25e375]:
+            - listitem [ref=f25e376]:
+              - link "Research" [ref=f25e377] [cursor=pointer]:
+                - /url: https://nousresearch.com
+            - listitem [ref=f25e379]:
+              - link "Releases" [ref=f25e380] [cursor=pointer]:
+                - /url: https://nousresearch.com/releases
+            - listitem [ref=f25e382]:
+              - link "Careers" [ref=f25e383] [cursor=pointer]:
+                - /url: https://nousresearch.com/careers
+            - listitem [ref=f25e385]:
+              - link "Blog" [ref=f25e386] [cursor=pointer]:
+                - /url: https://nousresearch.com/blog
+            - listitem [ref=f25e388]:
+              - link "Shop" [ref=f25e389] [cursor=pointer]:
+                - /url: https://shop.nousresearch.com
+            - listitem [ref=f25e391]:
+              - link "Contact" [ref=f25e392] [cursor=pointer]:
+                - /url: mailto:info@nousresearch.com
+        - generic [ref=f25e394]:
+          - paragraph [ref=f25e395]: Products
+          - paragraph [ref=f25e396]: Hermes
+          - list [ref=f25e397]:
+            - listitem [ref=f25e398]:
+              - link "Agent" [ref=f25e399] [cursor=pointer]:
+                - /url: /
+            - listitem [ref=f25e401]:
+              - link "Business" [ref=f25e402] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/business
+            - listitem [ref=f25e404]:
+              - link "Enterprise" [ref=f25e405] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/business#hermes-pro
+            - listitem [ref=f25e407]:
+              - link "Via Terminal" [ref=f25e408] [cursor=pointer]:
+                - /url: "#install"
+            - listitem [ref=f25e410]:
+              - link "For Mac OS" [ref=f25e411] [cursor=pointer]:
+                - /url: "#downloads"
+            - listitem [ref=f25e413]:
+              - link "For Windows" [ref=f25e414] [cursor=pointer]:
+                - /url: "#downloads"
+            - listitem [ref=f25e416]:
+              - link "For Linux" [ref=f25e417] [cursor=pointer]:
+                - /url: "#install"
+            - listitem [ref=f25e419]:
+              - link "In the Cloud" [ref=f25e420] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/cloud
+        - generic [ref=f25e422]:
+          - paragraph [ref=f25e423]: Resources
+          - paragraph [ref=f25e424]: Community
+          - list [ref=f25e425]:
+            - listitem [ref=f25e426]:
+              - link "Go to Discord" [ref=f25e427] [cursor=pointer]:
+                - /url: https://discord.gg/nousresearch
+            - listitem [ref=f25e430]:
+              - link "Go to Github" [ref=f25e431] [cursor=pointer]:
+                - /url: https://github.com/NousResearch/hermes-agent
+            - listitem [ref=f25e434]:
+              - link "Go to x.com" [ref=f25e435] [cursor=pointer]:
+                - /url: https://x.com/NousResearch
+            - listitem [ref=f25e438]:
+              - link "Go to Youtube" [ref=f25e439] [cursor=pointer]:
+                - /url: https://www.youtube.com/@Nousresearch
+        - generic [ref=f25e442]:
+          - paragraph [ref=f25e443]: Platform
+          - paragraph [ref=f25e444]: Portal
+          - list [ref=f25e445]:
+            - listitem [ref=f25e446]:
+              - link "Create account" [ref=f25e447] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/login
+            - listitem [ref=f25e449]:
+              - link "Sign in" [ref=f25e450] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/login
+            - listitem [ref=f25e452]:
+              - link "Plans" [ref=f25e453] [cursor=pointer]:
+                - /url: https://portal.nousresearch.com/manage-subscription
+      - generic [ref=f25e455]:
+        - generic [ref=f25e456]:
+          - link "Discord" [ref=f25e457] [cursor=pointer]:
+            - /url: https://discord.gg/nousresearch
+          - link "GitHub" [ref=f25e460] [cursor=pointer]:
+            - /url: https://github.com/NousResearch/hermes-agent
+          - link "X" [ref=f25e463] [cursor=pointer]:
+            - /url: https://x.com/NousResearch
+        - paragraph [ref=f25e466]: © 2026, Nous Research, Inc.
+        - paragraph [ref=f25e467]: Open Source
+        - paragraph [ref=f25e468]: MIT License
+        - paragraph [ref=f25e469]:
+          - link "Terms" [ref=f25e470] [cursor=pointer]:
+            - /url: https://portal.nousresearch.com/terms
+          - text: "|"
+          - link "Privacy" [ref=f25e471] [cursor=pointer]:
+            - /url: https://portal.nousresearch.com/privacy
+  - alert [ref=f25e473]

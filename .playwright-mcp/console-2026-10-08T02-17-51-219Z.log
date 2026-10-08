@@ -1,0 +1,5 @@
+[    3571ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3001/node_modules/.vite/deps/react-dom_client.js?v=24d390d6:15804
+[    3577ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/favicon.ico:0
+[    6059ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=320a6482:15804
+[    6685ms] [ERROR] Access to fetch at 'https://api.lift.garrett.one/api/auth/get-session' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://localhost:3000/:0
+[    6686ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.lift.garrett.one/api/auth/get-session:0

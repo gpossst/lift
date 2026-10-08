@@ -1,0 +1,52 @@
+[    5063ms] [WARNING] <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes"> @ https://www.joinladder.com/:0
+[    5324ms] [LOG] true JSHandle@node @ https://www.joinladder.com/_next/static/chunks/0f749717069f3b17.js?dpl=dpl_3nfZn9dXqzGjhJUuP7ZrYH1mc2pY:12
+[    5326ms] [LOG] true JSHandle@node @ https://www.joinladder.com/_next/static/chunks/0f749717069f3b17.js?dpl=dpl_3nfZn9dXqzGjhJUuP7ZrYH1mc2pY:12
+[    6945ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://re.applovin.com/v1/s:0
+[   10956ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://re.applovin.com/v1/s:0
+[   19434ms] [LOG] [Framer On-Page Editing] Unavailable because not on a `framer.app` subdomain and access status is no-auth @ https://app.framerstatic.com/editorbar.DEIDXMPZ.mjs:0
+[   23211ms] [ERROR] Not allowed to load local resource: file:///Users/james/Downloads/Opal%20Impact%20Animation.webm @ https://opalapp.com/:746
+[   23239ms] [WARNING] Allow attribute will take precedence over 'allowfullscreen'. @ https://cdn.embedly.com/widgets/media.html?url=https%3A%2F%2Fplayer.mediadelivery.net%2Fplay%2F666953%2Fca326929-3cbf-48e1-aab0-45d7a5532ab8&type=text%2Fhtml&schema=mediadelivery&display_name=bunny.net&src=https%3A%2F%2Fplayer.mediadelivery.net%2Fembed%2F666953%2Fca326929-3cbf-48e1-aab0-45d7a5532ab8%3Fautoplay%3Dtrue:6
+[   23303ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at HTMLDocument.<anonymous> (https://opalapp.com/:398:39)
+[   23573ms] [WARNING] [Meta Pixel] - Invalid parameter format for currency. Please refer https://developers.facebook.com/docs/meta-pixel/reference/ for valid parameter specifications. @ https://connect.facebook.net/en_US/fbevents.js:203
+[   23676ms] [LOG] Slater loaded Opal (Slater.app/3221) 🤙 @ https://opalapp.com/:839
+[   24260ms] [WARNING] Autoplay failed: NotAllowedError: play() failed because the user didn't interact with the document first. https://goo.gl/xX8pDD @ https://player.mediadelivery.net/assets/1.3.30/player.es.js:1951
+[   28188ms] [LOG] [VideoTabs] Script loaded @ https://www.bevel.health/:788
+[   28191ms] [LOG] Found 3 phone videos, 3 watch videos @ https://www.bevel.health/:583
+[   28191ms] [LOG] Created 3 pairs @ https://www.bevel.health/:595
+[   28192ms] [LOG] Playing pair 0: [hero_phone-video cc-1, hero_watch-video cc-1] @ https://www.bevel.health/:609
+[   28194ms] [LOG]   Waiting for hero_phone-video cc-1 to load... @ https://www.bevel.health/:650
+[   28196ms] [LOG]   Waiting for hero_watch-video cc-1 to load... @ https://www.bevel.health/:650
+[   28442ms] [LOG]   hero_watch-video cc-1 playing @ https://www.bevel.health/:643
+[   28509ms] [WARNING] [TikTok Pixel] - Missing 'content_id' paramter
+Issue: The 'content_id' parameter isn't being received. This is required for Video Shopping Ads (VSA).
+Suggestion: Include the 'content_id' parameter in your source code. This is required for Video Shopping Ads (VSA). See https://ads.tiktok.com/help/article/standard-events-parameters?redirected=2 for more information. @ https://analytics.tiktok.com/i18n/pixel/static/main.MWU2MzIzODM0OQ.js:0
+[   28530ms] [LOG]   hero_phone-video cc-1 playing @ https://www.bevel.health/:643
+[   28591ms] ReferenceError: singularSdk is not defined
+    at <anonymous>:1:13
+    at <anonymous>:1:297
+    at https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:945:429
+    at sT (https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:947:31)
+    at Pd.rT (https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:944:95)
+    at Pd.<anonymous> (https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:320:187)
+    at l.apply (https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:240:465)
+    at ib (https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:199:798)
+    at hb (https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:199:504)
+    at Pd.<anonymous> (https://www.googletagmanager.com/gtm.js?id=GTM-PNXG37DC:264:473)
+[   28673ms] [WARNING] [Meta Pixel] - Duplicate Pixel ID: 674879451265800. @ https://connect.facebook.net/en_US/fbevents.js:203
+[   28945ms] [LOG] [VideoTabs] Window loaded @ https://www.bevel.health/:791
+[   28945ms] [LOG] [VideoTabs] Tabs: 9 | Media panels: 9 @ https://www.bevel.health/:821
+[   28945ms] [LOG] [VideoTabs] Init complete — waiting for scroll into view ✓ @ https://www.bevel.health/:1068
+[   28955ms] [LOG] [VideoTabs] Out of view @ https://www.bevel.health/:1054
+[   33763ms] [LOG]   hero_phone-video cc-1 finished (1/2) @ https://www.bevel.health/:629
+[   34007ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://www.whoop.com/us/en/:0
+[   34380ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://www.whoop.com/_next/static/chunks/58977-c4062822f1e87ca6.js:2
+[   34381ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://www.whoop.com/_next/static/chunks/58977-c4062822f1e87ca6.js:2
+[   34523ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://www.whoop.com/us/en/:19
+[   34523ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://www.whoop.com/us/en/:19
+[   34690ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://www.whoop.com/cdn-cgi/challenge-platform/scripts/jsd/main.js:0
+[   34690ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://www.whoop.com/cdn-cgi/challenge-platform/scripts/jsd/main.js:0
+[   35741ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://cdn.cookielaw.org/scripttemplates/202503.1.0/otBannerSdk.js:6
+[   35742ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://cdn.cookielaw.org/scripttemplates/202503.1.0/otBannerSdk.js:6
+[   35745ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://cdn.cookielaw.org/scripttemplates/202503.1.0/otBannerSdk.js:6
+[   35745ms] [ERROR] The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy. @ https://cdn.cookielaw.org/scripttemplates/202503.1.0/otBannerSdk.js:6
