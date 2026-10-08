@@ -382,10 +382,11 @@ export default function WorkoutScreen() {
   const [history, setHistory] = useState<WorkoutHistoryPoint[]>([]);
   const completedHistory = useMemo(() => getWorkoutHistory(exerciseId, { completedOnly: true }), [exerciseId]);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const historySheetVisible = useSheetPresence(historyOpen);
+  const historySheet = useSheetPresence(historyOpen);
   const [infoOpen, setInfoOpen] = useState(false);
   const [supersetPickerOpen, setSupersetPickerOpen] = useState(false);
-  const supersetSheetVisible = useSheetPresence(supersetPickerOpen);
+  const supersetSheet = useSheetPresence(supersetPickerOpen);
+  const infoSheet = useSheetPresence(infoOpen);
   const [supersetQuery, setSupersetQuery] = useState("");
   const [supersetMuscleFilters, setSupersetMuscleFilters] = useState<string[]>([]);
   const [supersetEquipmentFilters, setSupersetEquipmentFilters] = useState<string[]>([]);
@@ -904,12 +905,12 @@ export default function WorkoutScreen() {
       </Modal>
       <Modal
         transparent
-        visible={historySheetVisible}
+        {...historySheet.modal}
         animationType="none"
         onRequestClose={() => setHistoryOpen(false)}
       >
         <View style={styles.modal}>
-          {historyOpen && <>
+          {historySheet.open && <>
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdropLayer}>
             <Pressable
               onPress={() => setHistoryOpen(false)}
@@ -929,9 +930,9 @@ export default function WorkoutScreen() {
           </>}
         </View>
       </Modal>
-      <Modal transparent visible={supersetSheetVisible} animationType="none" onRequestClose={() => setSupersetPickerOpen(false)}>
+      <Modal transparent {...supersetSheet.modal} animationType="none" onRequestClose={() => setSupersetPickerOpen(false)}>
         <View style={styles.modal}>
-          {supersetPickerOpen && <>
+          {supersetSheet.open && <>
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdropLayer}><Pressable onPress={() => setSupersetPickerOpen(false)} style={styles.backdrop} accessibilityRole="button" accessibilityLabel="Close superset picker" /></Animated.View>
           <Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} accessibilityViewIsModal style={[styles.supersetSheet, { backgroundColor: colors.background }]}>
             <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
@@ -948,10 +949,11 @@ export default function WorkoutScreen() {
           </>}
         </View>
       </Modal>
-      <Modal transparent visible={infoOpen} animationType="none" onRequestClose={() => setInfoOpen(false)}>
+      <Modal transparent {...infoSheet.modal} animationType="none" onRequestClose={() => setInfoOpen(false)}>
         <View style={styles.modal}>
-          <Animated.View entering={FadeIn.duration(180)} style={styles.backdropLayer}><Pressable onPress={() => setInfoOpen(false)} style={styles.backdrop} /></Animated.View>
-          <Animated.View entering={SlideInDown.duration(280)} style={[styles.infoSheet, { backgroundColor: colors.background }]} accessibilityViewIsModal>
+          {infoSheet.open && <>
+          <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdropLayer}><Pressable onPress={() => setInfoOpen(false)} style={styles.backdrop} /></Animated.View>
+          <Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} style={[styles.infoSheet, { backgroundColor: colors.background }]} accessibilityViewIsModal>
             <ExerciseDetailSheet key={exercise.id} exercise={exercise} onDismiss={() => setInfoOpen(false)} dismissIcon="close" headingDetails={exerciseDetails.meta ? <Text style={[styles.infoMeta, { color: colors.mutedText }]}>{exerciseDetails.meta}</Text> : undefined}>
               <Text style={[styles.infoSectionTitle, { color: colors.text }]}>How to</Text>
               {exerciseDetails.instructions.map((step, index) => <View key={`step-${index}`} style={styles.infoStep}>
@@ -961,6 +963,7 @@ export default function WorkoutScreen() {
               {!exerciseDetails.instructions.length && <Text style={[styles.emptyHistory, { color: colors.mutedText }]}>No instructions available for this exercise yet.</Text>}
             </ExerciseDetailSheet>
           </Animated.View>
+          </>}
         </View>
       </Modal>
     </SafeAreaView></LayoutAnimationConfig>

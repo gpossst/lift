@@ -55,7 +55,7 @@ h1 { max-width: 700px; margin: 0; font-size: clamp(46px, 6.6vw, 88px); line-heig
 .hero-sub { max-width: 520px; margin: 20px 0 0; color: var(--muted); font-size: clamp(17px, 1.6vw, 20px); line-height: 1.5; font-weight: 600; text-wrap: balance; }
 .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 32px; }
 .phone { position: relative; display: block; width: 100%; overflow: hidden; border: 8px solid #0B0C09; border-radius: clamp(32px, 3.4vw, 44px); background: #0B0C09; }
-.phone img { display: block; width: 100%; height: auto; }
+.phone video { display: block; width: 100%; height: auto; }
 /* Sheen follows the cursor (--mx/--my set by <Phone>), only while hovered. */
 .phone::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgb(255 255 255 / .35), transparent 60%); mix-blend-mode: soft-light; opacity: 0; transition: opacity .3s; }
 .phone:hover::after { opacity: 1; }

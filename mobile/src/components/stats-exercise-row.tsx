@@ -8,23 +8,24 @@ import { ExerciseThumb } from '@/components/exercise-thumb';
 import { getCompletedWorkoutExerciseDetails, getExercises, getWorkoutVisits } from '@/db';
 import { exerciseHistories, progressFor } from '@/lib/lift-progress';
 
-export type StatsExercise = { id: string; name: string; detailsJson: string | null; sessions: number; topSet?: { weight: number; reps: number }; trend: number[] };
+export type StatsExercise = { id: string; name: string; detailsJson: string | null; sessions: number; recentSessions: number; topSet?: { weight: number; reps: number }; trend: number[] };
 
-/** The whole catalog with each exercise's session count, latest best set, and recent per-session trend, most-trained first. */
+/** The whole catalog with each exercise's session count (all time and last 4 weeks), latest best set, and recent per-session trend, most-trained first. */
 export function loadStatsExercises(
   visits = getWorkoutVisits(),
   details = getCompletedWorkoutExerciseDetails(),
   catalog = getExercises(),
 ): StatsExercise[] {
   const histories = exerciseHistories(visits, details);
+  const recentStart = Date.now() - 28 * 86_400_000;
   return catalog.map((exercise) => {
     const history = histories.get(exercise.id) ?? [];
     const progress = progressFor(history, history.some((set) => set.weight > 0));
-    return { id: exercise.id, name: exercise.name, detailsJson: exercise.detailsJson, sessions: progress.length, topSet: progress.at(-1)?.bestSet, trend: progress.slice(-6).map((point) => point.value) };
+    return { id: exercise.id, name: exercise.name, detailsJson: exercise.detailsJson, sessions: progress.length, recentSessions: progress.filter((point) => point.date.getTime() >= recentStart).length, topSet: progress.at(-1)?.bestSet, trend: progress.slice(-6).map((point) => point.value) };
   }).sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name));
 }
 
-const formatSet = ({ weight, reps }: { weight: number; reps: number }) => weight > 0 ? `${weight} lb × ${reps}` : `${reps} reps`;
+export const formatSet = ({ weight, reps }: { weight: number; reps: number }) => weight > 0 ? `${weight} lb × ${reps}` : `${reps} reps`;
 
 export const StatsExerciseRow = memo(function StatsExerciseRow({ item, last, onOpen }: { item: StatsExercise; last: boolean; onOpen?: () => void }) {
   const { colors } = useAppearance();

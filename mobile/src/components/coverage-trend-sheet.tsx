@@ -28,7 +28,7 @@ export function CoverageTrendSheet({ coverage, weeks, onClose }: {
   const target = coverage?.target;
   const { colors } = useAppearance();
   const insets = useSafeAreaInsets();
-  const visible = useSheetPresence(muscle !== null);
+  const sheet = useSheetPresence(muscle !== null);
   const { width } = useWindowDimensions();
   const chartScroll = useRef<ScrollView>(null);
   const [timeWindow, setTimeWindow] = useState<4 | 13 | 26 | 52 | null>(4);
@@ -47,9 +47,9 @@ export function CoverageTrendSheet({ coverage, weeks, onClose }: {
   const firstVisible = Math.max(0, Math.min(chartWeeks.length - 1, Math.ceil((scrollOffset - 38) / spacing)));
   const lastVisible = Math.max(firstVisible, Math.min(chartWeeks.length - 1, Math.floor((scrollOffset + width - 48 - 38) / spacing)));
 
-  return <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+  return <Modal {...sheet.modal} transparent animationType="none" onRequestClose={onClose}>
     <View style={styles.overlay}>
-      {muscle !== null && <>
+      {sheet.open && <>
       <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdrop}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close coverage trend" />
       </Animated.View>

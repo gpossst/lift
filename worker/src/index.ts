@@ -643,7 +643,11 @@ async function createFeedback(request: Request, env: Env, userId: string) {
   const text = typeof body?.body === 'string' ? body.body.trim() : '';
   if (!feedbackKinds.includes(body?.kind as string)) return json({ error: 'Choose bug, feature, or other.' }, 400);
   if (!isString(text, 2000)) return json({ error: 'Feedback must be between 1 and 2000 characters.' }, 400);
-  await env.DB.prepare('INSERT INTO site_feedback (id, user_id, kind, body, created_at) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), userId, body!.kind, text, now()).run();
+  // The count lives in the INSERT itself so simultaneous posts cannot both slip under the limit.
+  const stamp = now();
+  const result = await env.DB.prepare(`INSERT INTO site_feedback (id, user_id, kind, body, created_at) SELECT ?, ?, ?, ?, ?
+    WHERE (SELECT COUNT(*) FROM site_feedback WHERE user_id = ? AND created_at > ?) < 2`).bind(crypto.randomUUID(), userId, body!.kind, text, stamp, userId, stamp - 24 * 60 * 60).run();
+  if (!result.meta.changes) return json({ error: 'You can post feedback twice per day. Try again tomorrow.' }, 429);
   return listFeedback(env, userId);
 }
 

@@ -1,6 +1,6 @@
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -36,7 +36,8 @@ export default function StartWorkoutScreen() {
   const [previousSplit, setPreviousSplit] = useState<WorkoutSplit>(recommendedSplit);
   const [activeWorkout, setActiveWorkout] = useState(getActiveWorkout);
   const [visits, setVisits] = useState(getWorkoutVisits);
-  const { context: recommendationContext } = useRecommendationContext();
+  // Also preloads the context the active workout ranks with, so it opens with its final plan.
+  const { context: recommendationContext, ready: contextReady } = useRecommendationContext();
   // Splits, history, and the plan preference can change in Settings or via sync while this screen stays mounted.
   const refresh = useCallback(() => {
     const custom = getCustomSplits();
@@ -46,7 +47,6 @@ export default function StartWorkoutScreen() {
     setRecommendedSplit(recommended);
     setSelectedSplit((current) => isInPlan(current, useCustomSplits, custom) ? current : recommended);
   }, [useCustomSplits]);
-  useEffect(refresh, [refresh]);
   useFocusEffect(useCallback(() => {
     // Every start path lands here (plus button, Home cards); resume instead of opening a second workout.
     const active = getActiveWorkout();
@@ -55,7 +55,7 @@ export default function StartWorkoutScreen() {
     else refresh();
   }, [refresh]));
   // The same planner the exercises screen uses, run against a workout that doesn't exist yet.
-  const plan = useMemo(() => activeWorkout ? [] : getExerciseRecommendations('start-preview', selectedSplit, Infinity, recommendationContext), [activeWorkout, recommendationContext, selectedSplit]);
+  const plan = useMemo(() => activeWorkout || !contextReady ? [] : getExerciseRecommendations('start-preview', selectedSplit, Infinity, recommendationContext), [activeWorkout, contextReady, recommendationContext, selectedSplit]);
   const startWorkout = () => {
     // A split deleted on another device can still be selected here until the next refresh.
     if (!isInPlan(selectedSplit, useCustomSplits, getCustomSplits())) return refresh();
@@ -91,14 +91,14 @@ export default function StartWorkoutScreen() {
         <Animated.View key={selectedSplit} entering={FadeIn.duration(260)} style={styles.bodyMapLayer}><SplitBodyGraphic split={selectedSplit} muscles={selectedDefinition?.muscles} large /></Animated.View>
       </View>
       <Text style={[styles.selectedDetail, { color: colors.mutedText }]}>{selectedDefinition?.muscles.join(' · ')}</Text>
-      <Animated.View key={`plan-${selectedSplit}`} entering={FadeIn.duration(260)} style={[styles.plan, { backgroundColor: colors.surface }]}>
+      {contextReady && <Animated.View key={`plan-${selectedSplit}`} entering={FadeIn.duration(260)} style={[styles.plan, { backgroundColor: colors.surface }]}>
         <Text style={[styles.planSummary, { color: colors.text }]}>{summary}</Text>
         {plan.slice(0, previewLength).map(({ exercise, sets, reps }) => <View key={exercise.id} style={styles.planRow}>
           <Text numberOfLines={1} style={[styles.planExercise, { color: colors.text }]}>{exercise.name}</Text>
           <Text style={[styles.planDose, { color: colors.mutedText }]}>{sets} × {reps.min === reps.max ? reps.min : `${reps.min}–${reps.max}`}</Text>
         </View>)}
         {plan.length > previewLength && <Text style={[styles.planMore, { color: colors.subtleText }]}>+{plan.length - previewLength} more</Text>}
-      </Animated.View>
+      </Animated.View>}
     </ScrollView>
     <View style={[styles.actionFooter, { backgroundColor: colors.background }]}>
       <SegmentedPicker options={pickerOptions} selected={selectedSplit} onSelect={chooseSplit} marked={recommendedSplit} />

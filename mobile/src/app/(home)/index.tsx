@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Animated as NativeAnimated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Circle } from '@shopify/react-native-skia';
-import { ChevronRight, Clock } from 'react-native-feather';
+import { ChevronLeft, ChevronRight, Clock } from 'react-native-feather';
 import LottieView from 'lottie-react-native';
 import { LineGraph, type SelectionDotProps } from 'react-native-graph';
 import Animated, { FadeIn, FadeInDown, FadeOut, ZoomIn, interpolate, SlideInDown, SlideOutDown, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
@@ -304,9 +304,11 @@ function StreakFlame({ streak }: { streak: number }) {
 
 function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits: WorkoutVisitSummary[]; colors: AppColors; goal: number | null; daysThisWeek: number; streak: number }) {
 	const [workoutPicker, setWorkoutPicker] = useState<{ date: Date; visits: WorkoutVisitSummary[] } | null>(null);
-	const workoutPickerVisible = useSheetPresence(workoutPicker !== null);
+	const workoutPickerSheet = useSheetPresence(workoutPicker !== null);
 	const [gridWidth, setGridWidth] = useState(0);
-	const month = new Date();
+	const today = new Date();
+	const [monthOffset, setMonthOffset] = useState(0);
+	const month = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
 	const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
 	const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
 	const gridStart = new Date(firstDay);
@@ -328,9 +330,15 @@ function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits:
 	const cellWidth = gridWidth ? (gridWidth - 6 * calendarGap) / 7 : 0;
 	const activeCount = dates.filter((day) => day.getMonth() === month.getMonth() && (visitsByDate.get(dateKey(day))?.sets ?? 0) > 0).length;
 	const weekGoalMet = rows.map((week) => goal != null && week.filter((day) => (visitsByDate.get(dateKey(day))?.sets ?? 0) > 0).length >= goal);
-	const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(month);
+	const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: month.getFullYear() !== today.getFullYear() ? 'numeric' : undefined }).format(month);
 	return <>
-		<SectionHeader title={monthLabel} />
+		<View style={styles.calendarHeader}>
+			<SectionHeader title={monthLabel} />
+			<View style={styles.calendarNavigation}>
+				<Pressable onPress={() => setMonthOffset((offset) => offset - 1)} style={styles.calendarMonthButton} accessibilityRole="button" accessibilityLabel="Show previous month"><ChevronLeft width={20} height={20} color={colors.text} /></Pressable>
+				<Pressable disabled={monthOffset === 0} onPress={() => setMonthOffset((offset) => Math.min(0, offset + 1))} style={[styles.calendarMonthButton, monthOffset === 0 && { opacity: .3 }]} accessibilityRole="button" accessibilityLabel="Show next month"><ChevronRight width={20} height={20} color={colors.text} /></Pressable>
+			</View>
+		</View>
 		<View>
 			<View style={styles.statRow}>
 				<HeroStat value={String(activeCount)} label={activeCount === 1 ? 'Active day' : 'Active days'} colors={colors} />
@@ -345,7 +353,7 @@ function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits:
 				const dayVisits = visitsByDate.get(dateKey(day));
 				const sets = dayVisits?.sets ?? 0;
 				const goalMet = weekGoalMet[rowIndex];
-				const isToday = dateKey(day) === dateKey(month);
+				const isToday = dateKey(day) === dateKey(today);
 				const selectDay = () => {
 					if (!dayVisits) return;
 					if (dayVisits.visits.length === 1) router.push({ pathname: '/history-detail', params: { workoutId: dayVisits.visits[0].workout.id } }, { withAnchor: true });
@@ -360,9 +368,9 @@ function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits:
 				{goal != null && <View style={styles.legendScale}><View style={[styles.legendSwatch, { backgroundColor: goalGold }]} /><Text style={[styles.legendText, { color: colors.subtleText }]}>Goal week</Text></View>}
 			</View>
 		</View>
-		<Modal visible={workoutPickerVisible} transparent animationType="none" onRequestClose={() => setWorkoutPicker(null)}>
+		<Modal {...workoutPickerSheet.modal} transparent animationType="none" onRequestClose={() => setWorkoutPicker(null)}>
 			<View style={styles.sheetOverlay}>
-				{workoutPicker && <>
+				{workoutPicker && workoutPickerSheet.open && <>
 				<Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.sheetBackdrop}>
 					<Pressable onPress={() => setWorkoutPicker(null)} style={StyleSheet.absoluteFill} accessibilityLabel="Close workout picker" />
 				</Animated.View>
@@ -402,6 +410,8 @@ const styles = StyleSheet.create({
 	chart: { height: 140, marginTop: 14, marginHorizontal: -6 }, graphArea: { flex: 1 }, lineGraph: { ...StyleSheet.absoluteFill },
 	axisRow: { marginTop: 6, flexDirection: 'row', justifyContent: 'space-between' }, axisLabel: { fontSize: 9, fontWeight: '800' },
 	emptyCopy: { marginVertical: 16, fontSize: 13, lineHeight: 19, fontWeight: '600' },
+	calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+	calendarNavigation: { flexDirection: 'row', marginTop: 18 }, calendarMonthButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 	calendarWeekday: { marginBottom: 6, textAlign: 'center', fontSize: 10, fontWeight: '900' },
 	calendarGrid: { gap: calendarGap }, calendarRow: { flexDirection: 'row', gap: calendarGap }, calendarCell: { borderRadius: 8, borderCurve: 'continuous', paddingTop: 4, paddingLeft: 5 }, calendarDay: { fontSize: 11, lineHeight: 13, fontWeight: '800', includeFontPadding: false }, calendarCellOutside: { opacity: 0 }, calendarCellPressed: { opacity: .72, transform: [{ scale: .93 }] },
 	legend: { marginTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, legendScale: { flexDirection: 'row', alignItems: 'center', gap: 4 }, legendSwatch: { width: 10, height: 10, borderRadius: 3 }, legendText: { marginHorizontal: 2, fontSize: 10, fontWeight: '800' },

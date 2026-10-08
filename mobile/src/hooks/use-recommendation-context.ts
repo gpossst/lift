@@ -19,19 +19,23 @@ function contextFromOnboarding(value: unknown): RecommendationContext {
 
 // ponytail: in-memory only, so a cold start offline still falls back to onboarding; persist it if that matters.
 let lastPreferences: RecommendationPreferences | undefined;
+// The last resolved context, so a screen opened right after the split picker starts ready instead of re-ranking.
+let lastContext: RecommendationContext | undefined;
+const profileTimeoutMs = 3000;
 
 /** Both the exercise planner and logger resolve the same saved preferences, including offline fallback. */
 export function useRecommendationContext() {
-  const [state, setState] = useState<{ context: RecommendationContext; ready: boolean }>({ context: {}, ready: false });
+  const [state, setState] = useState<{ context: RecommendationContext; ready: boolean }>(() => ({ context: lastContext ?? {}, ready: Boolean(lastContext) }));
   useFocusEffect(useCallback(() => {
     let active = true;
     void (async () => {
       const onboarding = contextFromOnboarding(await takePendingOnboarding().catch(() => null));
-      const profile = await getProfile().catch(() => null);
+      // A hanging request counts as offline; the local setup is used instead.
+      const profile = await Promise.race([getProfile(), new Promise<never>((_, reject) => setTimeout(reject, profileTimeoutMs))]).catch(() => null);
       if (!active) return;
       if (profile) lastPreferences = profile.recommendationPreferences;
       const preferences = (profile ? profile.recommendationPreferences : lastPreferences) ?? {};
-      setState({ ready: true, context: {
+      const context: RecommendationContext = {
         goals: preferences.goals ?? onboarding.goals,
         experience: preferences.experience ?? onboarding.experience,
         favoriteExerciseIds: preferences.favoriteExerciseIds ?? onboarding.favoriteExerciseIds,
@@ -39,7 +43,10 @@ export function useRecommendationContext() {
         trainingDays: preferences.trainingDays ?? onboarding.trainingDays,
         sessionMinutes: preferences.sessionMinutes ?? onboarding.sessionMinutes,
         weightLb: preferences.weightLb ?? onboarding.weightLb,
-      } });
+      };
+      lastContext = context;
+      // An unchanged refetch keeps the same object so plans don't recompute or re-animate.
+      setState((current) => current.ready && JSON.stringify(current.context) === JSON.stringify(context) ? current : { ready: true, context });
     })();
     return () => { active = false; };
   }, []));

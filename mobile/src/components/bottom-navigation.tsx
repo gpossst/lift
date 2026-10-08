@@ -31,8 +31,9 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
   const hidden = activeRoute !== 'start' && (!tabs.some((tab) => tab.route === activeRoute) || pathname.startsWith('/history') || pathname.startsWith('/settings/') || pathname.startsWith('/stats/'));
   // Reappearing mid-pop shrinks the scene and squashes the closing page, so wait out the transition.
   const [revealed, setRevealed] = useState(!hidden);
+  if (hidden && revealed) setRevealed(false);
   useEffect(() => {
-    if (hidden) { setRevealed(false); return; }
+    if (hidden) return;
     const timer = setTimeout(() => setRevealed(true), 350);
     return () => clearTimeout(timer);
   }, [hidden]);

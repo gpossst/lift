@@ -218,6 +218,13 @@ const own = await (await call('/v1/sync', { headers: { Cookie: oneCookie } })).j
 const other = await (await call('/v1/sync', { headers: { Cookie: twoCookie } })).json();
 if (own.changes?.length !== 1 || other.changes?.length !== 0) throw new Error('Authenticated account data crossed Better Auth users.');
 
+const postFeedback = (cookie) => call('/v1/feedback', { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ kind: 'feature', body: 'A feedback limit test' }) });
+const feedbackPosts = await Promise.all([postFeedback(oneCookie), postFeedback(oneCookie), postFeedback(oneCookie)]);
+if (feedbackPosts.filter((response) => response.status === 200).length !== 2 || feedbackPosts.filter((response) => response.status === 429).length !== 1) throw new Error('Concurrent feedback posts exceeded the two-per-day limit.');
+if ((await postFeedback(twoCookie)).status !== 200) throw new Error('Feedback limit crossed accounts.');
+await DB.prepare('UPDATE site_feedback SET created_at = ? WHERE user_id = ?').bind(Math.floor(Date.now() / 1000) - 86400, oneId).run();
+if ((await postFeedback(oneCookie)).status !== 200) throw new Error('Feedback limit did not reset after 24 hours.');
+
 const deleted = await call('/api/auth/delete-user', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ password: 'correct horse battery staple' }) });
 if (deleted.status !== 200 || await DB.prepare("SELECT 1 FROM user WHERE email = 'two@lift.test'").first() || await DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(twoId).first()) throw new Error('Better Auth account deletion did not remove identity and app data.');
 if (await DB.prepare('SELECT 1 FROM friend_workout_comments WHERE user_id = ?').bind(twoId).first()) throw new Error('Account deletion left friend comments behind.');

@@ -39,7 +39,7 @@ export default function FriendsScreen() {
   const [hasChosenDisplayName, setHasChosenDisplayName] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [showFriends, setShowFriends] = useState(false);
-  const friendsSheetVisible = useSheetPresence(showFriends);
+  const friendsSheet = useSheetPresence(showFriends);
   const nameDirtyRef = useRef(false);
   const [savingName, setSavingName] = useState(false);
 
@@ -144,9 +144,9 @@ export default function FriendsScreen() {
       </Animated.View> : loading && !friends ? <View style={styles.loading}><FlexAnimation style={styles.loadingAnimation} /></View> : hasChosenDisplayName && friends?.count === 0 && !isDemoDataEnabled ? <Animated.View entering={FadeIn.duration(220)} style={styles.empty}><EmptyArt name="friends" /><Text style={[styles.emptyTitle, { color: colors.text }]}>Your feed is waiting</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Open your friends list to add a friend and see their lifting highlights.</Text></Animated.View> : hasChosenDisplayName && <Animated.View entering={FadeIn.duration(220)}><FriendFeed records={records} onChange={setRecords} ownDisplayName={displayName} /></Animated.View>}
     </ScrollView>
 
-    <Modal visible={friendsSheetVisible} transparent animationType="none" onRequestClose={() => setShowFriends(false)}>
+    <Modal {...friendsSheet.modal} transparent animationType="none" onRequestClose={() => setShowFriends(false)}>
       <View style={[styles.modalOverlay, styles.clearOverlay]}>
-        {showFriends && <>
+        {friendsSheet.open && <>
         <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.friendsBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFriends(false)} accessibilityLabel="Close friends list" />
         </Animated.View>
@@ -181,6 +181,7 @@ function FriendFeed({ records, onChange, ownDisplayName }: { records: FriendPers
   const { colors } = useAppearance();
   const exercises = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
   const [selected, setSelected] = useState<FriendPersonalRecord | null>(null);
+  const commentsSheet = useSheetPresence(!!selected);
   const [comments, setComments] = useState<FriendComment[]>([]);
   const [demoComments, setDemoComments] = useState(buildDemoFriendComments);
   const [draft, setDraft] = useState('');
@@ -259,10 +260,10 @@ function FriendFeed({ records, onChange, ownDisplayName }: { records: FriendPers
     </View>;
   })}
     {commentError && !selected && <Text accessibilityRole="alert" style={styles.commentError}>{commentError}</Text>}
-    <Modal visible={!!selected} transparent animationType="none" onRequestClose={() => setSelected(null)}>
-      <KeyboardAvoidingView style={[styles.modalOverlay, styles.clearOverlay]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Animated.View entering={FadeIn.duration(180)} style={styles.friendsBackdrop}><Pressable style={StyleSheet.absoluteFill} onPress={() => setSelected(null)} accessibilityLabel="Close comments" /></Animated.View>
-        <AnimatedSafeAreaView entering={SlideInDown.duration(280)} edges={['bottom']} style={[styles.sheet, styles.commentsSheet, { backgroundColor: colors.background }]}>
+    <Modal {...commentsSheet.modal} transparent animationType="none" onRequestClose={() => setSelected(null)}>
+      {commentsSheet.open && <KeyboardAvoidingView style={[styles.modalOverlay, styles.clearOverlay]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.friendsBackdrop}><Pressable style={StyleSheet.absoluteFill} onPress={() => setSelected(null)} accessibilityLabel="Close comments" /></Animated.View>
+        <AnimatedSafeAreaView entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} edges={['bottom']} style={[styles.sheet, styles.commentsSheet, { backgroundColor: colors.background }]}>
           <View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
           <View style={styles.sheetHeader}>
             <View><Text style={[styles.sheetTitle, { color: colors.text }]}>Comments</Text><Text style={[styles.sheetCount, { color: colors.mutedText }]}>{selected ? `${selected.displayName}'s workout` : ''}</Text></View>
@@ -278,7 +279,7 @@ function FriendFeed({ records, onChange, ownDisplayName }: { records: FriendPers
           {commentError && <Text accessibilityRole="alert" style={styles.commentError}>{commentError}</Text>}
           <View style={styles.commentComposer}><View style={[styles.commentField, { backgroundColor: colors.surface }]}><TextInput value={draft} onChangeText={setDraft} maxLength={280} multiline placeholder="Add a comment" placeholderTextColor={colors.mutedText} style={[styles.commentInput, { color: colors.text }]} accessibilityLabel="Add a comment" /></View><Pressable onPress={() => void submitComment()} disabled={!draft.trim() || !!busy} style={[styles.sendButton, { backgroundColor: draft.trim() ? colors.accent : colors.surfaceStrong }]} accessibilityRole="button" accessibilityLabel="Post comment">{busy === 'comment' ? <ActivityIndicator color={colors.accentText} /> : <Send width={19} height={19} color={draft.trim() ? colors.accentText : colors.mutedText} strokeWidth={2.4} />}</Pressable></View>
         </AnimatedSafeAreaView>
-      </KeyboardAvoidingView>
+      </KeyboardAvoidingView>}
     </Modal>
   </View>;
 }

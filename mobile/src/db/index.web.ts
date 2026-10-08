@@ -114,11 +114,16 @@ export function getWorkoutSplitDefinition(split: WorkoutSplit) {
 
 function syncDemoWorkoutData() {
   const userSets = read().filter((set) => !set.workoutId.startsWith(demoWorkoutIdPrefix));
-  if (!isDemoDataEnabled) {
-    write(userSets);
-    return;
+  const userWorkouts = readWorkouts().filter((workout) => !workout.id.startsWith(demoWorkoutIdPrefix));
+  const demoSets = isDemoDataEnabled ? buildDemoWorkoutSets(exerciseCatalog) : [];
+  const demoWorkouts = new Map<string, StoredWorkout>();
+  for (const set of demoSets) {
+    const workout = demoWorkouts.get(set.workoutId);
+    if (!workout) demoWorkouts.set(set.workoutId, { id: set.workoutId, split: 'push', createdAt: set.completedAt, endedAt: set.completedAt });
+    else if (set.completedAt > workout.endedAt!) workout.endedAt = set.completedAt;
   }
-  write([...userSets, ...buildDemoWorkoutSets(exerciseCatalog)]);
+  writeWorkouts([...userWorkouts, ...demoWorkouts.values()]);
+  write([...userSets, ...demoSets]);
 }
 
 syncDemoWorkoutData();

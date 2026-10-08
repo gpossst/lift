@@ -111,7 +111,7 @@ const ratings = history.flatMap(({ workout }) => native.getWorkoutMuscleRatings(
 const expectedSplit = getRecommendedWorkoutSplit(history.map(({ workout, sets }) => ({ split: workout.split, completedAt: workout.endedAt, sets })), now, ratings);
 queries = 0;
 assert.equal(native.getRecommendedWorkoutSplit(now), expectedSplit);
-assert.equal(queries, 3, 'split recommendations use bulk ratings, visit summaries, and custom splits only');
+assert.equal(queries, 4, 'split recommendations use bulk ratings, visit summaries, active custom splits, and historical split definitions only');
 // Weight progression must opt into completed history on both adapters.
 const orphan = { exerciseId: first.id, workoutId: 'orphan', setNumber: 1, weight: 300, reps: 10, completedAt: now };
 values.set('lift-preview-sets', JSON.stringify([...sets, orphan]));
@@ -128,4 +128,4 @@ for (const adapter of [web, native]) {
   assert.equal(finished.some((set) => set.workoutId === 'epoch'), true, 'epoch completion counts as finished');
 }
 connection.close();
-console.log('History regression passed: 101 completed visits; one web history read / one native query per aggregate; three queries for split recommendations.');
+console.log('History regression passed: 101 completed visits; one web history read / one native query per aggregate; four queries for split recommendations.');

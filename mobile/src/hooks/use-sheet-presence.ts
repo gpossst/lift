@@ -4,17 +4,20 @@ import { useEffect, useState } from 'react';
 const SHEET_EXIT_MS = 240;
 
 /**
- * RN Modal unmounts its children instantly, so Reanimated `exiting` never runs.
- * Use the return value as the Modal's `visible` and render the sheet only while
- * `open`: the Modal stays up long enough for the exit animation to play.
+ * RN Modal unmounts its children instantly, so Reanimated `exiting` never runs,
+ * and it presents natively after mount, so `entering` can finish off-screen and
+ * the sheet pops in. Spread `modal` onto the Modal and render the sheet only
+ * while `open`: content mounts once the Modal is on screen and stays up long
+ * enough for the exit animation to play.
  */
 export function useSheetPresence(open: boolean) {
   const [visible, setVisible] = useState(open);
+  const [presented, setPresented] = useState(false);
   if (open && !visible) setVisible(true);
   useEffect(() => {
     if (open) return;
-    const timer = setTimeout(() => setVisible(false), SHEET_EXIT_MS);
+    const timer = setTimeout(() => { setVisible(false); setPresented(false); }, SHEET_EXIT_MS);
     return () => clearTimeout(timer);
   }, [open]);
-  return open || visible;
+  return { modal: { visible: open || visible, onShow: () => setPresented(true) }, open: open && presented };
 }

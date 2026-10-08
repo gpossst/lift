@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Clock, Search } from 'react-native-feather';
+import Svg, { Circle, Polyline } from 'react-native-svg';
 import { router } from 'expo-router';
 
 import { useAppearance } from '@/components/appearance-provider';
@@ -12,7 +13,8 @@ import { MuscleTrendRow } from '@/components/muscle-trend-row';
 import { ProgressRing, SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
 import { ExerciseSearchSheet } from '@/components/exercise-search-sheet';
-import { loadStatsExercises } from '@/components/stats-exercise-row';
+import { ExerciseThumb } from '@/components/exercise-thumb';
+import { formatSet, loadStatsExercises, type StatsExercise } from '@/components/stats-exercise-row';
 import { getCompletedWorkoutExerciseDetails, getExercises, getWorkoutVisits } from '@/db';
 import { compareCoverage, coverageDays, coverageStatusColor, coverageStatusLabel, coverageSummary, muscleCoverage, trainingOverview, trainingTotalLabel, weeklyChartExtrema, weeklyTrainingHistory } from '@/lib/training-overview';
 import { useCoveragePlan } from '@/hooks/use-coverage-plan';
@@ -43,7 +45,7 @@ export default function StatsScreen() {
   const [metric, setMetric] = useState<Metric>('workouts');
   const [timeWindow, setTimeWindow] = useState<4 | 13 | 26 | 52 | null>(4);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
-  const [exerciseSheet, setExerciseSheet] = useState<'closed' | 'search'>('closed');
+  const [exerciseSheet, setExerciseSheet] = useState<'closed' | 'search' | 'list'>('closed');
   const load = useCallback(() => {
     const visits = getWorkoutVisits();
     const details = getCompletedWorkoutExerciseDetails();
@@ -69,6 +71,7 @@ export default function StatsScreen() {
     return { id, name, planned: planned.length, onTrack: planned.filter((muscle) => coverageByMuscle.get(muscle)?.status === 'onTrack').length };
   });
   const visibleMuscles = coverage.slice(0, 5);
+  const recentExercises = data.exercises.filter((exercise) => exercise.recentSessions > 0).sort((a, b) => b.recentSessions - a.recentSessions).slice(0, 3);
   const firstWorkoutWeek = data.history.findIndex((week) => week.workouts > 0);
   const chartWeeks = timeWindow === null ? data.history.slice(firstWorkoutWeek < 0 ? -4 : firstWorkoutWeek) : data.history.slice(-timeWindow);
   const chartInner = screenWidth - 40 - 36;
@@ -107,6 +110,11 @@ export default function StatsScreen() {
           : <View><EmptyArt name="chart" width={120} /><Text style={[styles.emptyCopy, styles.centered, { color: colors.mutedText }]}>Train a few sessions to see how each muscle is trending.</Text></View>}
       </View>
 
+      {recentExercises.length > 0 && <>
+        <SectionHeader title="Recent exercises" action={{ label: 'See all', onPress: () => setExerciseSheet('list') }} />
+        <View style={styles.recentList}>{recentExercises.map((item) => <RecentExerciseCard key={item.id} item={item} />)}</View>
+      </>}
+
       <SectionHeader title="Training" />
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <SegmentedPicker options={metrics} selected={metric} onSelect={setMetric} compact />
@@ -129,6 +137,31 @@ export default function StatsScreen() {
     <ExerciseSearchSheet visible={exerciseSheet !== 'closed'} focus={exerciseSheet === 'search'} exercises={data.exercises} onClose={() => setExerciseSheet('closed')} />
     <CoverageTrendSheet coverage={selectedMuscle ? coverageByMuscle.get(selectedMuscle) ?? null : null} weeks={data.overview.weeks} onClose={() => setSelectedMuscle(null)} />
   </SafeAreaView>;
+}
+
+/** Most-trained exercise of the last 4 weeks with a line of its recent per-session progress (est. 1RM, or best reps for bodyweight). */
+function RecentExerciseCard({ item }: { item: StatsExercise }) {
+  const { colors } = useAppearance();
+  const { width: screenWidth } = useWindowDimensions();
+  const width = screenWidth - 40 - 32;
+  const low = Math.min(...item.trend);
+  const span = Math.max(...item.trend) - low;
+  const points = item.trend.map((value, index) => ({ x: 6 + index * (width - 12) / Math.max(1, item.trend.length - 1), y: span ? 58 - (value - low) / span * 52 : 32 }));
+  const change = item.trend.length >= 2 && item.trend[0] > 0 ? Math.round((item.trend.at(-1)! - item.trend[0]) / item.trend[0] * 100) : null;
+  return <Pressable onPress={() => router.push({ pathname: '/stats/progress', params: { exerciseId: item.id } })} style={({ pressed }) => [styles.recentCard, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${item.name}, ${item.recentSessions} ${item.recentSessions === 1 ? 'session' : 'sessions'} in the last 4 weeks${change === null ? '' : `, ${change >= 0 ? 'up' : 'down'} ${Math.abs(change)}% over the last ${item.trend.length} sessions`}. View progress`}>
+    <View style={styles.recentHeader}>
+      <ExerciseThumb exercise={item} size={36} />
+      <View style={styles.recentCopy}>
+        <Text style={[styles.recentName, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
+        <Text style={[styles.recentMeta, { color: colors.mutedText }]} numberOfLines={1}>{item.topSet ? `${formatSet(item.topSet)} · ` : ''}{item.recentSessions} {item.recentSessions === 1 ? 'session' : 'sessions'} in 4 weeks</Text>
+      </View>
+      {change !== null && <Text style={[styles.recentChange, { color: change < 0 ? '#FF5151' : colors.accent }]}>{change > 0 ? '+' : ''}{change}%</Text>}
+    </View>
+    {points.length >= 2 ? <Svg width={width} height={64} style={styles.recentChart} accessibilityElementsHidden>
+      <Polyline points={points.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke={colors.accent} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      {points.map(({ x, y }, index) => <Circle key={index} cx={x} cy={y} r={index === points.length - 1 ? 5 : 3.5} fill={index === points.length - 1 ? colors.accent : colors.text} stroke={colors.surface} strokeWidth="2" />)}
+    </Svg> : <Text style={[styles.recentEmpty, { color: colors.mutedText }]}>Log another session to see a trend.</Text>}
+  </Pressable>;
 }
 
 /** Legend that doubles as the status breakdown; gathering only appears while it applies. */
@@ -165,5 +198,10 @@ const styles = StyleSheet.create({
   barTrack: { width: '100%', height: 100, justifyContent: 'flex-end' },
   bar: { width: '100%', borderRadius: 6, borderCurve: 'continuous' }, weekLabel: { marginTop: 8, fontSize: 9, fontWeight: '800' },
   rangePicker: { marginTop: 8 },
+  recentList: { gap: 10 }, recentCard: { padding: 16, borderRadius: 20, borderCurve: 'continuous' },
+  recentHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, recentCopy: { flex: 1 },
+  recentName: { fontSize: 15, fontWeight: '800', letterSpacing: -.3 }, recentMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  recentChange: { fontSize: 14, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  recentChart: { marginTop: 12 }, recentEmpty: { marginTop: 12, fontSize: 12, fontWeight: '600' },
   emptyCopy: { marginVertical: 16, fontSize: 13, lineHeight: 19, fontWeight: '600' }, centered: { textAlign: 'center' },
 });

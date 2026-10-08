@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { authClient, needsOnboarding, submitOnboarding, type Onboarding } from '#/lib/auth'
 import { experienceLabel, OnboardingSteps } from '#/components/onboarding'
@@ -8,17 +8,22 @@ export const Route = createFileRoute('/')({ component: Home })
 
 const TESTFLIGHT = 'https://testflight.apple.com/join/wcj1WUHE'
 
-// Each feature row pairs one App Store screenshot (public/home) with what it shows; tone colours the heading.
+// Each feature row pairs one app clip (public/home) with what it shows; tone colours the heading.
 const features: [string, string, string, string][] = [
-  ['04c-set-logging', 'red', 'Log fast', 'Sets, reps, weight, and effort in a swipe, without breaking the flow of a workout.'],
-  ['02-muscle-coverage', 'blue', 'Recover intelligently', 'Recent muscle fatigue shapes what Lift suggests next, until your body catches up.'],
-  ['05-exercise-progress', 'ink', 'Own the history', 'Every set stays with your account, consistent across devices and always exportable.'],
+  ['log-workout', 'red', 'Log fast', 'Sets, reps, weight, and effort in a swipe, without breaking the flow of a workout.'],
+  ['timer', 'ink', 'Rest on cue', 'A rest timer starts after every set, and a tap adds or trims 15 seconds.'],
+  ['fatigue-input', 'blue', 'Recover intelligently', 'Recent muscle fatigue shapes what Lift suggests next, until your body catches up.'],
+  ['active-diagram', 'red', 'See what you’ve hit', 'The active workout maps every muscle you’ve trained so far, and what’s still waiting.'],
+  ['exercise-progress', 'ink', 'Own the history', 'Every set stays with your account, consistent across devices and always exportable.'],
 ]
 
-// A screenshot in a phone frame that always tilts toward the mouse; --mx/--my also place the hover sheen.
-function Phone(props: ComponentProps<'img'>) {
+// A looping app clip (public/home/<clip>.mp4, first frame as <clip>.jpg) in a phone frame that always tilts toward the mouse; --mx/--my also place the hover sheen.
+function Phone({ clip, alt }: { clip: string; alt: string }) {
   const ref = useRef<HTMLSpanElement>(null)
+  const video = useRef<HTMLVideoElement>(null)
   useEffect(() => {
+    // Reduced motion: hold on the opening frame instead of looping.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) video.current?.pause()
     const clamp = (n: number) => Math.max(-1, Math.min(1, n))
     function tilt(event: globalThis.PointerEvent) {
       const el = ref.current
@@ -38,7 +43,7 @@ function Phone(props: ComponentProps<'img'>) {
     window.addEventListener('pointermove', tilt)
     return () => window.removeEventListener('pointermove', tilt)
   }, [])
-  return <span ref={ref} className="phone"><img {...props} /></span>
+  return <span ref={ref} className="phone"><video ref={video} src={`/home/${clip}.mp4`} poster={`/home/${clip}.jpg`} aria-label={alt} role="img" width={496} height={1080} autoPlay muted loop playsInline /></span>
 }
 
 type View = 'onboarding' | 'welcome' | 'signup' | 'signin' | 'forgot' | 'reset' | 'two-factor' | 'account'
@@ -106,18 +111,18 @@ function Home() {
           <a className="chunky secondary" href="/feedback">Feedback</a>
         </div>
         <div className="hero-phones">
-          <Phone src="/home/01-new-workout.webp" alt="Lift: pick what to train today" width={603} height={1311} />
-          <Phone src="/home/03-home.webp" alt="Lift home screen with a new PR, streak, and training calendar" width={603} height={1311} fetchPriority="high" />
-          <Phone src="/home/06-workout-complete.webp" alt="Lift workout recap" width={603} height={1311} />
+          <Phone clip="start-workout" alt="Lift: pick what to train today and start a workout" />
+          <Phone clip="pr-and-overview" alt="Lift celebrating a new PR, then the workout recap" />
+          <Phone clip="stats-page" alt="Lift stats: muscle coverage, splits, and weekly training" />
         </div>
       </section>
 
-      {features.map(([shot, tone, title, body], index) => <section key={shot} className={`feature${index % 2 ? ' is-flipped' : ''}`} data-tone={tone}>
+      {features.map(([clip, tone, title, body], index) => <section key={clip} className={`feature${index % 2 ? ' is-flipped' : ''}`} data-tone={tone}>
         <div>
           <h2>{title}</h2>
           <p>{body}</p>
         </div>
-        <Phone src={`/home/${shot}.webp`} alt={`Lift: ${title.toLowerCase()}`} width={603} height={1311} loading="lazy" />
+        <Phone clip={clip} alt={`Lift: ${title.toLowerCase()}`} />
       </section>)}
 
       <section className="section closing">

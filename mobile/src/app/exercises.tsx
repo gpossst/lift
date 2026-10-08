@@ -4,11 +4,11 @@ import { ui } from '@/styles/primitives';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Check, ChevronDown, ChevronRight, Home, Plus, Search, X } from 'react-native-feather';
-import Animated, { FadeIn, FadeOut, FadeOutLeft, LinearTransition, SlideInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutLeft, LinearTransition, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { endWorkout, getExerciseRecommendations, getRankedExercises, getExercises, getWorkoutSplitDefinition, getWorkoutVisitExercises, getWorkoutVisitSummary, recordRecommendationFeedback, type Exercise, type ExerciseRecommendation, type WorkoutSplit, type WorkoutVisitExercise, type WorkoutVisitSummary } from '@/db';
 import { syncWorkoutData } from '@/lib/cloud-sync';
 import { searchExercises } from '@/lib/exercise-search';
@@ -18,6 +18,7 @@ import { MuscleCoverageGraphic } from '@/components/split-body-graphic';
 import { workoutSplitLabel } from '@/lib/workout-split-label';
 import { useAppearance } from '@/components/appearance-provider';
 import { EmptyArt } from '@/components/empty-art';
+import { useSheetPresence } from '@/hooks/use-sheet-presence';
 
 const exercises = getExercises();
 type Sort = 'ranked' | 'az' | 'area' | 'equipment';
@@ -43,7 +44,7 @@ export default function ExerciseLibraryScreen() {
   const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
   const [fallbackWorkoutId] = useState(() => `workout-${Date.now()}`);
   const [sheetHeight, setSheetHeight] = useState(0);
-  const { context: recommendationContext } = useRecommendationContext();
+  const { context: recommendationContext, ready: contextReady } = useRecommendationContext();
   const splitDefinition = useMemo(() => split ? getWorkoutSplitDefinition(split as WorkoutSplit) : null, [split]);
   const workoutSplit = splitDefinition ? split as WorkoutSplit : undefined;
   const recommendationExposure = useRef<{
@@ -70,9 +71,9 @@ export default function ExerciseLibraryScreen() {
   const coverage = useMemo(() => getWorkoutCoverage(workoutExerciseIds), [workoutExerciseIds]);
   const recommendations = useMemo(() => {
     void workoutExerciseKey; void workoutSetRevision;
-    if (!showWorkoutRecommendations || !workoutId || !workoutSplit) return [];
+    if (!contextReady || !showWorkoutRecommendations || !workoutId || !workoutSplit) return [];
     return getExerciseRecommendations(workoutId, workoutSplit, 3, { ...recommendationContext, excludedExerciseIds: skippedExerciseIds });
-  }, [recommendationContext, skippedExerciseIds, showWorkoutRecommendations, workoutExerciseKey, workoutId, workoutSetRevision, workoutSplit]);
+  }, [contextReady, recommendationContext, skippedExerciseIds, showWorkoutRecommendations, workoutExerciseKey, workoutId, workoutSetRevision, workoutSplit]);
   const rankedExerciseScores = useMemo(() => {
     void workoutExerciseKey; void workoutSetRevision;
     if (!showWorkoutRecommendations || !workoutId || !workoutSplit) return new Map<string, number>();
@@ -186,6 +187,8 @@ export default function ExerciseLibraryScreen() {
 
   const doneCount = workoutExercises.length;
   return <SafeAreaView onTouchStart={() => { if (openSwipeId) setOpenSwipeId(null); }} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+    {/* Held until the plan's context resolves (preloaded by the split picker) so it never re-ranks on screen. */}
+    {contextReady && <Animated.View key={workoutId} entering={FadeInDown.duration(320)} style={styles.content}>
     <ScrollView style={styles.recommendationScroll} contentContainerStyle={[styles.recommendationContent, { paddingBottom: sheetHeight + 31 }]} showsVerticalScrollIndicator={false}>
       <View style={styles.heroRow}>
         <Text style={[styles.heroTitle, { color: colors.text }]}>Active workout</Text>
@@ -206,8 +209,9 @@ export default function ExerciseLibraryScreen() {
       </Animated.View>
     </ScrollView>
 
-    <ExerciseCatalog visible={catalogOpen} query={query} onQueryChange={setQuery} muscleOptions={muscleOptions} muscleFilters={muscleFilters} onMuscleFiltersChange={setMuscleFilters} equipmentOptions={equipmentOptions} equipmentFilters={equipmentFilters} onEquipmentFiltersChange={setEquipmentFilters} results={results} hasActiveFilters={hasActiveFilters} sort={sort} showSorts={showSorts} onToggleSorts={() => setShowSorts((visible) => !visible)} onSort={(next) => { setSort(next); setShowSorts(false); }} onClear={() => { setQuery(''); setMuscleFilters([]); setEquipmentFilters([]); }} onChoose={chooseExercise} onClose={() => { setShowSorts(false); setCatalogOpen(false); }} />
     <CurrentVisit visit={visit} coverage={coverage} onEnd={finishVisit} onHeight={setSheetHeight} />
+    </Animated.View>}
+    <ExerciseCatalog visible={catalogOpen} query={query} onQueryChange={setQuery} muscleOptions={muscleOptions} muscleFilters={muscleFilters} onMuscleFiltersChange={setMuscleFilters} equipmentOptions={equipmentOptions} equipmentFilters={equipmentFilters} onEquipmentFiltersChange={setEquipmentFilters} results={results} hasActiveFilters={hasActiveFilters} sort={sort} showSorts={showSorts} onToggleSorts={() => setShowSorts((visible) => !visible)} onSort={(next) => { setSort(next); setShowSorts(false); }} onClear={() => { setQuery(''); setMuscleFilters([]); setEquipmentFilters([]); }} onChoose={chooseExercise} onClose={() => { setShowSorts(false); setCatalogOpen(false); }} />
   </SafeAreaView>;
 }
 
@@ -273,15 +277,15 @@ function SectionLabel({ title, hint }: { title: string; hint?: string }) {
 function ExerciseCatalog({ visible, query, onQueryChange, muscleOptions, muscleFilters, onMuscleFiltersChange, equipmentOptions, equipmentFilters, onEquipmentFiltersChange, results, hasActiveFilters, sort, showSorts, onToggleSorts, onSort, onClear, onChoose, onClose }: { visible: boolean; query: string; onQueryChange: (value: string) => void; muscleOptions: string[]; muscleFilters: string[]; onMuscleFiltersChange: (values: string[]) => void; equipmentOptions: string[]; equipmentFilters: string[]; onEquipmentFiltersChange: (values: string[]) => void; results: Exercise[]; hasActiveFilters: boolean; sort: Sort; showSorts: boolean; onToggleSorts: () => void; onSort: (sort: Sort) => void; onClear: () => void; onChoose: (exercise: Exercise) => void; onClose: () => void }) {
   const { colors } = useAppearance();
   const renderItem = useCallback(({ item }: { item: Exercise }) => <ExerciseRow exercise={item} onChoose={onChoose} />, [onChoose]);
-  return <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}><View style={styles.sheetOverlay}><Animated.View entering={FadeIn.duration(180)} style={styles.sheetBackdrop}><Pressable onPress={onClose} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close exercise library" /></Animated.View><Animated.View entering={SlideInDown.duration(280)} style={[styles.sheet, { backgroundColor: colors.background }]}><View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} /><View style={styles.sheetHeader}><View><Text style={[styles.sheetTitle, { color: colors.text }]}>Exercise library</Text><Text style={[styles.sheetSubtitle, { color: colors.mutedText }]}>Find your own movement</Text></View><Pressable onPress={onClose} hitSlop={10} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close"><X width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable></View>
+  const sheet = useSheetPresence(visible);
+  return <Modal {...sheet.modal} transparent animationType="none" onRequestClose={onClose}>{sheet.open && <View style={styles.sheetOverlay}><Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.sheetBackdrop}><Pressable onPress={onClose} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close exercise library" /></Animated.View><Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} style={[styles.sheet, { backgroundColor: colors.background }]}><View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} /><View style={styles.sheetHeader}><View><Text style={[styles.sheetTitle, { color: colors.text }]}>Exercise library</Text><Text style={[styles.sheetSubtitle, { color: colors.mutedText }]}>Find your own movement</Text></View><Pressable onPress={onClose} hitSlop={10} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close"><X width={20} height={20} color={colors.text} strokeWidth={2.5} /></Pressable></View>
     <View style={styles.searchWrap}><ExerciseSearchControls query={query} onQueryChange={onQueryChange} muscleOptions={muscleOptions} muscleFilters={muscleFilters} onMuscleFiltersChange={onMuscleFiltersChange} equipmentOptions={equipmentOptions} equipmentFilters={equipmentFilters} onEquipmentFiltersChange={onEquipmentFiltersChange} /></View>
     <FlatList data={results} keyExtractor={(exercise) => exercise.id} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.catalogList} ListHeaderComponentStyle={styles.listHeaderContainer} ListHeaderComponent={<View style={styles.listHeader}><Text style={[ui.eyebrow, { color: colors.mutedText }]}>{hasActiveFilters ? `${results.length} ${results.length === 1 ? 'MOVEMENT' : 'MOVEMENTS'}` : 'ALL EXERCISES'}</Text><>{query.trim() ? <Text style={[styles.sortValue, { color: colors.mutedText }]}>Best match</Text> : <Pressable onPress={onToggleSorts} hitSlop={6} style={styles.sortButton} accessibilityRole="button" accessibilityLabel={`Sort by ${sortLabels[sort]}`} accessibilityState={{ expanded: showSorts }}><Text style={[styles.sortPrefix, { color: colors.subtleText }]}>SORT:</Text><Text style={[styles.sortValue, { color: colors.text }]}>{sortLabels[sort]}</Text><ChevronDown width={14} height={14} color={colors.text} strokeWidth={2.6} /></Pressable>}</>{!query.trim() && showSorts && <View style={[styles.sortMenu, { backgroundColor: colors.background, borderColor: colors.surfaceStrong }]}>{(Object.keys(sortLabels) as Sort[]).map((option) => <Pressable key={option} onPress={() => onSort(option)} style={styles.sortOption} accessibilityRole="button" accessibilityState={{ selected: option === sort }}><Text style={[styles.sortOptionText, { color: colors.mutedText }, option === sort && { color: colors.text }]}>{sortLabels[option]}</Text>{option === sort && <Check width={16} height={16} color={colors.text} strokeWidth={3} />}</Pressable>)}</View>}</View>} ListEmptyComponent={<EmptyState query={query} onClear={onClear} />} renderItem={renderItem} />
-  </Animated.View></View></Modal>;
+  </Animated.View></View>}</Modal>;
 }
 
 function CurrentVisit({ visit, coverage, onEnd, onHeight }: { visit: WorkoutVisitSummary | null; coverage: ReturnType<typeof getWorkoutCoverage>; onEnd: () => void; onHeight: (height: number) => void }) {
 	const { colors } = useAppearance();
-  const { bottom } = useSafeAreaInsets();
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -310,7 +314,7 @@ function CurrentVisit({ visit, coverage, onEnd, onHeight }: { visit: WorkoutVisi
     LayoutAnimation.configureNext({ duration: 240, update: { type: LayoutAnimation.Types.easeInEaseOut }, create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity }, delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity } });
     setExpanded((value) => !value);
   };
-  return <View onLayout={(event) => onHeight(event.nativeEvent.layout.height)} style={[styles.visitCard, { bottom: bottom + 15, backgroundColor: colors.surface, borderColor: colors.surfaceStrong }]} accessibilityLabel={`Current ${workoutSplitLabel(visit.workout.split)} workout, duration ${duration}`}>
+  return <View onLayout={(event) => onHeight(event.nativeEvent.layout.height)} style={[styles.visitCard, { bottom: 15, backgroundColor: colors.surface, borderColor: colors.surfaceStrong }]} accessibilityLabel={`Current ${workoutSplitLabel(visit.workout.split)} workout, duration ${duration}`}>
     <Pressable onPress={toggleExpanded} style={styles.visitHeading} accessibilityRole="button" accessibilityLabel="Show workout muscle coverage" accessibilityState={{ expanded }}><Text style={[styles.visitTitle, { color: colors.text }]}>{workoutSplitLabel(visit.workout.split)} day</Text><View style={styles.visitTime}><Text style={[styles.visitTimeText, { color: colors.text }]}>{duration}</Text><ChevronDown width={17} height={17} color={colors.mutedText} strokeWidth={2.7} style={[styles.visitChevron, expanded && styles.visitChevronExpanded]} /></View></Pressable>
     {expanded && <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} style={styles.coveragePanel}><MuscleCoverageGraphic split={visit.workout.split} targetMuscles={getWorkoutSplitDefinition(visit.workout.split)?.muscles} primaryMuscles={coverage.primary} secondaryMuscles={coverage.secondary} /><View pointerEvents="none" style={styles.missedLegend}><View style={[styles.missedLegendDot, { backgroundColor: colors.mutedText }]} /><Text style={[styles.missedLegendText, { color: colors.text }]}>Not trained yet</Text></View></Animated.View>}
     <Pressable onPress={() => confirmEnd ? onEnd() : setConfirmEnd(true)} style={({ pressed }) => [styles.endVisitButton, { backgroundColor: colors.accent }, pressed && styles.endVisitButtonPressed]} accessibilityRole="button" accessibilityLabel={confirmEnd ? 'Confirm end workout' : 'End workout'}><View pointerEvents="none" style={styles.endVisitLabel}><Animated.Text key={confirmEnd ? 'confirm' : 'end'} entering={FadeIn.duration(180)} exiting={FadeOut.duration(140)} style={[styles.endVisitText, { color: colors.accentText }]}>{confirmEnd ? 'Confirm' : 'End workout'}</Animated.Text></View></Pressable>
@@ -356,6 +360,7 @@ const ExerciseRow = memo(function ExerciseRow({ exercise, onChoose }: { exercise
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, position: 'relative', backgroundColor: '#F9F9F7' },
+  content: { flex: 1 },
   recommendationScroll: { flex: 1 },
   recommendationContent: { paddingHorizontal: 24, paddingTop: 28 },
   heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

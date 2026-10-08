@@ -50,7 +50,7 @@ function CloudSyncLifecycle() {
   const userId = session?.user.id;
   const { setUseCustomSplits } = useAppearance();
   const applySplitPlan = useRef(setUseCustomSplits);
-  applySplitPlan.current = setUseCustomSplits;
+  useEffect(() => { applySplitPlan.current = setUseCustomSplits; }, [setUseCustomSplits]);
   useEffect(() => {
     if (isPending || !userId) {
       setCloudSyncUser(null);

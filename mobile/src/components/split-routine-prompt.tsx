@@ -145,10 +145,10 @@ export function SplitRoutinePrompt({ userId = '', editingSplit, onClose }: { use
   }
 
   const open = step !== null && !!splits[step];
-  const visible = useSheetPresence(open);
-  if (!visible) return null;
+  const sheet = useSheetPresence(open);
+  if (!sheet.modal.visible) return null;
   // Same Modal/overlay tree minus the sheet, so its `exiting` animations play.
-  if (step === null || !splits[step]) return <Modal visible transparent animationType="none"><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay} /></Modal>;
+  if (!sheet.open || step === null || !splits[step]) return <Modal {...sheet.modal} transparent animationType="none"><KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay} /></Modal>;
   const split = splits[step];
   const selected = picks[split.id] ?? [];
   const isLast = step === splits.length - 1;
@@ -186,7 +186,7 @@ export function SplitRoutinePrompt({ userId = '', editingSplit, onClose }: { use
   const anyPicked = Object.values(picks).some((ids) => ids.length) || selected.length > 0;
   const primaryLabel = saving ? 'Saving…' : editingSplit ? 'Save routine' : !isLast ? `Next: ${splits[step + 1].name}` : anyPicked ? 'Save my routine' : 'Done';
 
-  return <Modal visible transparent animationType="none" onRequestClose={close}><GestureHandlerRootView style={styles.root}>
+  return <Modal {...sheet.modal} transparent animationType="none" onRequestClose={close}><GestureHandlerRootView style={styles.root}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
       <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" accessibilityLabel="Dismiss routine prompt" />
