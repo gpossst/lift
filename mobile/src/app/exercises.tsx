@@ -28,6 +28,7 @@ const sortLabels: Record<Sort, string> = { ranked: 'For you', az: 'Name', area: 
 
 
 export default function ExerciseLibraryScreen() {
+  'use no memo'; // DB reads need the explicit workout revision dependencies below.
 	const { colors, showWorkoutRecommendations } = useAppearance();
 	const { split, workoutId } = useLocalSearchParams<{ split?: string; workoutId?: string }>();
   const [visit, setVisit] = useState<WorkoutVisitSummary | null>(() => workoutId ? getWorkoutVisitSummary(workoutId) : null);
@@ -91,19 +92,20 @@ export default function ExerciseLibraryScreen() {
   }), [matchingExercises, query, rankedExerciseScores, sort]);
 
   const refreshVisit = useCallback(() => {
-    if (!workoutId) return;
-    const current = getWorkoutVisitSummary(workoutId);
-    const currentExercises = getWorkoutVisitExercises(workoutId);
+    // A reused tab can switch workouts; never carry the old visit into a new or missing one.
+    const current = workoutId ? getWorkoutVisitSummary(workoutId) : null;
+    const currentExercises = workoutId ? getWorkoutVisitExercises(workoutId) : [];
     setWorkoutExercises((previous) => currentExercises.length === previous.length
       && currentExercises.every((exercise, index) => exercise.id === previous[index]?.id && exercise.sets === previous[index].sets && exercise.volume === previous[index].volume)
       ? previous
       : currentExercises);
     setVisit((previous) => {
-      if (!current || (previous
+      if (previous && current
+        && previous.workout.id === current.workout.id
         && previous.sets === current.sets
         && previous.exercises === current.exercises
         && previous.volume === current.volume
-        && previous.workout.endedAt?.getTime() === current.workout.endedAt?.getTime())) return previous;
+        && previous.workout.endedAt?.getTime() === current.workout.endedAt?.getTime()) return previous;
       return current;
     });
   }, [workoutId]);
@@ -159,7 +161,9 @@ export default function ExerciseLibraryScreen() {
     router.push({ pathname: '/workout', params: {
       ...exercise,
       workoutId: workoutId ?? fallbackWorkoutId,
-      ...(recommendation && { recommendedSets: recommendation.sets }),
+      recommendedSets: recommendation?.sets,
+      recommendedExerciseId: exercise.id,
+      superset: undefined,
     } });
   }, [fallbackWorkoutId, workoutId]);
   const chooseExercise = useCallback((exercise: Exercise) => openExercise(exercise, 'manual'), [openExercise]);

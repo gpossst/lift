@@ -111,8 +111,8 @@ function Home() {
           <a className="chunky secondary" href="/feedback">Feedback</a>
         </div>
         <div className="hero-phones">
-          <Phone clip="start-workout" alt="Lift: pick what to train today and start a workout" />
           <Phone clip="pr-and-overview" alt="Lift celebrating a new PR, then the workout recap" />
+          <Phone clip="home-screen" alt="Lift opening to the home screen: next workout, training calendar, and volume" />
           <Phone clip="stats-page" alt="Lift stats: muscle coverage, splits, and weekly training" />
         </div>
       </section>

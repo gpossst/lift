@@ -20,6 +20,7 @@ import { setCloudSyncUser, syncWorkoutData } from '@/lib/cloud-sync';
 import { clearPendingOnboarding } from '@/lib/onboarding';
 import { clearReturnPlan } from '@/lib/return-plan';
 import { getProfile, updateProfile } from '@/lib/profile';
+import { splitPresets } from '@/lib/split-routines';
 import { authClient } from '@/lib/auth-client';
 import { MfaSetupFlow } from '@/components/auth-flow';
 
@@ -139,10 +140,10 @@ function ProfileSettings() {
     setCloudSyncUser(null);
     try {
       const result = await authClient.deleteUser({ password: deletionPassword });
-      if (result.error) throw result.error;
+      if (result.error) throw new Error(result.error.message ?? 'Account deletion did not finish. Retry to continue safely.');
       clearLocalAccountData();
       if (user?.id) clearReturnPlan(user.id);
-      await clearPendingOnboarding();
+      if (user?.id) await clearPendingOnboarding(user.id);
     }
     catch (reason) {
       setCloudSyncUser(user?.id ?? null);
@@ -276,6 +277,12 @@ function CustomSplitSettings() {
       void syncWorkoutData().catch(() => undefined);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save this split.'); }
   };
+  const applyPreset = (preset: (typeof splitPresets)[number]) => {
+    for (const split of preset.splits) saveCustomSplit({ name: split.name, muscles: [...split.muscles] });
+    setUseCustomSplits(true);
+    setSplits(getCustomSplits());
+    void syncWorkoutData().catch(() => undefined);
+  };
   return <>
     <Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Your splits</Text>
     <View style={[styles.preferenceRow, { borderBottomColor: colors.surfaceStrong, opacity: splits.length ? 1 : .45 }]}><View style={styles.preferenceCopy}><Text style={[styles.preferenceTitle, { color: colors.text }]}>Use custom splits</Text><Text style={[styles.preferenceDescription, { color: colors.mutedText }]}>Show your splits instead of Push, Pull, and Legs when starting a workout.</Text></View><SettingsSwitch disabled={!splits.length} value={useCustomSplits && splits.length > 0} onValueChange={setUseCustomSplits} accessibilityLabel="Use custom splits" /></View>
@@ -290,6 +297,16 @@ function CustomSplitSettings() {
       </View>
     </View>)}
     <Pressable onPress={() => open()} style={[styles.addSplitButton, { backgroundColor: colors.surface }]} accessibilityRole="button" accessibilityLabel="Create custom split"><Plus width={19} height={19} color={colors.text} strokeWidth={2.5} /><Text style={[styles.preferenceTitle, { color: colors.text }]}>Create custom split</Text></Pressable>
+    {!splits.length && <>
+      <Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Start from a template</Text>
+      {splitPresets.filter(({ splits: presetSplits }) => presetSplits.length).map((preset) => <Pressable key={preset.id} onPress={() => applyPreset(preset)} style={({ pressed }) => [styles.customSplitRow, { borderBottomColor: colors.surfaceStrong }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`Use ${preset.name} template`}>
+        <View style={styles.customSplitCopy}>
+          <Text style={[styles.preferenceTitle, { color: colors.text }]}>{preset.name}</Text>
+          <Text numberOfLines={2} style={[styles.preferenceDescription, { color: colors.mutedText }]}>{preset.splits.map(({ name }) => name).join(', ')}</Text>
+        </View>
+        <Plus width={19} height={19} color={colors.text} strokeWidth={2.5} />
+      </Pressable>)}
+    </>}
     <Text accessibilityRole="header" style={[styles.sectionLabel, { color: colors.text }]}>Push, Pull, and Legs routines</Text>
     {defaultWorkoutSplits.map((split) => <View key={split.id} style={[styles.customSplitRow, { borderBottomColor: colors.surfaceStrong }]}><Text style={[styles.preferenceTitle, styles.customSplitCopy, { color: colors.text }]}>{split.name}</Text><RoutineButton name={split.name} onPress={() => setRoutineSplit(split)} /></View>)}
     {routineSplit && <SplitRoutinePrompt key={routineSplit.id} editingSplit={routineSplit} onClose={() => setRoutineSplit(null)} />}

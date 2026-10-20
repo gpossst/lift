@@ -9,17 +9,24 @@ import { RulerSlider } from '@/components/ruler-slider';
 import { Wordmark } from '@/components/wordmark';
 import type { AppearanceColors } from '@/lib/appearance';
 import { savePendingOnboarding, type Onboarding } from '@/lib/onboarding';
+import { splitPresets, type SplitPresetId } from '@/lib/split-routines';
 
 type Props = { onSignIn: () => void; onSignUp: () => void };
-type Step = 'welcome' | 'goals' | 'experience' | 'routine';
+type Step = 'welcome' | 'goals' | 'experience' | 'routine' | 'split';
 type Styles = ReturnType<typeof createStyles>;
-const steps: Step[] = ['welcome', 'goals', 'experience', 'routine'];
+const steps: Step[] = ['welcome', 'goals', 'experience', 'routine', 'split'];
 const goals = ['Build muscle', 'Get stronger', 'Lose fat', 'Feel healthier'];
 const goalGlyphs: Record<string, string> = {
   'Build muscle': 'M4 20V10l3-6h4l-.5 2.5L8.5 8v3.5C10 9.5 13 9 15.5 10c3 1.2 5 3.8 4.5 6.5-.5 2.5-3 3.5-6 3.5H4z',
   'Get stronger': 'M6.5 6.5v11 M17.5 6.5v11 M3.5 9v6 M20.5 9v6 M6.5 12h11',
   'Lose fat': 'M3 6l6.5 6.5 4-4L21 16 M15.5 16H21v-5.5',
   'Feel healthier': 'M12 20s-8-4.5-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5C20 15.5 12 20 12 20z M6.5 12.5h3l1.5-2.5 2 4 1.5-1.5h3',
+};
+const splitGlyphs: Record<SplitPresetId, string> = {
+  ppl: 'M4 8h11 M12 5l3 3-3 3 M20 16H9 M12 13l-3 3 3 3',
+  'upper-lower': 'M12 3.5v17 M8 7.5l4-4 4 4 M8 16.5l4 4 4-4',
+  'full-body': 'M12 3.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M5 10h14 M12 10v5 M12 15l-3.5 5.5 M12 15l3.5 5.5',
+  'body-part': 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M12 11.5v1',
 };
 const springify = <T,>(e: T) => (e as { springify: () => T }).springify();
 // Mobbin patterns (Tonal, Yazio, Strava, WHOOP, Equinox): thin top progress + step
@@ -34,6 +41,7 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [experience, setExperience] = useState<Onboarding['experience'] | null>(null);
   const [days, setDays] = useState(3);
+  const [splitPreset, setSplitPreset] = useState<SplitPresetId | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const progress = useSharedValue(0);
@@ -47,11 +55,11 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
   const next = () => goTo(index + 1);
   const back = () => index > 0 && goTo(index - 1);
   const finish = async () => {
-    if (!experience || saving) return;
+    if (!experience || !splitPreset || saving) return;
     setSaving(true);
     setSaveError(false);
     try {
-      await savePendingOnboarding({ goals: selectedGoals, experience, trainingDays: days });
+      await savePendingOnboarding({ goals: selectedGoals, experience, trainingDays: days, splitPreset });
       onSignUp();
     } catch {
       setSaveError(true);
@@ -94,6 +102,24 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
         </View></Question>}
         {step === 'routine' && <Question title="Let’s shape your routine." subtitle="How many days a week do you want to train?" styles={styles}>
           <Animated.View entering={FadeInUp.delay(200).duration(350)} style={styles.routineBody}><RulerSlider value={days} min={1} max={7} onChange={setDays} unit={`${days === 1 ? 'day' : 'days'} / week`} accessibilityLabel="Training days per week" accessibilityText={`${days} ${days === 1 ? 'day' : 'days'} per week`} /></Animated.View>
+        </Question>}
+        {step === 'split' && <Question title="How do you split your training?" subtitle="You can change or build your own in Settings." styles={styles}><View style={styles.tiles}>
+          {splitPresets.map((preset, i) => {
+            const selected = splitPreset === preset.id;
+            return <Animated.View key={preset.id} entering={FadeInUp.delay(120 + i * 70).duration(380)} style={styles.tileWrap}>
+              <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} accessibilityLabel={`${preset.name}. ${preset.detail}`} onPress={() => setSplitPreset(preset.id)} style={({ pressed }) => [styles.tile, selected && styles.selected, { transform: [{ scale: pressed ? 0.96 : 1 }] }]}>
+                <View style={styles.tileTop}>
+                  <Svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke={selected ? colors.accentText : colors.text} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><Path d={splitGlyphs[preset.id]} /></Svg>
+                  <Animated.Text key={String(selected)} entering={springify(ZoomIn.duration(220))} style={[styles.check, !selected && styles.checkIdle, selected && styles.checkSelected]}>{selected ? '✓' : ''}</Animated.Text>
+                </View>
+                <View>
+                  <Text style={[styles.choiceLabel, selected && styles.choiceLabelSelected]}>{preset.name}</Text>
+                  <Text style={[styles.choiceDetail, selected && styles.choiceDetailSelected]}>{preset.detail}</Text>
+                </View>
+              </Pressable>
+            </Animated.View>;
+          })}
+        </View>
           {saveError && <Text accessibilityRole="alert" style={styles.saveError}>Could not save your answers. Try again.</Text>}
         </Question>}
       </Animated.View>
@@ -105,7 +131,9 @@ export function OnboardingFlow({ onSignIn, onSignUp }: Props) {
           ? <Button label="Continue" disabled={!selectedGoals.length} onPress={next} styles={styles} />
           : step === 'experience'
             ? <Button label="Continue" disabled={!experience} onPress={next} styles={styles} />
-            : <Button label={saving ? 'Saving…' : 'Create my account'} disabled={saving} onPress={() => { void finish(); }} styles={styles} />}
+            : step === 'routine'
+              ? <Button label="Continue" onPress={next} styles={styles} />
+              : <Button label={saving ? 'Saving…' : 'Create my account'} disabled={saving || !splitPreset} onPress={() => { void finish(); }} styles={styles} />}
     </Animated.View>
   </SafeAreaView>;
 }
@@ -141,6 +169,9 @@ function createStyles(colors: AppearanceColors) {
     welcome: { flex: 1, paddingTop: 72 }, title: { color: colors.text, fontSize: 42, fontWeight: '900', letterSpacing: -1.7, lineHeight: 44, marginTop: 0 }, subtitle: { color: colors.mutedText, fontSize: 16, lineHeight: 23, marginTop: 14, maxWidth: 310 }, animationWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' }, animation: { width: '100%', aspectRatio: 16 / 9 }, signIn: { alignItems: 'center', paddingTop: 14, paddingBottom: 4 }, signInText: { color: colors.mutedText, fontWeight: '700' }, back: { color: colors.mutedText, fontSize: 16, fontWeight: '700', paddingVertical: 8 },     question: { flex: 1, paddingTop: 24 }, questionBody: { flex: 1, marginTop: 40 }, routineBody: { flex: 1, justifyContent: 'flex-end', paddingBottom: 8 }, choices: { gap: 10 },
     choice: { minHeight: 62, borderRadius: 16, paddingHorizontal: 18, paddingVertical: 14, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     selected: { backgroundColor: colors.accent },
+    tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, tileWrap: { flexBasis: '45%', flexGrow: 1 },
+    tile: { borderRadius: 18, padding: 14, gap: 12, backgroundColor: colors.surface },
+    tileTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
     choiceText: { flex: 1 }, choiceLead: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
     choiceLabel: { color: colors.text, fontSize: 16, fontWeight: '800' },
     choiceLabelSelected: { color: colors.accentText },

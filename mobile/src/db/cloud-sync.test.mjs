@@ -21,6 +21,18 @@ mock.module('expo-sqlite', () => ({ openDatabaseSync: () => ({
 }) }));
 mock.module('drizzle-orm/expo-sqlite', () => ({ drizzle: () => ({}) }));
 const native = await import('./index.native.ts');
+const originalTimezone = process.env.TZ;
+try {
+  process.env.TZ = 'Asia/Tokyo';
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - 6);
+  const expectedDate = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+  assert.notEqual(expectedDate, weekStart.toISOString().slice(0, 10), 'the test timezone crosses the UTC calendar boundary');
+  for (const local of [web, native]) assert.equal(local.getWorkoutSplitTrends(1).find((trend) => trend.split === 'ALL').points[0].weekStart, expectedDate, 'weekly chart labels use the local calendar date east of UTC');
+} finally {
+  if (originalTimezone === undefined) delete process.env.TZ; else process.env.TZ = originalTimezone;
+}
 let adapter = web;
 mock.module('@/db', () => Object.fromEntries(['acknowledgeCloudSyncBatch', 'getCloudSyncBatch', 'getCloudSyncCursor', 'getRejectedCloudSyncChanges', 'reconcileCloudSyncConflicts', 'hasPendingCloudSync', 'mergeCloudSyncChanges', 'recordCloudSyncFailure', 'rejectCloudSyncBatch'].map((name) => [name, (...args) => adapter[name](...args)])));
 mock.module('@/lib/auth-client', () => ({ apiUrl: 'https://sync.test', authHeaders: async () => ({}) }));
@@ -134,6 +146,32 @@ try {
     await syncWorkoutData();
     assert.equal(local.getRejectedCloudSyncChanges().length, 0);
     assert.equal(local.getWorkoutHistory(exerciseId)[0].weight, 115);
+    // Reusing a deleted set identity cancels its tombstone, including a deletion
+    // already claimed for upload; that immutable batch must still finish first.
+    const replacementKey = [workout.id, exerciseId, 1].join('\u001f');
+    for (const claimDelete of [false, true]) {
+      local.deleteWorkoutSet(exerciseId, local.getWorkoutHistory(exerciseId).find((item) => item.workoutId === workout.id));
+      const deletionBatch = claimDelete ? local.getCloudSyncBatch() : null;
+      local.saveWorkoutSet({ ...set, weight: 115 });
+      local.markCloudSyncDirty();
+      local.hasPendingCloudSync(); // Rebuild while the replacement and possible claimed deletion coexist.
+      if (deletionBatch) assert.deepEqual(local.getCloudSyncBatch(), deletionBatch, 'claimed deletion payload remains immutable');
+      else assert.equal(local.getCloudSyncBatch().changes.find((item) => item.key === replacementKey).operation, 'upsert');
+      await syncWorkoutData();
+      assert.equal(local.getWorkoutHistory(exerciseId).find((item) => item.workoutId === workout.id).weight, 115, 'replacement survives the pull');
+      assert.equal((await DB.prepare('SELECT weight FROM workout_sets WHERE user_id = ? AND workout_local_id = ?').bind(name, workout.id).first()).weight, 115, 'replacement survives on the server');
+    }
+    // Older versions could acknowledge the replacement while retaining a stale
+    // tombstone; the next full seed must repair it instead of deleting the live set.
+    if (name === 'web') values.set('lift-cloud-sync-tombstones', JSON.stringify([{ entity: 'set', key: replacementKey, deletedAt: 0 }]));
+    else connection.query('INSERT INTO sync_tombstones (entity, entity_key, deleted_at) VALUES (?, ?, 0)').run('set', replacementKey);
+    local.markCloudSyncDirty();
+    local.hasPendingCloudSync();
+    if (name === 'web') assert.deepEqual(JSON.parse(values.get('lift-cloud-sync-tombstones')), []);
+    else assert.equal(connection.query('SELECT COUNT(*) AS count FROM sync_tombstones').get().count, 0);
+    await syncWorkoutData();
+    assert.equal(local.getWorkoutHistory(exerciseId).find((item) => item.workoutId === workout.id).weight, 115, 'legacy stale marker cannot delete an acknowledged replacement');
+    assert.equal((await DB.prepare('SELECT weight FROM workout_sets WHERE user_id = ? AND workout_local_id = ?').bind(name, workout.id).first()).weight, 115);
     // Repair uploads may carry obsolete revisions although the values match.
     // Resolve against the final log entry, including conflicts from older clients
     // whose cursor has already advanced beyond the matching remote record.
@@ -236,6 +274,26 @@ try {
     assert.deepEqual(local.getWorkoutSplitDefinition(restoredSplit).muscles, ['chest', 'lats']);
     assert.ok(requests > 0);
   }
+  const abandonedWorkout = native.createWorkout('push');
+  const abandonedBatch = native.getCloudSyncBatch();
+  assert.equal(native.prepareCloudSyncForUser('replacement-account'), false);
+  assert.ok(native.getWorkoutVisitSummary(abandonedWorkout.id));
+  assert.equal(native.getCloudSyncBatch().batchId, abandonedBatch.batchId);
+  assert.equal(native.prepareCloudSyncForUser('replacement-account', true), true);
+  assert.equal(native.getWorkoutVisitSummary(abandonedWorkout.id), null);
+  assert.equal(native.hasPendingCloudSync(), false, 'discarded native changes cannot upload under the replacement account');
+  // A set for an exercise this build's catalog lacks must not wedge the native cursor.
+  const known = native.getExercises().find((exercise) => !connection.query('SELECT 1 FROM workout_sets WHERE exercise_id = ?').get(exercise.id));
+  connection.query('DELETE FROM exercise_catalog WHERE id = ?').run(known.id);
+  const pageCursor = native.getCloudSyncCursor() + 1000;
+  native.mergeCloudSyncChanges([
+    { entity: 'workout', key: 'remote-workout', operation: 'upsert', revision: pageCursor - 1, record: { id: 'remote-workout', split: 'push', createdAt: 1, endedAt: 2 } },
+    { entity: 'set', key: ['remote-workout', known.id, 1].join('\u001f'), operation: 'upsert', revision: pageCursor, record: { workoutId: 'remote-workout', exerciseId: known.id, setNumber: 1, weight: 80, reps: 5, completedAt: 1 } },
+  ], pageCursor);
+  assert.equal(native.getCloudSyncCursor(), pageCursor, 'unknown exercise sets do not block the pull cursor');
+  assert.equal(native.getWorkoutHistory(known.id)[0].weight, 80, 'unknown exercise history is preserved');
+  await import('./index.native.ts?catalog-upgrade'); // Relaunch with a catalog that knows the ID.
+  assert.equal(native.getExercises().find((exercise) => exercise.id === known.id).name, known.name, 'catalog upgrade replaces the placeholder');
   setCloudSyncUser(null);
   console.log('Native/web sync with actual Worker D1: receipts, edit race, validation, terminal rejection, correction, conflicts, and deletion passed.');
 } finally {

@@ -2,8 +2,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { IOSConfig, withDangerousMod, withXcodeProject } = require('@expo/config-plugins');
 
-// Light/yellow is the primary icon; the other combinations are alternates.
-const alternateIcons = ['light-red', 'light-blue', 'dark-yellow', 'dark-red', 'dark-blue'];
+// Dark/red is the primary icon; the other combinations are alternates.
+const alternateIcons = ['light-yellow', 'light-red', 'light-blue', 'dark-yellow', 'dark-blue'];
 
 module.exports = function withAppearanceAppIcons(config) {
   config = withDangerousMod(config, ['ios', async (config) => {

@@ -11,7 +11,7 @@ const partsByMuscle: Record<string, { front: readonly ExtendedBodyPart[]; back: 
 export function MuscleBodyGraphic({ muscle, color }: { muscle: string; color?: string }) {
 	const { colors, bodyShape } = useAppearance();
   const parts = partsByMuscle[muscle] ?? { front: [], back: [] };
-  const props = { gender: bodyShape, scale: 0.54, border: 'none' as const, defaultFill: '#E9EBE6', defaultStroke: 'none' };
+  const props = { gender: bodyShape, scale: 0.59, border: 'none' as const, defaultFill: '#E9EBE6', defaultStroke: 'none' };
   const highlight = color ?? colors.accent;
   return <View style={[styles.bodyPair, styles.nonInteractive]} accessibilityLabel={`${muscle} highlighted on body diagram`}><Body {...props} data={parts.front.map((part) => ({ ...part, color: highlight }))} side="front" /><Body {...props} data={parts.back.map((part) => ({ ...part, color: highlight }))} side="back" /></View>;
 }
@@ -34,7 +34,7 @@ export function TrainingExposureBodyGraphic({ statuses, hasData = true }: { stat
     }
     return [...parts].map(([slug, status]) => ({ slug, color: (hasData && coverageStatusColor[status]) || colors.surfaceStrong }));
   };
-  const props = { gender: bodyShape, scale: 0.54, border: 'none' as const, defaultFill: colors.surfaceStrong, defaultStroke: 'none' };
+  const props = { gender: bodyShape, scale: 0.59, border: 'none' as const, defaultFill: colors.surfaceStrong, defaultStroke: 'none' };
   const description = hasData ? bodyMuscleIds.map((muscle) => `${muscle}: ${coverageStatusLabel[statuses[muscle] ?? 'outside']}`).join(', ') : 'No workouts in the displayed weeks';
   return <View style={[styles.bodyPair, styles.nonInteractive]} accessible accessibilityRole="image" accessibilityLabel={`Front and back body diagram colored by each muscle's weekly sets against your goal range. ${description}`}><Body {...props} data={data('front')} side="front" /><Body {...props} data={data('back')} side="back" /></View>;
 }

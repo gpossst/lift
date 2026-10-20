@@ -54,7 +54,8 @@ export function getRejectedCloudSyncChanges(): CloudSyncRejectedChange[];
 export function reconcileCloudSyncConflicts(changes: CloudSyncRemoteChange[], fullReplay?: boolean): void;
 export function resolveDeletedWorkout(workoutId: string, choice: 'delete' | 'keep'): boolean;
 export function getCloudSyncCursor(): number;
-export function prepareCloudSyncForUser(userId: string): boolean;
+/** `discardPreviousAccount` deletes the previous account's unsynced cache instead of refusing the switch. */
+export function prepareCloudSyncForUser(userId: string, discardPreviousAccount?: boolean): boolean;
 export function clearLocalAccountData(): void;
 export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: number): void;
 export function getWorkoutMuscleRatings(workoutId: string): WorkoutMuscleRating[];

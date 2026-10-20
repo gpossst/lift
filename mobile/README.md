@@ -35,9 +35,10 @@ yourself are kept.
 - Use `<EXPO_PUBLIC_API_URL>/delete-account` as the Google Play account
   deletion URL. The same host serves `/privacy`, `/terms`, and `/support`.
 
-## iOS release: 1.3.5
+## iOS release: 1.3.6
 
-The iOS home-screen icon follows the saved background and primary color. Six
+The primary iOS icon uses dark/red artwork for the App Store. The home-screen
+icon follows the saved background and primary color. Six
 bundled variants cover light/dark and yellow/red/blue; iOS displays its standard
 alert when the icon changes. The local `AppearanceAppIcon` Expo module and
 `plugins/with-appearance-app-icons.js` configure this during prebuild.
@@ -53,7 +54,7 @@ and log one explanatory warning. Physical-device requests keep their normal beha
 The App Store version is `expo.version` in `app.json`; keep `package.json`'s
 version aligned. `eas.json` uses `appVersionSource: "remote"` and production
 `autoIncrement: true`, so EAS manages the iOS build number on each production
-build. A rebuild of this release keeps version `1.3.5` and receives a new build
+build. A rebuild of this release keeps version `1.3.6` and receives a new build
 number. See [Expo version management](https://docs.expo.dev/build-reference/app-versions/).
 
 ### Prepare
@@ -104,9 +105,9 @@ setup.
 ### Submit for App Review
 
 1. Wait for processing in [App Store Connect](https://appstoreconnect.apple.com/)
-   and test the `1.3.5` build through TestFlight, including sign-in, workout
+   and test the `1.3.6` build through TestFlight, including sign-in, workout
    logging, sync, rest notifications/Live Activities, and account deletion.
-2. Open LIFT and create the iOS version `1.3.5`. Select the uploaded build with
+2. Open LIFT and create the iOS version `1.3.6`. Select the uploaded build with
    the matching version and build number.
 3. Complete What's New, screenshots, privacy information, support URL, review
    contact/access details, and any export compliance questions. Choose the

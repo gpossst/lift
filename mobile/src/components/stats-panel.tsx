@@ -9,6 +9,7 @@ import { EmptyArt } from '@/components/empty-art';
 import { ExerciseDetailSheet } from '@/components/exercise-detail-sheet';
 import { SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
+import { SetBar, setBarSize } from '@/components/set-bar';
 import { comparePeriods, progressFor, type LiftProgress, type ProgressMetric } from '@/lib/lift-progress';
 import { useWorkoutData } from '@/hooks/use-workout-data';
 
@@ -50,20 +51,19 @@ export function StatsPanel({ initialExerciseId, history, onDeleteSet, embedded =
   const points = selected ? progressFor(selected.history, requiresWeight, activeMetric) : [];
   const period = comparePeriods(points, weeks);
   if (!selected) return <View style={styles.empty}><EmptyArt name="chart" /><Text style={[styles.emptyTitle, { color: colors.text }]}>No stats yet</Text><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>Log an exercise to start seeing your growth.</Text></View>;
-  const summary = selected.history.length ? <LiftSummary points={period.current} metric={activeMetric} metricOptions={options} onMetricChange={setMetric} range={range} weeks={weeks} change={period.change} onRangeChange={setRange} colors={colors} onDeleteSet={onDeleteSet} gutter={embedded ? 24 : 20} embedded={embedded} /> : <View style={[styles.card, { backgroundColor: colors.surface }]}><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>No workouts logged for this exercise yet.</Text></View>;
+  const summary = selected.history.length ? <LiftSummary points={period.current} metric={activeMetric} metricOptions={options} onMetricChange={setMetric} range={range} weeks={weeks} onRangeChange={setRange} colors={colors} onDeleteSet={onDeleteSet} gutter={embedded ? 24 : 20} embedded={embedded} /> : <View style={[styles.card, { backgroundColor: colors.surface }]}><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>No workouts logged for this exercise yet.</Text></View>;
   if (embedded) return <ScrollView style={styles.body} contentContainerStyle={[styles.content, styles.embeddedContent]} showsVerticalScrollIndicator={false}>{summary}</ScrollView>;
   return <ExerciseDetailSheet key={selected.id} exercise={selected} onDismiss={onBack} headingDetails={<Text style={[styles.sessionCount, { color: colors.mutedText }]}>{new Set(selected.history.map((point) => point.workoutId)).size} {new Set(selected.history.map((point) => point.workoutId)).size === 1 ? 'workout' : 'workouts'} logged</Text>}>{summary}</ExerciseDetailSheet>;
 }
 
 
-function LiftSummary({ points, metric, metricOptions, onMetricChange, range, weeks, change, onRangeChange, colors, onDeleteSet, gutter, embedded }: {
+function LiftSummary({ points, metric, metricOptions, onMetricChange, range, weeks, onRangeChange, colors, onDeleteSet, gutter, embedded }: {
   points: LiftProgress[];
   metric: ProgressMetric;
   metricOptions: MetricOption[];
   onMetricChange: (metric: ProgressMetric) => void;
   range: TimeRange;
   weeks: number | null;
-  change: number | null;
   onRangeChange: (range: TimeRange) => void;
   colors: ReturnType<typeof useAppearance>['colors'];
   onDeleteSet?: (set: WorkoutHistoryPoint) => void;
@@ -84,8 +84,7 @@ function LiftSummary({ points, metric, metricOptions, onMetricChange, range, wee
   const unit = metric === 'bestReps' || metric === 'totalReps' ? 'reps' : 'lb';
   const title = metricOptions.find((option) => option.value === metric)?.title ?? '';
   const displayValue = (value: number) => metric === 'maxWeight' ? value : Math.round(value);
-  const setValue = (set: LiftProgress['bestSet']) => `${unit === 'lb' ? `${set.weight} lb × ` : set.weight ? `+${set.weight} lb × ` : ''}${set.reps} reps`;
-  const comparison = weeks === null ? 'All logged workouts' : change === null ? 'Not enough workouts to compare yet' : `${change >= 0 ? '+' : ''}${Math.round(change)}% average per workout vs. prior ${weeks} weeks`;
+  const setsMax = activePoint ? Math.max(...activePoint.sets.map((set) => setBarSize(set, unit === 'lb'))) : 0;
   const minValue = Math.min(...points.map((point) => point.value));
   const maxValue = Math.max(...points.map((point) => point.value));
   const flat = maxValue === minValue;
@@ -121,15 +120,13 @@ function LiftSummary({ points, metric, metricOptions, onMetricChange, range, wee
         <View style={styles.chartLabels}><Text style={[styles.chartDate, { color: colors.subtleText }]}>{formatDate(points[firstVisible].date)}</Text><Text style={[styles.chartDate, { color: colors.subtleText }]}>{formatDate(points[lastVisible].date)}</Text></View>
       </> : <View style={styles.chartEmpty}><Text style={[styles.emptyCopy, { color: colors.mutedText }]}>No workouts in this period yet.</Text></View>}
       <View style={styles.rangePicker}><SegmentedPicker options={timeRanges} selected={range} onSelect={onRangeChange} compact /></View>
-      <Text style={[styles.comparison, { color: colors.mutedText }]}>{comparison}</Text>
     </View>
     {activePoint && <>
       <SectionHeader title={`${formatDate(activePoint.date)} workout`} />
-      <View style={[styles.card, styles.setCard, { backgroundColor: colors.surface }]}>
-        {activePoint.sets.map((set, index) => {
-          const divider = index < activePoint.sets.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.surfaceStrong };
-          const row = <View style={[styles.setRow, { backgroundColor: colors.surface }]}><Text style={[styles.setNumber, { color: colors.mutedText }]}>{String(set.setNumber).padStart(2, '0')}</Text><Text style={[styles.setValue, { color: colors.text }]}>{setValue(set)}</Text>{activePoint.sets.length > 1 && set === activePoint.bestSet && metric !== 'volume' && metric !== 'totalReps' && <Text style={[styles.topSet, { color: colors.mutedText }]}>Top set</Text>}</View>;
-          return onDeleteSet ? <Swipeable key={`${set.workoutId}-${set.setNumber}`} containerStyle={divider} friction={1.6} rightThreshold={40} overshootRight={false} renderRightActions={() => <Pressable onPress={() => onDeleteSet(set)} style={({ pressed }) => [styles.deleteAction, pressed && { opacity: 0.8 }]} accessibilityRole="button" accessibilityLabel={`Delete set ${set.setNumber}`}><Text style={styles.deleteActionText}>Delete</Text></Pressable>}>{row}</Swipeable> : <View key={`${set.workoutId}-${set.setNumber}`} style={divider}>{row}</View>;
+      <View style={styles.setList}>
+        {activePoint.sets.map((set) => {
+          const row = <View style={[styles.setRow, { backgroundColor: colors.background }]}><SetBar number={set.setNumber} set={set} requiresWeight={unit === 'lb'} max={setsMax} highlight={activePoint.sets.length > 1 && set === activePoint.bestSet && metric !== 'volume' && metric !== 'totalReps'} /></View>;
+          return onDeleteSet ? <Swipeable key={`${set.workoutId}-${set.setNumber}`} friction={1.6} rightThreshold={40} overshootRight={false} renderRightActions={() => <Pressable onPress={() => onDeleteSet(set)} style={({ pressed }) => [styles.deleteAction, pressed && { opacity: 0.8 }]} accessibilityRole="button" accessibilityLabel={`Delete set ${set.setNumber}`}><Text style={styles.deleteActionText}>Delete</Text></Pressable>}>{row}</Swipeable> : <View key={`${set.workoutId}-${set.setNumber}`}>{row}</View>;
         })}
       </View>
     </>}
@@ -144,7 +141,7 @@ const styles = StyleSheet.create({
   valueRow: { marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, valueLabel: { fontSize: 13, fontWeight: '800' }, metricValue: { fontSize: 46, lineHeight: 53, fontWeight: '900', letterSpacing: -2.4, fontVariant: ['tabular-nums'] }, metricUnit: { fontSize: 17, fontWeight: '800', letterSpacing: -.3 }, valueMeta: { fontSize: 12, fontWeight: '700' }, bestTag: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7 }, bestTagText: { fontSize: 11, fontWeight: '900' },
   chartRow: { marginTop: 6, flexDirection: 'row' }, axis: { width: axisWidth, height: 174 }, axisLabel: { position: 'absolute', left: 0, right: 8, fontSize: 10, lineHeight: 14, fontWeight: '800', textAlign: 'right', fontVariant: ['tabular-nums'] },
   chart: { flex: 1, height: 174 }, chartLabels: { marginTop: -12, marginLeft: axisWidth, flexDirection: 'row', justifyContent: 'space-between' }, chartDate: { fontSize: 10, fontWeight: '800' }, chartEmpty: { height: 174, marginTop: 6, alignItems: 'center', justifyContent: 'center' },
-  rangePicker: { marginTop: 16 }, comparison: { marginTop: 12, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  setCard: { paddingVertical: 0, paddingHorizontal: 0, overflow: 'hidden' }, setRow: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center' }, setNumber: { width: 35, fontSize: 12, fontWeight: '800', fontVariant: ['tabular-nums'] }, setValue: { flex: 1, fontSize: 15, fontWeight: '800' }, topSet: { fontSize: 11, fontWeight: '700' }, deleteAction: { width: 80, backgroundColor: '#D9433F', alignItems: 'center', justifyContent: 'center' }, deleteActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  rangePicker: { marginTop: 16 },
+  setList: { marginTop: 4 }, setRow: { paddingVertical: 4 }, deleteAction: { width: 80, backgroundColor: '#D9433F', alignItems: 'center', justifyContent: 'center' }, deleteActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }, emptyTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -.9 }, emptyCopy: { marginTop: 7, fontSize: 14, textAlign: 'center', fontWeight: '600' },
 });

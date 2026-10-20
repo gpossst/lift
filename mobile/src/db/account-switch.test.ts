@@ -17,3 +17,11 @@ check(!db.prepareCloudSyncForUser('user-b'));
 check(db.getWorkoutVisitSummary(workout.id)?.workout.id === workout.id);
 check(db.getCloudSyncBatch()?.batchId === pendingBatch?.batchId);
 check(db.prepareCloudSyncForUser('user-a'));
+
+// Previous account deleted elsewhere: only an explicit discard binds the new
+// account, and none of the old cache is queued for upload under it.
+check(!db.prepareCloudSyncForUser('user-b'));
+check(db.prepareCloudSyncForUser('user-b', true));
+check(!db.getWorkoutVisitSummary(workout.id));
+check(!db.hasPendingCloudSync() && !db.getCloudSyncBatch());
+check(db.prepareCloudSyncForUser('user-b'));

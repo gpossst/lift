@@ -1,8 +1,9 @@
 """Amplitude-modulated halftone: dot area tracks darkness. Yellow areas keep the accent colour.
 
-usage: python3 -I halftone.py <in.png> <out.png> [cell_px] [face=cx,cy,rx,ry] [dark]
+usage: python3 -I halftone.py <in.png> <out.png|out.svg> [cell_px] [face=cx,cy,rx,ry] [dark]
 face: oval whose features dissolve into a loose random scatter of dots.
 dark: light dots on the dark-mode background (same dot sizes, so it reads as a chalk negative).
+.svg output: one <circle> per dot on a transparent background, grouped by colour.
 """
 import math
 import sys
@@ -27,6 +28,8 @@ r, g, b = blur[..., 0], blur[..., 1], blur[..., 2]
 lum = 0.299 * r + 0.587 * g + 0.114 * b
 # Yellow: strong red+green, weak blue.
 yellow = (r - b > 0.35) & (g - b > 0.2)
+# Stretch the plates' own light-to-shadow range so their rims and recesses still read.
+ylo, yhi = np.percentile(lum[yellow], [2, 98]) if yellow.any() else (0, 1)
 
 # Face mask: 1 inside the oval, smooth fade to 0 by 1.3x its radius.
 mask = np.zeros((h, w), np.float32)
@@ -48,6 +51,7 @@ angle = math.radians(45)
 ca, sa = math.cos(angle), math.sin(angle)
 rmax = cell * 0.62  # darkest dots nearly touch
 span = int((w + h) / cell) + 2
+dots = []
 for i in range(-span, span):
     for j in range(-span, span):
         x = (i * ca - j * sa) * cell + w / 2
@@ -62,12 +66,20 @@ for i in range(-span, span):
         yi, xi = int(y), int(x)
         is_yellow = yellow[yi, xi]
         # Yellow plates: dot size from the plate's own shading, min size keeps them reading as yellow.
-        d = max(0.35, 1 - lum[yi, xi] * 0.6) if is_yellow else dark[yi, xi]
+        d = 0.3 + 0.7 * min(1, max(0, (yhi - lum[yi, xi]) / (yhi - ylo + 1e-6))) ** 1.3 if is_yellow else dark[yi, xi]
         if d < 0.02:
             continue
-        rad = rmax * math.sqrt(d) * SCALE  # area ∝ darkness
-        cx, cy = x * SCALE, y * SCALE
-        draw.ellipse((cx - rad, cy - rad, cx + rad, cy + rad), fill=ACCENT if is_yellow else INK)
+        rad = rmax * math.sqrt(d)  # area ∝ darkness
+        dots.append((x, y, rad, ACCENT if is_yellow else INK))
 
-out.resize((w, h), Image.LANCZOS).save(out_path)
+if out_path.endswith('.svg'):
+    groups = ''.join(f'<g fill="#{bytes(c).hex()}">' + ''.join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.2f}"/>' for x, y, r, k in dots if k == c) + '</g>' for c in (INK, ACCENT))
+    pad = cell  # viewBox hugs the dots
+    x0, y0 = min(x - r for x, y, r, _ in dots) - pad, min(y - r for x, y, r, _ in dots) - pad
+    x1, y1 = max(x + r for x, y, r, _ in dots) + pad, max(y + r for x, y, r, _ in dots) + pad
+    open(out_path, 'w').write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x0:.0f} {y0:.0f} {x1 - x0:.0f} {y1 - y0:.0f}">{groups}</svg>\n')
+else:
+    for x, y, rad, c in dots:
+        draw.ellipse(((x - rad) * SCALE, (y - rad) * SCALE, (x + rad) * SCALE, (y + rad) * SCALE), fill=c)
+    out.resize((w, h), Image.LANCZOS).save(out_path)
 print(out_path)

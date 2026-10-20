@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppearance } from '@/components/appearance-provider';
 import { Wordmark } from '@/components/wordmark';
 import { apiUrl, authClient } from '@/lib/auth-client';
+import { claimPendingOnboarding } from '@/lib/onboarding';
 import type { AppearanceColors } from '@/lib/appearance';
 
 type AuthMode = 'signIn' | 'signUp';
@@ -40,6 +41,7 @@ export function AuthFlow({ mode, onBack, onModeChange }: { mode: AuthMode; onBac
     if (mode === 'signUp') {
       const result = await authClient.signUp.email({ email: email.trim(), password, name: email.trim().split('@')[0] ?? 'Lift user', callbackURL: ExpoLinking.createURL('/auth/verified') });
       if (result.error) throw result.error;
+      if (result.data?.user.id) void claimPendingOnboarding(result.data.user.id);
       setStep('verifyEmail');
       return;
     }

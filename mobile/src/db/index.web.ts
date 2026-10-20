@@ -451,7 +451,7 @@ export function getWorkoutSplitTrends(weeks = 8): WorkoutSplitTrend[] {
   const emptyPoints = () => Array.from({ length: weeks }, (_, index) => {
     const week = new Date(start);
     week.setDate(start.getDate() + index * 7);
-    return { weekStart: week.toISOString().slice(0, 10), volume: 0 };
+    return { weekStart: `${week.getFullYear()}-${String(week.getMonth() + 1).padStart(2, '0')}-${String(week.getDate()).padStart(2, '0')}`, volume: 0 };
   });
   trends.set('ALL', { split: 'ALL', points: emptyPoints() });
   const workoutsBySplitWeek = new Map<WorkoutSplitTrend['split'], Set<string>[]>();
@@ -582,6 +582,7 @@ function localSyncRecord(entity: CloudSyncEntity, entityKey: string): Record<str
 function enqueueCloudSync(entity: CloudSyncEntity, entityKey: string, operation: 'upsert' | 'delete') {
   const record = operation === 'upsert' ? localSyncRecord(entity, entityKey) : null;
   if (operation === 'upsert' && !record) return;
+  if (operation === 'upsert') writeTombstones(readTombstones().filter((item) => item.entity !== entity || item.key !== entityKey));
   writeRejectedChanges(getRejectedCloudSyncChanges().filter((item) => !(item.entity === entity && item.key === entityKey) && !(operation === 'delete' && entity === 'workout' && item.key.startsWith(entityKey + cloudKeySeparator))));
   const items = readOutbox().filter((item) => !(operation === 'delete' && entity === 'workout' && !item.batchId && item.key.startsWith(entityKey + cloudKeySeparator)));
   const index = items.findIndex((item) => !item.batchId && item.entity === entity && item.key === entityKey);
@@ -709,7 +710,7 @@ function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: stri
   enqueueCloudSync(entity, key, 'delete');
 }
 
-export function prepareCloudSyncForUser(userId: string): boolean {
+export function prepareCloudSyncForUser(userId: string, discardPreviousAccount = false): boolean {
   const activeUserId = storage?.getItem(activeUserKey) ?? storage?.getItem(legacyActiveUserKey);
   if (!activeUserId) {
     storage?.setItem(activeUserKey, userId);
@@ -717,7 +718,7 @@ export function prepareCloudSyncForUser(userId: string): boolean {
     return true;
   }
   if (activeUserId === userId) { storage?.removeItem(legacyActiveUserKey); return true; }
-  if (hasPendingCloudSync() || getRejectedCloudSyncChanges().length) return false;
+  if (!discardPreviousAccount && (hasPendingCloudSync() || getRejectedCloudSyncChanges().length)) return false;
   write([]);
   writeWorkouts([]);
   writeRatings({});

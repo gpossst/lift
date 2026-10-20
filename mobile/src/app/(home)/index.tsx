@@ -1,10 +1,10 @@
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated as NativeAnimated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, AppState, Animated as NativeAnimated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Circle } from '@shopify/react-native-skia';
-import { ChevronLeft, ChevronRight, Clock } from 'react-native-feather';
+import { ChevronLeft, ChevronRight, Clock, Zap } from 'react-native-feather';
 import LottieView from 'lottie-react-native';
 import { LineGraph, type SelectionDotProps } from 'react-native-graph';
 import Animated, { FadeIn, FadeInDown, FadeOut, ZoomIn, interpolate, SlideInDown, SlideOutDown, useAnimatedStyle, useDerivedValue, useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming } from 'react-native-reanimated';
@@ -13,6 +13,8 @@ import Svg, { Circle as SvgCircle, Defs, Line, LinearGradient, Polygon, Polyline
 import { closeExpiredWorkouts, getActiveWorkout, getCompletedWorkoutExerciseDetails, getCustomSplits, getExercises, getWorkoutHistories, getWorkoutSplitTrends, getWorkoutVisitExerciseDetails, getWorkoutVisits, type WorkoutVisitSummary } from '@/db';
 import { useAppearance } from '@/components/appearance-provider';
 import { EmptyArt } from '@/components/empty-art';
+import { FlexAnimation } from '@/components/flex-animation';
+import { Wordmark } from '@/components/wordmark';
 import { SplitRoutinePrompt } from '@/components/split-routine-prompt';
 import { SectionHeader } from '@/components/overview-parts';
 import { SegmentedPicker } from '@/components/segmented-picker';
@@ -32,6 +34,7 @@ const calendarGap = 6;
 const contentPadding = 20;
 const notificationGap = 10;
 const notificationPeek = 44;
+const notificationCycleMs = 5_000;
 const exerciseNames = new Map(getExercises().map((exercise) => [exercise.id, exercise.name]));
 
 function formatVolume(volume: number) {
@@ -88,12 +91,20 @@ export default function HomeScreen() {
 	const [returnPlan, setReturnPlan] = useState<string | null>(null);
 	const [trainingDays, setTrainingDays] = useState<number | null>(null);
 	const [profilePreferences, setProfilePreferences] = useState<RecommendationPreferences | null>(null);
+	const [plansOpen, setPlansOpen] = useState(false);
+	const plansSheet = useSheetPresence(plansOpen);
+	const notificationScroll = useRef<ScrollView>(null);
+	const notificationIndex = useRef(0);
+	const notificationPausedUntil = useRef(0);
+	const [screenReaderEnabled, setScreenReaderEnabled] = useState(true);
+	const reduceMotion = useReducedMotion();
 	const { width: windowWidth } = useWindowDimensions();
 	const recentEvents = [
 		...ownRecords.map((record) => ({ key: `own:${record.exerciseId}:${record.completedAt.getTime()}`, kicker: `NEW PR · ${record.weight} LB`, title: record.name, time: record.completedAt.getTime(), onPress: () => router.push({ pathname: '/stats/progress', params: { exerciseId: record.exerciseId } }) })),
 		...friendRecords.filter((record) => record.completedAt * 1000 >= now - 14 * 86_400_000).map((record) => ({ key: `friend:${record.id}:${record.exerciseId}:${record.completedAt}`, kicker: `FRIEND PR · ${record.displayName.toUpperCase()} · ${record.weight} LB`, title: exerciseNames.get(record.exerciseId) ?? 'An exercise', time: record.completedAt * 1000, onPress: () => router.push('/friends') })),
 	].sort((a, b) => b.time - a.time).slice(0, 3);
 	const notifications = [
+		{ key: 'plans', kicker: "WHAT'S NEXT FOR LIFT", title: 'Free for now. See our future plans', onPress: () => setPlansOpen(true), accent: true, plans: true },
 		...(returnPlan ? [{ key: 'plan', kicker: 'YOUR NEXT WORKOUT', title: new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${returnPlan}T12:00:00`)), onPress: () => router.push('/start'), accent: true }] : []),
 		...recentEvents.map((event) => ({ ...event, accent: false, pr: true })),
 		...(friendCount === 0 ? [{ key: 'friends', kicker: 'FRIENDS', title: 'Add friends to see updates', onPress: () => router.push('/friends'), accent: false }] : []),
@@ -103,6 +114,28 @@ export default function HomeScreen() {
 	const activeMeta = activeWorkout && [`Started ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(activeWorkout.createdAt)}`, ...(activeSetCount ? [`${activeExercises.length} exercise${activeExercises.length === 1 ? '' : 's'}`, `${activeSetCount} set${activeSetCount === 1 ? '' : 's'}`] : [])].join(' · ');
 	// A lone card fills the row; with more, each is narrowed so the next one peeks in.
 	const notificationWidth = windowWidth - contentPadding * 2 - (notifications.length > 1 ? notificationPeek : 0);
+	const notificationCount = notifications.length;
+	const notificationKeys = notifications.map(({ key }) => key).join('|');
+	useEffect(() => {
+		let active = true;
+		void AccessibilityInfo.isScreenReaderEnabled().then((enabled) => { if (active) setScreenReaderEnabled(enabled); }).catch(() => undefined);
+		const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
+		return () => { active = false; subscription.remove(); };
+	}, []);
+	useEffect(() => {
+		notificationIndex.current = 0;
+		notificationScroll.current?.scrollTo({ x: 0, animated: false });
+	}, [notificationKeys, notificationWidth, activeWorkout]);
+	useFocusEffect(useCallback(() => {
+		notificationPausedUntil.current = 0;
+		if (activeWorkout || notificationCount < 2 || reduceMotion || screenReaderEnabled) return;
+		const timer = setInterval(() => {
+			if (AppState.currentState !== 'active' || Date.now() < notificationPausedUntil.current) return;
+			notificationIndex.current = (notificationIndex.current + 1) % notificationCount;
+			notificationScroll.current?.scrollTo({ x: notificationIndex.current * (notificationWidth + notificationGap), animated: true });
+		}, notificationCycleMs);
+		return () => clearInterval(timer);
+	}, [activeWorkout, notificationCount, notificationWidth, reduceMotion, screenReaderEnabled]));
 	useFocusEffect(useCallback(() => {
 		if (firstHomeFocus.current) { firstHomeFocus.current = false; return; }
 		setHomeData(loadHomeData());
@@ -163,8 +196,12 @@ export default function HomeScreen() {
 			<Pressable onPress={() => router.push('/history')} style={({ pressed }) => [styles.historyAction, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Workout history"><Clock width={15} height={15} color={colors.text} strokeWidth={2.4} /><Text style={[styles.historyActionText, { color: colors.text }]}>History</Text></Pressable>
 		</View>
 		<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-			{activeWorkout ? <ResumeCard title={`${workoutSplitLabel(activeWorkout.split)} workout`} meta={activeMeta || ''} colors={colors} onPress={() => router.navigate({ pathname: '/exercises', params: { split: activeWorkout.split, workoutId: activeWorkout.id } })} /> : notifications.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={notificationWidth + notificationGap} decelerationRate="fast" style={styles.notificationScroll} contentContainerStyle={styles.notificationRow}>
-				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}>{'pr' in notification && <PrMedal />}<View style={styles.notificationCopy}><Text style={[ui.eyebrow, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
+			{activeWorkout ? <ResumeCard title={`${workoutSplitLabel(activeWorkout.split)} workout`} meta={activeMeta || ''} colors={colors} onPress={() => router.navigate({ pathname: '/exercises', params: { split: activeWorkout.split, workoutId: activeWorkout.id } })} /> : notifications.length > 0 && <ScrollView ref={notificationScroll} horizontal showsHorizontalScrollIndicator={false} snapToInterval={notificationWidth + notificationGap} decelerationRate="fast" style={styles.notificationScroll} contentContainerStyle={styles.notificationRow}
+				onTouchStart={() => { notificationPausedUntil.current = Infinity; }}
+				onTouchEnd={() => { notificationPausedUntil.current = Date.now() + notificationCycleMs; }}
+				onTouchCancel={() => { notificationPausedUntil.current = Date.now() + notificationCycleMs; }}
+				onScroll={(event) => { notificationIndex.current = Math.max(0, Math.min(notificationCount - 1, Math.round(event.nativeEvent.contentOffset.x / (notificationWidth + notificationGap)))); }} scrollEventThrottle={16}>
+				{notifications.map((notification) => <Pressable key={notification.key} onPress={notification.onPress} style={({ pressed }) => [styles.notification, { width: notificationWidth, backgroundColor: notification.accent ? colors.accent : colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel={`${notification.kicker}: ${notification.title}`}>{'pr' in notification && <PrMedal />}{'plans' in notification && <Zap width={26} height={26} color={colors.accentText} fill={colors.accentText} strokeWidth={1.5} />}<View style={styles.notificationCopy}><Text style={[ui.eyebrow, { color: notification.accent ? colors.accentText : colors.mutedText }]} numberOfLines={1}>{notification.kicker}</Text><Text style={[styles.notificationText, { color: notification.accent ? colors.accentText : colors.text }]} numberOfLines={2}>{notification.title}</Text></View><ChevronRight width={20} height={20} color={notification.accent ? colors.accentText : colors.mutedText} strokeWidth={2.6} /></Pressable>)}
 			</ScrollView>}
 
 			<MonthActivity visits={visits} colors={colors} goal={goal} daysThisWeek={daysThisWeek} streak={streak} />
@@ -183,6 +220,23 @@ export default function HomeScreen() {
 				</> : <View><EmptyArt name="chart" width={120} /><Text style={[styles.emptyCopy, { color: colors.mutedText, textAlign: 'center' }]}>Log a workout to see your volume trend.</Text></View>}
 			</View>
 		</ScrollView>
+		<Modal {...plansSheet.modal} transparent animationType="none" onRequestClose={() => setPlansOpen(false)}>
+			<View style={styles.sheetOverlay}>
+				{plansSheet.open && <>
+				<Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={styles.sheetBackdrop}>
+					<Pressable onPress={() => setPlansOpen(false)} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Close future plans" />
+				</Animated.View>
+				<Animated.View entering={SlideInDown.duration(280)} exiting={SlideOutDown.duration(200)} style={[styles.workoutSheet, { backgroundColor: colors.background }]}>
+					<View style={[styles.sheetHandle, { backgroundColor: colors.surfaceStrong }]} />
+					<View style={styles.plansBrand}><View accessible accessibilityLabel="LIFT"><Wordmark height={22} /></View><FlexAnimation style={styles.plansFlex} /></View>
+					<Text style={[styles.sheetTitle, styles.plansTitle, { color: colors.text }]}>What&apos;s next for Lift</Text>
+					<Text style={[styles.plansCopy, { color: colors.mutedText }]}>Lift is free right now. We wanted to get the app into your hands as soon as possible so we can hear what works, what doesn&apos;t, and iterate quickly.</Text>
+					<Text style={[styles.plansCopy, { color: colors.mutedText }]}>In a future update we&apos;ll add a subscription that unlocks long-term data and muscle coverage insights. Thanks for training with us early. Your feedback shapes what comes next.</Text>
+					<Pressable onPress={() => setPlansOpen(false)} style={({ pressed }) => [styles.plansButton, { backgroundColor: colors.accent }, pressed && ui.pressed]} accessibilityRole="button"><Text style={[styles.plansButtonText, { color: colors.accentText }]}>Got it</Text></Pressable>
+				</Animated.View>
+				</>}
+			</View>
+		</Modal>
 	</SafeAreaView>;
 }
 
@@ -305,7 +359,9 @@ function StreakFlame({ streak }: { streak: number }) {
 function MonthActivity({ visits, colors, goal, daysThisWeek, streak }: { visits: WorkoutVisitSummary[]; colors: AppColors; goal: number | null; daysThisWeek: number; streak: number }) {
 	const [workoutPicker, setWorkoutPicker] = useState<{ date: Date; visits: WorkoutVisitSummary[] } | null>(null);
 	const workoutPickerSheet = useSheetPresence(workoutPicker !== null);
-	const [gridWidth, setGridWidth] = useState(0);
+	// Seed from the window so the grid has its height on first render; onLayout corrects for insets.
+	const { width: windowWidth } = useWindowDimensions();
+	const [gridWidth, setGridWidth] = useState(() => windowWidth - contentPadding * 2);
 	const today = new Date();
 	const [monthOffset, setMonthOffset] = useState(0);
 	const month = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
@@ -416,6 +472,8 @@ const styles = StyleSheet.create({
 	calendarGrid: { gap: calendarGap }, calendarRow: { flexDirection: 'row', gap: calendarGap }, calendarCell: { borderRadius: 8, borderCurve: 'continuous', paddingTop: 4, paddingLeft: 5 }, calendarDay: { fontSize: 11, lineHeight: 13, fontWeight: '800', includeFontPadding: false }, calendarCellOutside: { opacity: 0 }, calendarCellPressed: { opacity: .72, transform: [{ scale: .93 }] },
 	legend: { marginTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, legendScale: { flexDirection: 'row', alignItems: 'center', gap: 4 }, legendSwatch: { width: 10, height: 10, borderRadius: 3 }, legendText: { marginHorizontal: 2, fontSize: 10, fontWeight: '800' },
 	sheetOverlay: { flex: 1, justifyContent: 'flex-end' }, sheetBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,.38)' }, workoutSheet: { minHeight: 250, paddingHorizontal: 24, paddingTop: 10, paddingBottom: 28, borderTopLeftRadius: 25, borderTopRightRadius: 25 }, sheetHandle: { width: 37, height: 4, borderRadius: 2, alignSelf: 'center' }, sheetTitle: { marginTop: 22, fontSize: 22, fontWeight: '900', letterSpacing: -.8 }, sheetDate: { marginTop: 3, marginBottom: 13, fontSize: 13, fontWeight: '700' }, workoutOption: { minHeight: 68, borderTopWidth: 1, justifyContent: 'center' }, workoutOptionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -.4 }, workoutOptionMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', letterSpacing: -.1 },
+	plansBrand: { marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, plansFlex: { width: 96, aspectRatio: 16 / 9 }, plansTitle: { marginTop: 10 },
+	plansCopy: { marginTop: 12, fontSize: 15, lineHeight: 21, fontWeight: '600' }, plansButton: { height: 50, marginTop: 24, borderRadius: 25, alignItems: 'center', justifyContent: 'center' }, plansButtonText: { fontSize: 16, fontWeight: '900' },
 });
 
 function PrMedal() {

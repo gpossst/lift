@@ -333,14 +333,15 @@ export default function WorkoutScreen() {
     color: string;
     workoutId: string;
     recommendedSets?: string;
+    recommendedExerciseId?: string;
     superset?: string | string[];
   }>();
   const exerciseId = params.id ?? "free_exercise_db:Barbell_Squat";
   const name = params.name ?? "Barbell Squat";
   const accentColor = colors.accent;
   const workoutId = params.workoutId ?? "legacy-workout";
-  // Preserve the plan's volume cap for its exercise when switching supersets.
-  const [plannedVolume] = useState(() => ({ exerciseId, sets: Number(params.recommendedSets) }));
+  const plannedExerciseId = params.recommendedExerciseId ?? exerciseId;
+  const plannedSets = Number(params.recommendedSets);
   const exercise = useMemo(() => exerciseCatalog.find((item) => item.id === exerciseId) ?? {
     id: exerciseId,
     name,
@@ -356,8 +357,8 @@ export default function WorkoutScreen() {
   const { context: recommendationContext, ready: contextReady } = useRecommendationContext();
   const prescription = useMemo(() => resolveExercisePrescription(
     exercise, recommendationContext, getRecentExerciseExhaustion(exerciseId, workoutId),
-    plannedVolume.exerciseId === exerciseId ? plannedVolume.sets : undefined,
-  ), [exercise, exerciseId, plannedVolume, recommendationContext, workoutId]);
+    plannedExerciseId === exerciseId ? plannedSets : undefined,
+  ), [exercise, exerciseId, plannedExerciseId, plannedSets, recommendationContext, workoutId]);
   const exerciseDetails = useMemo(() => {
     let parsed: Record<string, unknown> = {};
     try { parsed = JSON.parse(exercise.detailsJson ?? "{}") ?? {}; } catch { /* Catalog rows may lack details; show the empty state. */ }
@@ -379,8 +380,12 @@ export default function WorkoutScreen() {
   const supportsPlateDial = exercise.equipment === "barbell";
   const [setNumber, setSetNumber] = useState(1);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  useEffect(() => { savingRef.current = false; }, [exerciseId, setNumber, workoutId]);
   const [history, setHistory] = useState<WorkoutHistoryPoint[]>([]);
-  const completedHistory = useMemo(() => getWorkoutHistory(exerciseId, { completedOnly: true }), [exerciseId]);
+  // A reused screen must pick up the workout just finished for this exercise.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const completedHistory = useMemo(() => getWorkoutHistory(exerciseId, { completedOnly: true }), [exerciseId, workoutId]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const historySheet = useSheetPresence(historyOpen);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -528,9 +533,11 @@ export default function WorkoutScreen() {
     if (field === "weight") setWeight(next);
     else setReps(next);
   }
-  async function saveSet() {
-    if ((usesWeight && !Number(weight)) || !isValidWorkoutSetValues({ weight: usesWeight ? Number(weight) : 0, reps: Number(reps) }) || setNumber > 100 || saving) return;
+  function saveSet() {
+    if ((usesWeight && !Number(weight)) || !isValidWorkoutSetValues({ weight: usesWeight ? Number(weight) : 0, reps: Number(reps) }) || setNumber > 100 || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
+    let saved = false;
     try {
       saveWorkoutSet({
         exerciseId,
@@ -540,12 +547,13 @@ export default function WorkoutScreen() {
         reps: Number(reps),
         completedAt: new Date(),
       });
+      saved = true;
+      setSetNumber((v) => v + 1);
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       setLabelScale.value = withSequence(
         withSpring(1.15, { duration: 120, dampingRatio: 0.55 }),
         withSpring(1, { duration: 200, dampingRatio: 0.65 }),
       );
-      setSetNumber((v) => v + 1);
       const nextHistory = getWorkoutHistory(exerciseId);
       const currentSets = nextHistory.filter((set) => set.workoutId === workoutId);
       const lastSet = currentSets.at(-1);
@@ -564,6 +572,18 @@ export default function WorkoutScreen() {
       } else {
         startRest();
       }
+    } catch {
+      if (!saved) {
+        savingRef.current = false;
+        // Sync may have filled this number since the screen loaded; retry on the next free one.
+        try { setSetNumber(getNextSetNumberForWorkout(exerciseId, workoutId)); } catch { /* Keep the current number; the alert still explains. */ }
+      }
+      const title = saved ? "Set saved" : "Could not save set";
+      const message = saved
+        ? "Your set was saved, but the screen could not update. Reopen the exercise to continue."
+        : "Your set was not saved. Your entries are still here; try again or reopen the workout.";
+      if (Platform.OS === "web") window.alert(`${title}. ${message}`);
+      else Alert.alert(title, message);
     } finally {
       setSaving(false);
     }
@@ -655,6 +675,8 @@ export default function WorkoutScreen() {
       ...exercise,
       workoutId,
       superset: JSON.stringify(ids),
+      // setParams merges values, so keep the cap attached to its planned exercise.
+      recommendedExerciseId: plannedExerciseId,
     });
   }
   const [switchDirection, setSwitchDirection] = useState<1 | -1>(1);

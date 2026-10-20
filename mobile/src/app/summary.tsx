@@ -11,6 +11,7 @@ import { exerciseRequiresWeight } from '@/db/exercise-catalog';
 import { tintFlexFills } from '@/components/flex-animation';
 import { MuscleBodyGraphic } from '@/components/muscle-body-graphic';
 import { RulerSlider } from '@/components/ruler-slider';
+import { SetBar, setBarSize } from '@/components/set-bar';
 import { useAppearance } from '@/components/appearance-provider';
 import { EmptyArt } from '@/components/empty-art';
 import { syncWorkoutData } from '@/lib/cloud-sync';
@@ -117,10 +118,7 @@ function Complete({ workoutId, completedAt, split, duration, sets, volume, reps,
         return <Animated.View key={exercise.id} entering={reducedMotion ? undefined : FadeInUp.delay((newBests.length ? 240 : 120) + index * 80).duration(400).easing(Easing.out(Easing.cubic))} style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
           <View style={styles.exerciseCardHeading}><View style={styles.exerciseCardTitleGroup}><Text style={[styles.exerciseOrdinal, { color: colors.mutedText }]}>{String(index + 1).padStart(2, '0')}</Text><Text style={[styles.exerciseName, { color: colors.text }]}>{exercise.name}</Text></View>{achievement && <View style={[styles.bestPill, { backgroundColor: achievement.level === 'gold' ? colors.accent : colors.surfaceStrong }]}><Text style={[styles.bestPillText, { color: achievement.level === 'gold' ? colors.accentText : colors.mutedText }]}>{achievement.level === 'gold' ? 'New best' : 'Matched best'}</Text></View>}</View>
           <Text style={[styles.exerciseMeta, { color: colors.mutedText }]}>{exercise.sets.length} {exercise.sets.length === 1 ? 'set' : 'sets'}  ·  {exercise.sets.reduce((sum, set) => sum + set.reps, 0)} reps{exerciseVolume ? `  ·  ${formatVolume(exerciseVolume)} lb volume` : ''}</Text>
-          <View style={[styles.setTable, { borderColor: colors.surfaceStrong }]}>
-            <View style={styles.setTableHeader}><Text style={[styles.setHeaderNumber, { color: colors.mutedText }]}>Set</Text><Text style={[styles.setHeaderPerformance, { color: colors.mutedText }]}>Performance</Text></View>
-            {exercise.sets.map((set) => <View key={set.number} style={[styles.setRow, { borderColor: colors.surfaceStrong }]}><Text style={[styles.setNumber, { color: colors.mutedText }]}>{String(set.number).padStart(2, '0')}</Text><Text style={[styles.setPerformance, { color: colors.text }]}>{weighted ? `${set.weight} lb  ×  ${set.reps} reps` : `${set.reps} reps${set.weight ? `  ·  +${set.weight} lb` : ''}`}</Text></View>)}
-          </View>
+          <View style={styles.setBars}>{exercise.sets.map((set) => <SetBar key={set.number} number={set.number} set={set} requiresWeight={weighted} max={Math.max(...exercise.sets.map((item) => setBarSize(item, weighted)))} highlight={exercise.sets.length > 1 && set === exercise.sets.reduce((best, item) => setBarSize(item, weighted) > setBarSize(best, weighted) ? item : best)} />)}</View>
           <Text style={[styles.exerciseComparison, { color: progress.improved ? colors.text : colors.mutedText }]}>{progress.label}</Text>
         </Animated.View>;
       })}
@@ -203,13 +201,7 @@ const styles = StyleSheet.create({
   bestPill: { borderRadius: 20, paddingHorizontal: 9, paddingVertical: 5 },
   bestPillText: { fontSize: 10, fontWeight: '900' },
   exerciseMeta: { marginTop: 7, marginLeft: 33, fontSize: 12, fontWeight: '600' },
-  setTable: { marginTop: 17, borderTopWidth: 1 },
-  setTableHeader: { flexDirection: 'row', paddingTop: 11, paddingBottom: 4 },
-  setHeaderNumber: { width: 45, fontSize: 11, fontWeight: '700' },
-  setHeaderPerformance: { fontSize: 11, fontWeight: '700' },
-  setRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1 },
-  setNumber: { width: 45, fontSize: 12, fontWeight: '700' },
-  setPerformance: { fontSize: 14, fontWeight: '800', letterSpacing: -.2 },
+  setBars: { marginTop: 14, gap: 6 },
   exerciseComparison: { marginTop: 13, fontSize: 12, fontWeight: '800' },
   muscleRecapSection: { marginTop: 20 },
   muscleChips: { marginTop: 8 },

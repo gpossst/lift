@@ -11,7 +11,7 @@ let simulatorIconUpdatesUnavailable = false;
 export function AppearanceAppIcon({ mode, accent }: { mode: AppearanceMode; accent: AccentId }) {
   useEffect(() => {
     if (!appIcon || simulatorIconUpdatesUnavailable) return;
-    const iconName = mode === 'light' && accent === 'yellow' ? null : `Lift-${mode}-${accent}`;
+    const iconName = mode === 'dark' && accent === 'red' ? null : `Lift-${mode}-${accent}`;
     let timer: ReturnType<typeof setTimeout>;
     const syncIcon = () => {
       clearTimeout(timer);

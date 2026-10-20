@@ -746,7 +746,7 @@ export function getWorkoutSplitTrends(weeks = 8): WorkoutSplitTrend[] {
   const emptyPoints = () => Array.from({ length: weeks }, (_, index) => {
     const week = new Date(start);
     week.setDate(start.getDate() + index * 7);
-    return { weekStart: week.toISOString().slice(0, 10), volume: 0 };
+    return { weekStart: `${week.getFullYear()}-${String(week.getMonth() + 1).padStart(2, '0')}-${String(week.getDate()).padStart(2, '0')}`, volume: 0 };
   });
   trends.set('ALL', { split: 'ALL', points: emptyPoints() });
   const workoutsBySplitWeek = new Map<WorkoutSplitTrend['split'], Set<string>[]>();
@@ -829,6 +829,7 @@ function localSyncRecord(entity: CloudSyncEntity, key: string): Record<string, u
 function enqueueCloudSync(entity: CloudSyncEntity, key: string, operation: 'upsert' | 'delete') {
   const record = operation === 'upsert' ? localSyncRecord(entity, key) : null;
   if (operation === 'upsert' && !record) return;
+  if (operation === 'upsert') sqlite.runSync('DELETE FROM sync_tombstones WHERE entity = ? AND entity_key = ?', [entity, key]);
   writeRejectedChanges(getRejectedCloudSyncChanges().filter((item) => !(item.entity === entity && item.key === key) && !(operation === 'delete' && entity === 'workout' && item.key.startsWith(key + cloudKeySeparator))));
   if (operation === 'delete' && entity === 'workout') sqlite.runSync('DELETE FROM sync_outbox WHERE batch_id IS NULL AND substr(entity_key, 1, ?) = ?', [key.length + 1, key + cloudKeySeparator]);
   const id = mutationId();
@@ -963,8 +964,8 @@ function queueCloudSyncTombstone(entity: CloudSyncTombstone['entity'], key: stri
 }
 
 /** Bind this device cache to the active account. Refuse an account switch while
- * local mutations are pending so an offline workout cannot be discarded. */
-export function prepareCloudSyncForUser(userId: string): boolean {
+ * local mutations are pending unless the user explicitly chose to discard them. */
+export function prepareCloudSyncForUser(userId: string, discardPreviousAccount = false): boolean {
   const activeUserId = syncState('active_user_id') ?? syncState('active_clerk_user_id');
   if (!activeUserId) {
     setSyncState('active_user_id', userId);
@@ -979,7 +980,7 @@ export function prepareCloudSyncForUser(userId: string): boolean {
     }
     return true;
   }
-  if (hasPendingCloudSync() || getRejectedCloudSyncChanges().length) return false;
+  if (!discardPreviousAccount && (hasPendingCloudSync() || getRejectedCloudSyncChanges().length)) return false;
   sqlite.execSync(`DELETE FROM recommendation_feedback; DELETE FROM workout_muscle_ratings; DELETE FROM workout_sets; DELETE FROM workouts WHERE id NOT LIKE '${demoWorkoutIdPrefix}%'; DELETE FROM custom_splits; DELETE FROM sync_tombstones; DELETE FROM sync_outbox; DELETE FROM sync_versions; DELETE FROM sync_state WHERE key LIKE 'cloud_sync_%';`);
   setSyncState('active_user_id', userId);
   sqlite.runSync("DELETE FROM sync_state WHERE key = 'active_clerk_user_id'");
@@ -1018,6 +1019,9 @@ export function mergeCloudSyncChanges(changes: CloudSyncRemoteChange[], cursor: 
             ON CONFLICT(id) DO UPDATE SET name = excluded.name, muscles_json = excluded.muscles_json, archived = excluded.archived`, [String(record.id), String(record.name), JSON.stringify(record.muscles.filter((muscle): muscle is string => typeof muscle === 'string')), record.archived === true ? 1 : 0]);
           if (change.entity === 'workout') sqlite.runSync(`INSERT INTO workouts (id, split, created_at, ended_at, updated_at) VALUES (?, ?, ?, ?, 0)
             ON CONFLICT(id) DO UPDATE SET split = excluded.split, created_at = excluded.created_at, ended_at = excluded.ended_at`, [String(record.id), String(record.split), Number(record.createdAt), record.endedAt == null ? null : Number(record.endedAt)]);
+          // Another app version may know this exercise; keep its set behind a placeholder
+          // that the startup catalog upsert replaces once this build learns the ID.
+          if (change.entity === 'set') sqlite.runSync(`INSERT OR IGNORE INTO exercise_catalog (id, name, area, mark, color, equipment) VALUES (?, ?, 'FULL BODY', 'EX', '#BFC8FF', 'other')`, [String(record.exerciseId), String(record.exerciseId).split(':').pop()!.replace(/_/g, ' ')]);
           if (change.entity === 'set' && sqlite.getFirstSync('SELECT 1 FROM workouts WHERE id = ?', [String(record.workoutId)])) sqlite.runSync(`INSERT INTO workout_sets (exercise_id, workout_id, set_number, weight, reps, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0)
             ON CONFLICT(workout_id, exercise_id, set_number) DO UPDATE SET weight = excluded.weight, reps = excluded.reps, completed_at = excluded.completed_at`, [String(record.exerciseId), String(record.workoutId), Number(record.setNumber), Number(record.weight), Number(record.reps), Number(record.completedAt)]);
           if (change.entity === 'rating' && sqlite.getFirstSync('SELECT 1 FROM workouts WHERE id = ?', [String(record.workoutId)])) sqlite.runSync(`INSERT INTO workout_muscle_ratings (workout_id, muscle, exhaustion, created_at) VALUES (?, ?, ?, ?)
