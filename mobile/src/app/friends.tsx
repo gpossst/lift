@@ -1,3 +1,4 @@
+import { useBottomNavigationHeight } from '@/components/bottom-navigation';
 import { ui } from '@/styles/primitives';
 import { useFocusEffect } from 'expo-router';
 import { Check, Heart, MessageCircle, Plus, Send, Users, X } from 'react-native-feather';
@@ -23,6 +24,7 @@ import { authClient } from '@/lib/auth-client';
 const AnimatedSafeAreaView = Animated.createAnimatedComponent(SafeAreaView);
 
 export default function FriendsScreen() {
+  const bottomNavigationHeight = useBottomNavigationHeight();
   const { colors } = useAppearance();
   const reducedMotion = useReducedMotion();
   const { data: session } = authClient.useSession();
@@ -124,7 +126,7 @@ export default function FriendsScreen() {
     }
   };
 
-  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
+  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background, paddingBottom: bottomNavigationHeight }]}>
     <View style={ui.header}>
       <Text style={[ui.title, { color: colors.text }]}>Friends</Text>
       {hasChosenDisplayName && <Pressable onPress={() => setShowFriends(true)} style={({ pressed }) => [styles.headerButton, { backgroundColor: colors.surface }, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Open friends list">

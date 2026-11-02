@@ -241,7 +241,9 @@ async function recommendations(env: Env, userId: string) {
 }
 
 const batchRevision = `(SELECT revision FROM sync_batches WHERE user_id = ? AND batch_id = ?)`;
-const batchMatches = `(SELECT request_hash FROM sync_batches WHERE user_id = ? AND batch_id = ?) = ?`;
+// Historical retries only read their receipt; they must not apply rejected changes after later deletions.
+const batchMatches = `EXISTS (SELECT 1 FROM sync_batches b JOIN sync_accounts a ON a.user_id = b.user_id
+  WHERE b.user_id = ? AND b.batch_id = ? AND b.request_hash = ? AND b.revision = a.revision)`;
 
 function mutationStatements(env: Env, userId: string, batchId: string, hash: string, change: SyncMutation) {
   const statements: D1PreparedStatement[] = [];
@@ -312,8 +314,8 @@ function mutationStatements(env: Env, userId: string, batchId: string, hash: str
           OR COALESCE((SELECT sync_revision FROM workout_sets WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND set_number = ?), 0) = ${batchRevision})
       ON CONFLICT(user_id, workout_local_id, exercise_id, set_number) DO UPDATE SET weight = excluded.weight, reps = excluded.reps, completed_at = excluded.completed_at, updated_at = excluded.updated_at, sync_revision = excluded.sync_revision
     `).bind(userId, set.workoutId, set.exerciseId, set.setNumber, set.weight, set.reps, set.completedAt, now(), ...revisionArgs, ...gateArgs, userId, set.workoutId, userId, set.workoutId, set.exerciseId, set.setNumber, userId, change.key, change.baseRevision, userId, set.workoutId, set.exerciseId, set.setNumber, ...revisionArgs));
-    const accepted = `EXISTS (SELECT 1 FROM workout_sets WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND set_number = ? AND sync_revision = ${batchRevision})`;
-    const acceptedArgs = [userId, set.workoutId, set.exerciseId, set.setNumber, ...revisionArgs];
+    const accepted = `${batchMatches} AND EXISTS (SELECT 1 FROM workout_sets WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND set_number = ? AND sync_revision = ${batchRevision})`;
+    const acceptedArgs = [...gateArgs, userId, set.workoutId, set.exerciseId, set.setNumber, ...revisionArgs];
     statements.push(env.DB.prepare(`DELETE FROM sync_tombstones WHERE user_id = ? AND entity = 'set' AND record_key = ? AND sync_revision <= ? AND ${accepted}`).bind(userId, change.key, change.baseRevision, ...acceptedArgs));
     statements.push(env.DB.prepare(`DELETE FROM set_muscles WHERE user_id = ? AND workout_local_id = ? AND exercise_id = ? AND set_number = ? AND ${accepted}`).bind(userId, set.workoutId, set.exerciseId, set.setNumber, ...acceptedArgs));
     for (const muscle of [...new Set(set.muscles)]) statements.push(env.DB.prepare(`INSERT OR IGNORE INTO set_muscles (user_id, workout_local_id, exercise_id, set_number, muscle) SELECT ?, ?, ?, ?, ? WHERE ${accepted}`).bind(userId, set.workoutId, set.exerciseId, set.setNumber, muscle, ...acceptedArgs));
@@ -657,7 +659,10 @@ async function voteFeedback(request: Request, env: Env, userId: string, feedback
   if (value !== 1 && value !== -1 && value !== 0) return json({ error: 'Vote must be 1, -1, or 0.' }, 400);
   if (!await env.DB.prepare('SELECT 1 FROM site_feedback WHERE id = ?').bind(feedbackId).first()) return json({ error: 'Feedback not found.' }, 404);
   if (value === 0) await env.DB.prepare('DELETE FROM site_feedback_votes WHERE feedback_id = ? AND user_id = ?').bind(feedbackId, userId).run();
-  else await env.DB.prepare('INSERT INTO site_feedback_votes (feedback_id, user_id, value) VALUES (?, ?, ?) ON CONFLICT(feedback_id, user_id) DO UPDATE SET value = excluded.value').bind(feedbackId, userId, value).run();
+  else {
+    const result = await env.DB.prepare('INSERT INTO site_feedback_votes (feedback_id, user_id, value) SELECT id, ?, ? FROM site_feedback WHERE id = ? ON CONFLICT(feedback_id, user_id) DO UPDATE SET value = excluded.value').bind(userId, value, feedbackId).run();
+    if (!result.meta.changes) return json({ error: 'Feedback not found.' }, 404);
+  }
   return listFeedback(env, userId);
 }
 

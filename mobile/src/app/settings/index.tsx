@@ -1,3 +1,4 @@
+import { useBottomNavigationHeight } from '@/components/bottom-navigation';
 import { ui } from '@/styles/primitives';
 import Constants from 'expo-constants';
 import { router, useFocusEffect } from 'expo-router';
@@ -20,6 +21,7 @@ const groups = [
 ] as const;
 
 export default function SettingsScreen() {
+  const bottomNavigationHeight = useBottomNavigationHeight();
   const { colors } = useAppearance();
   const { data: session } = authClient.useSession();
   const [resubmitting, setResubmitting] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export default function SettingsScreen() {
     }
   }
 
-  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
+  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background, paddingBottom: bottomNavigationHeight }]}>
     <View style={styles.header}>
       <Text style={[ui.title, { color: colors.text }]}>Settings</Text>
     </View>

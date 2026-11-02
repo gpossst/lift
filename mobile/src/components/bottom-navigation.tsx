@@ -1,7 +1,7 @@
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
 import { usePathname } from 'expo-router';
 import { BarChart2, Home, Plus, Settings, Users } from 'react-native-feather';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +22,12 @@ const tabs: Tab[] = [
   { label: 'Settings', route: 'settings', Icon: Settings },
 ];
 
+// Reserve space inside tab roots so hiding the bar never resizes a native stack.
+export function useBottomNavigationHeight() {
+  const insets = useSafeAreaInsets();
+  return 62 + Math.max(insets.bottom, 10);
+}
+
 export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
   const { colors } = useAppearance();
   const insets = useSafeAreaInsets();
@@ -29,16 +35,7 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
   const activeRoute = state.routes[state.index]?.name;
 
   const hidden = activeRoute !== 'start' && (!tabs.some((tab) => tab.route === activeRoute) || pathname.startsWith('/history') || pathname.startsWith('/settings/') || pathname.startsWith('/stats/'));
-  // Reappearing mid-pop shrinks the scene and squashes the closing page, so wait out the transition.
-  const [revealed, setRevealed] = useState(!hidden);
-  if (hidden && revealed) setRevealed(false);
-  useEffect(() => {
-    if (hidden) return;
-    const timer = setTimeout(() => setRevealed(true), 350);
-    return () => clearTimeout(timer);
-  }, [hidden]);
-
-  if (hidden || !revealed) return null;
+  if (hidden) return null;
 
   const selectTab = (route: Tab['route']) => {
     const event = navigation.emit({ type: 'tabPress', target: route, canPreventDefault: true });
@@ -124,7 +121,7 @@ function TabButton({ tab, active, onPress }: { tab: Tab; active: boolean; onPres
 }
 
 const styles = StyleSheet.create({
-  shell: { position: 'relative' },
+  shell: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   gradient: { position: 'absolute', top: -24, left: 0 },
   tabRow: { height: 62, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tabButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 3, position: 'relative' },

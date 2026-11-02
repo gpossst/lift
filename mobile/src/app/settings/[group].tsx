@@ -278,6 +278,8 @@ function CustomSplitSettings() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save this split.'); }
   };
   const applyPreset = (preset: (typeof splitPresets)[number]) => {
+    // A second tap lands before the list re-renders without templates; never create the rotation twice.
+    if (getCustomSplits().length) return;
     for (const split of preset.splits) saveCustomSplit({ name: split.name, muscles: [...split.muscles] });
     setUseCustomSplits(true);
     setSplits(getCustomSplits());

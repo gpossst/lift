@@ -225,6 +225,31 @@ if ((await postFeedback(twoCookie)).status !== 200) throw new Error('Feedback li
 await DB.prepare('UPDATE site_feedback SET created_at = ? WHERE user_id = ?').bind(Math.floor(Date.now() / 1000) - 86400, oneId).run();
 if ((await postFeedback(oneCookie)).status !== 200) throw new Error('Feedback limit did not reset after 24 hours.');
 
+const removedFeedback = await DB.prepare('SELECT id FROM site_feedback WHERE user_id = ?').bind(twoId).first();
+for (const value of [1, -1, -1, 0]) {
+  const voted = await call(`/v1/feedback/${removedFeedback.id}/vote`, { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ value }) });
+  const item = (await voted.json()).feedback?.find((item) => item.id === removedFeedback.id);
+  if (voted.status !== 200 || item?.myVote !== value || item?.score !== value) throw new Error('Feedback vote create, change, repeat, or removal failed.');
+}
+const voteRaceEnv = { ...env, DB: {
+  batch: DB.batch.bind(DB),
+  exec: DB.exec.bind(DB),
+  prepare(sql) {
+    const statement = DB.prepare(sql);
+    if (sql !== 'SELECT 1 FROM site_feedback WHERE id = ?') return statement;
+    return { bind(...args) {
+      const bound = statement.bind(...args);
+      return { first: async () => {
+        const found = await bound.first();
+        await DB.prepare('DELETE FROM site_feedback WHERE id = ?').bind(...args).run();
+        return found;
+      } };
+    } };
+  },
+} };
+const racedVote = await call(`/v1/feedback/${removedFeedback.id}/vote`, { method: 'POST', headers: { Cookie: oneCookie }, body: JSON.stringify({ value: 1 }) }, voteRaceEnv);
+if (racedVote.status !== 404) throw new Error(`Feedback deleted during voting returned ${racedVote.status} instead of 404.`);
+
 const deleted = await call('/api/auth/delete-user', { method: 'POST', headers: { Cookie: twoCookie }, body: JSON.stringify({ password: 'correct horse battery staple' }) });
 if (deleted.status !== 200 || await DB.prepare("SELECT 1 FROM user WHERE email = 'two@lift.test'").first() || await DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(twoId).first()) throw new Error('Better Auth account deletion did not remove identity and app data.');
 if (await DB.prepare('SELECT 1 FROM friend_workout_comments WHERE user_id = ?').bind(twoId).first()) throw new Error('Account deletion left friend comments behind.');

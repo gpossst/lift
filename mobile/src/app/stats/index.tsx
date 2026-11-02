@@ -1,3 +1,4 @@
+import { useBottomNavigationHeight } from '@/components/bottom-navigation';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,6 +40,7 @@ const format = (value: number) => value >= 10_000 ? `${Math.round(value / 1_000)
 const weekLabel = (date: Date) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
 
 export default function StatsScreen() {
+  const bottomNavigationHeight = useBottomNavigationHeight();
   const { colors } = useAppearance();
   const { schedule, plan } = useCoveragePlan();
   const { width: screenWidth } = useWindowDimensions();
@@ -81,7 +83,7 @@ export default function StatsScreen() {
   const rangeTotal = chartWeeks.reduce((sum, week) => sum + week[metric], 0);
   const rangeName = timeRanges.find((range) => range.weeks === timeWindow)?.name ?? 'all time';
 
-  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
+  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background, paddingBottom: bottomNavigationHeight }]}>
     <View style={ui.header}>
       <Text style={[ui.title, { color: colors.text }]}>Stats</Text>
       <Pressable onPress={() => router.push('/stats/history')} style={({ pressed }) => [styles.historyAction, { backgroundColor: colors.surface }, pressed && ui.pressed]} accessibilityRole="button" accessibilityLabel="Workout history"><Clock width={15} height={15} color={colors.text} strokeWidth={2.4} /><Text style={[styles.historyActionText, { color: colors.text }]}>History</Text></Pressable>

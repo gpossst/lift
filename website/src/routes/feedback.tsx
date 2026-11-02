@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { authClient, feedbackRequest, type Feedback, type FeedbackKind } from '#/lib/auth'
 import { Wordmark } from '#/components/wordmark'
@@ -19,16 +19,29 @@ function FeedbackPage() {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const requestId = useRef(0)
 
   // Reload once the session resolves so the list carries this reader's votes.
-  useEffect(() => { if (!isPending) void run(() => feedbackRequest()) }, [isPending, user?.id])
+  useEffect(() => {
+    if (!isPending) void run(() => feedbackRequest())
+    return () => { requestId.current += 1 }
+  }, [isPending, user?.id])
 
   async function run(request: () => Promise<Feedback[]>) {
+    const id = ++requestId.current
     setBusy(true)
     setMessage('')
-    try { setItems(await request()); return true }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Something went wrong.'); return false }
-    finally { setBusy(false) }
+    try {
+      const feedback = await request()
+      if (id !== requestId.current) return false
+      setItems(feedback)
+      return true
+    }
+    catch (error) {
+      if (id === requestId.current) setMessage(error instanceof Error ? error.message : 'Something went wrong.')
+      return false
+    }
+    finally { if (id === requestId.current) setBusy(false) }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {

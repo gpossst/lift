@@ -1,3 +1,4 @@
+import { useBottomNavigationHeight } from '@/components/bottom-navigation';
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -76,6 +77,7 @@ function customSplitTrend(split: string, visits: WorkoutVisitSummary[], weekStar
 }
 
 export default function HomeScreen() {
+  const bottomNavigationHeight = useBottomNavigationHeight();
 	const { colors, useCustomSplits } = useAppearance();
 	const { data: session } = authClient.useSession();
 	const userId = session?.user.id;
@@ -189,7 +191,7 @@ export default function HomeScreen() {
 		? Math.round(((chartPoints.at(-1)?.volume ?? 0) - previousPoint.volume) / previousPoint.volume * 100)
 		: null;
 	const trendContext = selectedPoint ? formatWeekOf(selectedPoint.date) : selectedSplit === 'ALL' ? 'Weekly volume · 8 weeks' : 'Average session volume · 8 weeks';
-	return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
+	return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background, paddingBottom: bottomNavigationHeight }]}>
 		{userId && <SplitRoutinePrompt key={userId} userId={userId} />}
 		<View style={ui.header}>
 			<Text style={[ui.title, { color: colors.text }]}>Home</Text>

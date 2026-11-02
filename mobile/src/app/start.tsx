@@ -1,3 +1,4 @@
+import { useBottomNavigationHeight } from '@/components/bottom-navigation';
 import { ui } from '@/styles/primitives';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -28,6 +29,7 @@ function isInPlan(split: WorkoutSplit, useCustomSplits: boolean, customSplits: {
 }
 
 export default function StartWorkoutScreen() {
+  const bottomNavigationHeight = useBottomNavigationHeight();
   const { colors, useCustomSplits } = useAppearance();
   const [customSplits, setCustomSplits] = useState(getCustomSplits);
   const customMode = useCustomSplits && customSplits.length > 0;
@@ -81,7 +83,7 @@ export default function StartWorkoutScreen() {
     minutes ? `~${Math.max(5, Math.round(minutes / 5) * 5)} min` : '',
   ].filter(Boolean).join(' · ');
 
-  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background }]}>
+  return <SafeAreaView edges={['top', 'right', 'left']} style={[ui.screen, { backgroundColor: colors.background, paddingBottom: bottomNavigationHeight }]}>
     <View style={styles.header}>
       <Text style={[ui.title, { color: colors.text }]}>New Workout</Text>
     </View>

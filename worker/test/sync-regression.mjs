@@ -122,6 +122,20 @@ const children = await send('children', [
   { entity: 'rating', key: ratingKey, operation: 'upsert', baseRevision: 0, record: { workoutId: 'children', muscle: 'chest', exhaustion: 4, createdAt: 21 } },
 ]);
 if (children.response.status !== 200 || (await DB.prepare('SELECT COUNT(*) AS count FROM set_muscles WHERE user_id = ? AND workout_local_id = ?').bind('user', 'children').first()).count !== 8) throw new Error('Set/rating chunk did not apply atomically.');
+const changedMuscles = await send('children', [
+  { entity: 'set', key: setKey, operation: 'upsert', baseRevision: 0, record: { workoutId: 'children', exerciseId: 'bench', setNumber: 1, weight: 100, reps: 5, completedAt: 20, muscles: ['calves'] } },
+]);
+const preservedMuscles = await DB.prepare('SELECT muscle FROM set_muscles WHERE user_id = ? AND workout_local_id = ?').bind('user', 'children').all();
+if (changedMuscles.response.status !== 409 || preservedMuscles.results.length !== 8 || preservedMuscles.results.some(({ muscle }) => muscle === 'calves')) throw new Error('Reusing a batch ID with a different payload modified set muscles despite returning 409.');
+
+// Replaying a conflicted child after its parent was deleted/recreated must keep
+// the original receipt and must not insert an old revision behind pull cursors.
+const staleChild = { entity: 'set', key: setKey, operation: 'upsert', baseRevision: 0, record: { workoutId: 'children', exerciseId: 'bench', setNumber: 1, weight: 50, reps: 5, completedAt: 20, muscles: ['chest'] } };
+const rejectedChild = await send('stale-child', [staleChild]);
+const deletedParent = await send('children-delete', [{ entity: 'workout', key: 'children', operation: 'delete', baseRevision: parent.body.revision }]);
+await send('children-recreate', [{ ...workout('children'), baseRevision: deletedParent.body.revision }]);
+const retriedChild = await send('stale-child', [staleChild]);
+if (rejectedChild.body.results[0].status !== 'conflict' || JSON.stringify(retriedChild.body.results) !== JSON.stringify(rejectedChild.body.results) || await DB.prepare('SELECT 1 FROM workout_sets WHERE user_id = ? AND workout_local_id = ?').bind('user', 'children').first()) throw new Error('Retrying an old conflicted batch resurrected a child or changed its durable receipt.');
 const feedbackKey = ['children', 'bench', 'impression'].join('\u001f');
 const feedback = await send('feedback', [{ entity: 'feedback', key: feedbackKey, operation: 'upsert', baseRevision: 0, record: { workoutId: 'children', exerciseId: 'bench', action: 'impression', rank: 1, createdAt: 22 } }]);
 if (feedback.response.status !== 200 || !(await DB.prepare('SELECT 1 AS present FROM recommendation_feedback WHERE user_id = ? AND workout_local_id = ?').bind('user', 'children').first())) throw new Error('Feedback mutation did not apply.');
